@@ -52,3 +52,8 @@ def extract_props(node: etree._Element) -> dict[str, Any]:
             props[child.tag] = (child.text or "").strip()
 
     return props
+
+def write_script(component: Component, output_path: Path) -> None:
+    """Writes a component's script to the specified output file. Encoded in UTF-8"""
+
+    output_path.write_text(component.script, encoding="utf-8")

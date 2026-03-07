@@ -1,8 +1,8 @@
 import pytest
 from pathlib import Path
 from lxml import etree
-from typing import Any
-from openroad_vscode_sync.parser import load_component, extract_props, Component
+from textwrap import dedent
+from openroad_vscode_sync.parser import load_component, extract_props, write_script, Component
 
 @pytest.fixture
 def example_xml_path() -> Path:
@@ -67,3 +67,26 @@ class TestExtractProps:
         assert "startmenu" not in props
         assert "topform" not in props
         assert "fielddefaults" not in props
+
+class TestWriteScript:
+    """Tests for the `write_script()` function"""
+
+    def test_write_script_saves_a_script_to_a_dot_4gl_file(self, tmp_path: Path) -> None:
+        # Create a fake component with script
+        fake_script = dedent("""
+            initialize() =
+            {
+                CurFrame.Trace(text = 'Hello');
+            }
+        """).strip()
+
+        component = Component(script=fake_script, props={})
+
+        # Call the write_script function
+        output_path = tmp_path / "test_frame.4gl"
+        write_script(component, output_path)
+
+        # Verify
+        assert output_path.exists()
+        assert output_path.read_text().strip() == fake_script
+
