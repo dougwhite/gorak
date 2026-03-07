@@ -3,7 +3,9 @@ import tomlkit
 from pathlib import Path
 from lxml import etree
 from textwrap import dedent
-from openroad_vscode_sync.parser import load_component, extract_props, write_script, write_props, Component
+from openroad_vscode_sync.parser import (
+    load_component, extract_props, write_script, write_props, get_base_path, Component
+)
 
 @pytest.fixture
 def example_xml_path() -> Path:
@@ -114,3 +116,31 @@ class TestWriteProps:
         
         parsed_back = tomlkit.parse(output_path.read_text())
         assert parsed_back == fake_props
+
+class TestGetBasePath:
+    """Tests for the `get_base_path()` function"""
+
+    def test_base_path_returns_correct_path(self, tmp_path: Path) -> None:
+        # Set up a fake repo folder
+        project_root = tmp_path / "MyRepo"
+        project_root.mkdir()
+
+        # Call get_base_path to generate the component path
+        base_path = get_base_path("myapp", "fm_example_frame", project_root)
+
+        expected = project_root / "myapp" / "fm_example_frame"
+        assert base_path == expected
+        assert base_path.is_absolute()
+        assert isinstance(base_path, Path)
+    
+    def test_base_path_accepts_string_root_path(self, tmp_path: Path) -> None:
+        # Set up a fake repo folder
+        project_root = tmp_path / "MyRepo"
+        project_root.mkdir()
+        root_str = str(project_root)
+
+        # Call get_base_path to generate the component path
+        base_path = get_base_path("myapp", "fm_example_frame", root_str)
+        expected = project_root / "myapp" / "fm_example_frame"
+        assert base_path == expected
+        assert isinstance(base_path, Path)
