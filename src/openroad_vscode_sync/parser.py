@@ -39,9 +39,6 @@ def extract_props(node: etree._Element) -> dict[str, Any]:
     # Setup the props dictionary
     props: dict[str, Any] = {}
 
-    # The ignored props list
-    ignored = {"script", "startmenu", "topform", "fielddefaults"}
-
     # Extract the meta props first
     if node is not None:
         props["name"] = node.get("name")
@@ -49,7 +46,7 @@ def extract_props(node: etree._Element) -> dict[str, Any]:
 
     # Loop through each child property and add it
     for child in node:
-        if child.tag not in ignored:
+        if child.tag not in IGNORED_PROPERTIES:
             props[child.tag] = (child.text or "").strip()
 
     return props
