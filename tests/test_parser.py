@@ -1,8 +1,9 @@
 import pytest
+import tomlkit
 from pathlib import Path
 from lxml import etree
 from textwrap import dedent
-from openroad_vscode_sync.parser import load_component, extract_props, write_script, Component
+from openroad_vscode_sync.parser import load_component, extract_props, write_script, write_props, Component
 
 @pytest.fixture
 def example_xml_path() -> Path:
@@ -90,3 +91,26 @@ class TestWriteScript:
         assert output_path.exists()
         assert output_path.read_text().strip() == fake_script
 
+class TestWriteProps:
+    """Tests for the `write_props()` function"""
+
+    def test_write_props_saves_the_props_to_a_dot_toml_file(self, tmp_path: Path) -> None:
+        # Setup a fake component with simple props
+        fake_props = {
+            "name": "fm_example_frame",
+            "type": "framesource",
+            "datatype": "integer",
+            "templatename": "standard",
+            "hasstatusbar": "1",
+        }
+        component = Component(script="", props=fake_props)
+
+        # Call the write_props function
+        output_path = tmp_path / "test_frame.props.toml"
+        write_props(component, output_path)
+
+        # Verify the file exists and matches the correct props
+        assert output_path.exists()
+        
+        parsed_back = tomlkit.parse(output_path.read_text())
+        assert parsed_back == fake_props
