@@ -26,10 +26,29 @@ def load_component(xml_path: Path) -> Component:
 
     # Extract the props
     component_node = tree.find(".//COMPONENT")
-    props: dict[str, Any] = {}
-    if component_node is not None:
-        props["name"] = component_node.get("name")
-        props["type"] = component_node.get("{%s}type" % NS["xsi"])
-        props["datatype"] = component_node.findtext("datatype")
+    props = extract_props(component_node)
 
     return Component(script, props)
+
+IGNORED_PROPERTIES = {"script", "startmenu", "topform", "fielddefaults"}
+
+def extract_props(node: etree._Element) -> dict[str, Any]:
+    """Extracts properties from a component node, except for certain ignored complex cases"""
+    
+    # Setup the props dictionary
+    props: dict[str, Any] = {}
+
+    # The ignored props list
+    ignored = {"script", "startmenu", "topform", "fielddefaults"}
+
+    # Extract the meta props first
+    if node is not None:
+        props["name"] = node.get("name")
+        props["type"] = node.get("{%s}type" % NS["xsi"])
+
+    # Loop through each child property and add it
+    for child in node:
+        if child.tag not in ignored:
+            props[child.tag] = (child.text or "").strip()
+
+    return props
