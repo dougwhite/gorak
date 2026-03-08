@@ -42,29 +42,30 @@ class TestParseXml:
 class TestExtractProps:
     """Tests for the `extract_props()` function"""
 
-    def test_extract_props_returns_a_dict(self, example_xml: Path) -> None:
-        component_node = example_xml.find(".//COMPONENT")
-        props = extract_props(component_node)
+    def test_extract_props_returns_a_dict(self) -> None:
+        node = etree.fromstring("<COMPONENT></COMPONENT>")
+        props = extract_props(node)
 
         assert isinstance(props, dict)
     
-    def test_extract_props_retrieves_component_properties(self, example_xml: Path) -> None:
-        component_node = example_xml.find(".//COMPONENT")
-        props = extract_props(component_node)
+    def test_extract_props_retrieves_component_properties(self) -> None:
+        node = etree.fromstring("<COMPONENT><datatype>integer</datatype></COMPONENT>")
+        props = extract_props(node)
 
         assert props["datatype"] == "integer"
-        assert props["templatename"] == "standard"
-        assert props["windowheight"] == "1625"
-        assert props["windowwidth"] == "2292"
     
-    def test_extract_props_skips_ignored_props(self, example_xml: Path) -> None:
-        component_node = example_xml.find(".//COMPONENT")
-        props = extract_props(component_node)
+    def test_default_ignore_list_is_respected(self) -> None:
+        node = etree.fromstring("<COMPONENT><script>ignore me</script></COMPONENT>")
+        props = extract_props(node)
 
         assert "script" not in props
-        assert "startmenu" not in props
-        assert "topform" not in props
-        assert "fielddefaults" not in props
+    
+    def test_the_ignore_list_can_be_overridden(self) -> None:
+        node = etree.fromstring("<COMPONENT><datatype>ignored</datatype><script>not ignored</script></COMPONENT>")
+        props = extract_props(node, {"datatype"})
+
+        assert "datatype" not in props
+        assert "script" in props
 
 class TestWriteScript:
     """Tests for the `write_script()` function"""

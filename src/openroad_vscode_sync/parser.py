@@ -38,7 +38,7 @@ def parse_xml(tree: etree.ElementTree) -> Component:
 
     return Component(name, type, props, script)
 
-def extract_props(node: etree._Element) -> dict[str, Any]:
+def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) -> dict[str, Any]:
     """Extracts properties from a component node, except for certain ignored complex cases"""
     
     # Setup the props dictionary
@@ -46,7 +46,7 @@ def extract_props(node: etree._Element) -> dict[str, Any]:
 
     # Loop through each child property and add it to the props
     for child in node:
-        if child.tag not in IGNORED_PROPERTIES:
+        if child.tag not in ignored:
             props[child.tag] = (child.text or "").strip()
 
     return props
