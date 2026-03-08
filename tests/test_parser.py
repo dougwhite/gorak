@@ -7,51 +7,52 @@ from openroad_vscode_sync.parser import (
     load_component, extract_props, write_script, write_props, get_base_path, Component
 )
 
+# Simple example frame export from OpenROAD for verification purposes
+EXAMPLE_XML_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
+
 @pytest.fixture
-def example_xml_path() -> Path:
-    """Path to our example frame fixture"""
-    return Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
+def example_xml() -> Path:
+    """Provides the example xml file as a preloaded fixture"""
+    return etree.parse(EXAMPLE_XML_PATH)
 
 class TestLoadComponent:
     """Tests for the `load_component()` function"""
 
-    def test_load_component_returns_a_component_class(self, example_xml_path: Path) -> None:
-        component = load_component(example_xml_path)
+    def test_load_component_returns_a_component_class(self, example_xml: Path) -> None:
+        component = load_component(example_xml)
         assert isinstance(component, Component)
     
-    def test_component_has_a_matching_script(self, example_xml_path: Path) -> None:
-        component = load_component(example_xml_path)
+    def test_component_has_a_matching_script(self, example_xml: Path) -> None:
+        component = load_component(example_xml)
 
         assert component.script is not None
         assert "initialize()=" in component.script
         assert "CurFrame.Trace" in component.script
     
-    def test_component_has_correct_properties(self, example_xml_path: Path) -> None:
-        component = load_component(example_xml_path)
+    def test_component_has_correct_properties(self, example_xml: Path) -> None:
+        component = load_component(example_xml)
         assert component.props["datatype"] == "integer"
         assert component.props["windowheight"] == "1625"
     
-    def test_component_has_correct_name(self, example_xml_path: Path) -> None:
-        component = load_component(example_xml_path)
+    def test_component_has_correct_name(self, example_xml: Path) -> None:
+        component = load_component(example_xml)
         assert component.name == "fm_example_frame"
     
-    def test_component_has_correct_type(self, example_xml_path: Path) -> None:
-        component = load_component(example_xml_path)
+    def test_component_has_correct_type(self, example_xml: Path) -> None:
+        component = load_component(example_xml)
         assert component.type == "framesource"
 
 class TestExtractProps:
     """Tests for the `extract_props()` function"""
 
-    def test_extract_props_returns_a_dict(self, example_xml_path: Path) -> None:
-        tree = etree.parse(str(example_xml_path))
-        component_node = tree.find(".//COMPONENT")
+    def test_extract_props_returns_a_dict(self, example_xml: Path) -> None:
+        component_node = example_xml.find(".//COMPONENT")
         props = extract_props(component_node)
 
         assert isinstance(props, dict)
     
-    def test_extract_props_retrieves_component_properties(self, example_xml_path: Path) -> None:
-        tree = etree.parse(str(example_xml_path))
-        component_node = tree.find(".//COMPONENT")
+    def test_extract_props_retrieves_component_properties(self, example_xml: Path) -> None:
+        component_node = example_xml.find(".//COMPONENT")
         props = extract_props(component_node)
 
         assert props["datatype"] == "integer"
@@ -59,9 +60,8 @@ class TestExtractProps:
         assert props["windowheight"] == "1625"
         assert props["windowwidth"] == "2292"
     
-    def test_extract_props_skips_ignored_props(self, example_xml_path: Path) -> None:
-        tree = etree.parse(str(example_xml_path))
-        component_node = tree.find(".//COMPONENT")
+    def test_extract_props_skips_ignored_props(self, example_xml: Path) -> None:
+        component_node = example_xml.find(".//COMPONENT")
         props = extract_props(component_node)
 
         assert "script" not in props

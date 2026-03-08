@@ -20,11 +20,8 @@ class Component:
     props: Dict[str, str]
     script: str
 
-def load_component(xml_path: Path) -> Component:
+def load_component(tree: etree.ElementTree) -> Component:
     """Loads a component from an OpenROAD XML export"""
-
-    # Load the xml file from disk
-    tree = etree.parse(str(xml_path))
 
     # Extract the script
     script_node = tree.find(".//script")
