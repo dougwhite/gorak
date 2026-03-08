@@ -1,6 +1,8 @@
 from pathlib import Path
+
 from lxml import etree
-from openroad_vscode_sync.parser import parse_xml, Component
+
+from openroad_vscode_sync.parser import parse_xml
 
 # Simple example frame export from OpenROAD for verification purposes
 EXAMPLE_FRAMESOURCE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"

@@ -1,8 +1,8 @@
-import tomlkit
-from pathlib import Path
-from lxml import etree
-from typing import Dict
 from dataclasses import dataclass
+from pathlib import Path
+
+import tomlkit
+from lxml import etree
 
 # Properties ignored by the xml importer
 IGNORED_PROPERTIES = {"script", "startmenu", "topform", "fielddefaults"}
@@ -17,7 +17,7 @@ class Component:
     """Represents an OpenROAD source component (frame, userclass, etc.)"""
     name: str
     type: str
-    props: Dict[str, str]
+    props: dict[str, str]
     script: str | None = None
 
 def parse_xml(tree: etree.ElementTree) -> Component:
@@ -38,7 +38,7 @@ def parse_xml(tree: etree.ElementTree) -> Component:
         raise ValueError("<COMPONENT> node must have a name attribute")
     
     # Get the component type (namespaced attribute e.g xsi:type="framesource")
-    type = node.get("{%s}type" % NS["xsi"])
+    type = node.get("{{{}}}type".format(NS["xsi"]))
     if type is None:
         raise ValueError("<COMPONENT> node must have an xsi:type attribute")
     

@@ -1,13 +1,22 @@
-import pytest
-import tomlkit
 from pathlib import Path
 from textwrap import dedent
+
+import pytest
+import tomlkit
 from lxml import etree
 from tomlkit.items import Table
-from tests._helpers import _wrap_xml
+
 from openroad_vscode_sync.parser import (
-    parse_xml, extract_props, toml_props, write_script, write_props, get_base_path, Component
+    Component,
+    extract_props,
+    get_base_path,
+    parse_xml,
+    toml_props,
+    write_props,
+    write_script,
 )
+from tests._helpers import _wrap_xml
+
 
 class TestParseXml:
     """Tests for the `parse_xml()` function"""

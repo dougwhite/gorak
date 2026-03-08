@@ -1,7 +1,9 @@
 """Helper functions for our test cases"""
 
 from textwrap import dedent
+
 from lxml import etree
+
 
 def _wrap_xml(content: str) -> etree.ElementTree:
     """Wraps inner XML content in standard OpenROAD boilerplate."""
