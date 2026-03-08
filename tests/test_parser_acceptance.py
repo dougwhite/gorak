@@ -1,5 +1,4 @@
 from pathlib import Path
-from textwrap import dedent
 from lxml import etree
 from openroad_vscode_sync.parser import parse_xml, Component
 

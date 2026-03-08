@@ -1,7 +1,7 @@
 import tomlkit
 from pathlib import Path
 from lxml import etree
-from typing import Any, Dict
+from typing import Dict
 from dataclasses import dataclass
 
 # Properties ignored by the xml importer
