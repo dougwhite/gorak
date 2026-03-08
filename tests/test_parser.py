@@ -38,6 +38,49 @@ class TestParseXml:
         component = parse_xml(example_xml)
         assert component.name == "fm_example_frame"
         assert component.type == "framesource"
+    
+    def test_missing_component_node_raises_an_exception(self) -> None:
+        bad_xml = etree.fromstring("<OPENROAD></OPENROAD>")
+        
+        with pytest.raises(ValueError) as ex:
+            parse_xml(bad_xml)
+        
+        assert "Missing <COMPONENT> node" in str(ex.value)
+
+    def test_missing_script_doesnt_raise_an_exception(self) -> None:
+        no_script = etree.fromstring("""
+            <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                <COMPONENT name="fm_example_frame" xsi:type="framesource"></COMPONENT>
+            </OPENROAD>
+        """)
+        component = parse_xml(no_script)
+
+        assert component.script is None
+    
+    def test_missing_name_raises_an_exception(self) -> None:
+        no_name = etree.fromstring("""
+            <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                <COMPONENT xsi:type="framesource"></COMPONENT>
+            </OPENROAD>
+        """)
+
+        with pytest.raises(ValueError) as ex:
+            parse_xml(no_name)
+        
+        assert "<COMPONENT> node must have a name attribute" in str(ex.value)
+    
+    def test_missing_type_raises_an_exception(self) -> None:
+        no_type = etree.fromstring("""
+            <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                <COMPONENT name="fm_example_frame"></COMPONENT>
+            </OPENROAD>
+        """)
+
+        with pytest.raises(ValueError) as ex:
+            parse_xml(no_type)
+        
+        assert "<COMPONENT> node must have an xsi:type attribute" in str(ex.value)
+
 
 class TestExtractProps:
     """Tests for the `extract_props()` function"""

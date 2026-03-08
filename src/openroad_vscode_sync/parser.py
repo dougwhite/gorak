@@ -23,19 +23,29 @@ class Component:
 def parse_xml(tree: etree.ElementTree) -> Component:
     """Parses an OpenROAD export xml into a `Component` object"""
 
-    # Extract the script
-    script_node = tree.find(".//script")
-    script = (script_node.text or "").strip() if script_node is not None else ""
-
-    # Find the root component node
+    # First locate the root <COMPONENT> node
     node = tree.find(".//COMPONENT")
+    if node is None:
+        raise ValueError("Missing <COMPONENT> node")
 
-    # If the node was found, extract the properties we want
-    if node is not None:
-        name = node.get("name")
-        type = node.get("{%s}type" % NS["xsi"])
-        props = extract_props(node)
+    # Extract the script if it exists
+    script_node = node.find("script")
+    script = (script_node.text or "").strip() if script_node is not None else None
 
+    # Get the component name
+    name = node.get("name")
+    if name is None:
+        raise ValueError("<COMPONENT> node must have a name attribute")
+    
+    # Get the component type (namespaced attribute e.g xsi:type="framesource")
+    type = node.get("{%s}type" % NS["xsi"])
+    if type is None:
+        raise ValueError("<COMPONENT> node must have an xsi:type attribute")
+    
+    # Get the component props
+    props = extract_props(node)
+
+    # Return the complete Component object
     return Component(name, type, props, script)
 
 def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) -> dict[str, Any]:
