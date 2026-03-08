@@ -44,7 +44,8 @@ def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) 
     # Setup the props dictionary
     props: dict[str, Any] = {}
 
-    # Loop through each child property and add it to the props
+    # Loop through each child property and add it to the props 
+    # (unless it's on the ignore list)
     for child in node:
         if child.tag not in ignored:
             props[child.tag] = (child.text or "").strip()
