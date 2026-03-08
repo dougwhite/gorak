@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import tomlkit
 from lxml import etree
@@ -17,7 +18,7 @@ class Component:
     """Represents an OpenROAD source component (frame, userclass, etc.)"""
     name: str
     type: str
-    props: dict[str, str]
+    props: dict[str, Any]
     script: str | None = None
 
 def parse_xml(tree: etree.ElementTree) -> Component:
@@ -48,7 +49,7 @@ def parse_xml(tree: etree.ElementTree) -> Component:
     # Return the complete Component object
     return Component(name, type, props, script)
 
-def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) -> dict[str, str]:
+def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) -> dict[str, Any]:
     """Extracts properties from a component node, except for certain ignored complex cases"""
     
     # Setup the props dictionary
@@ -79,14 +80,14 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
 def write_script(component: Component, output_path: Path) -> None:
     """Writes a component's script to the specified output file. Encoded in UTF-8"""
 
-    output_path.write_text(component.script, encoding="utf-8")
+    output_path.write_text(component.script, encoding="utf-8") # type: ignore
 
 def write_props(component: Component, output_path: Path) -> None:
     """Writes a component's props to the specified output file, in toml format"""
 
     doc = tomlkit.document()
     for key, value in sorted(component.props.items()):
-        doc.add(key, value)
+        doc.add(key, tomlkit.string(value))
 
     output_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 

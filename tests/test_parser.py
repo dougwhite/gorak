@@ -141,7 +141,8 @@ class TestTomlProps:
         doc = toml_props(component)
         
         section = doc["framesource"]
-        assert section["foo"] == "bar"
+        assert isinstance(section, Table)
+        assert section["foo"] == tomlkit.string("bar")
 
     def test_nested_props_encode_correctly(self) -> None:
         component = Component("fm_nested", "framesource", {
@@ -152,14 +153,16 @@ class TestTomlProps:
 
         # Test the main section heading contains both flat and nested children
         main_section = doc["framesource"]
+        assert isinstance(main_section, Table)
         assert "flat" in main_section
         assert "nested" in main_section
-        assert main_section["flat"] == "value"
+        assert main_section["flat"] == tomlkit.string("value")
 
         # Test the nested section contains a flat value
         subsection = main_section["nested"]
+        assert isinstance(subsection, Table)
         assert "foo" in subsection
-        assert subsection["foo"] == "bar"
+        assert subsection["foo"] == tomlkit.string("bar")
 
 class TestWriteScript:
     """Tests for the `write_script()` function"""

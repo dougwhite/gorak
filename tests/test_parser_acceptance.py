@@ -30,5 +30,6 @@ class TestParseXmlAcceptance:
         assert "topform" not in component.props
 
         # Check the script worked correctly
+        assert component.script is not None
         assert "initialize()=" in component.script
         assert "CurFrame.Trace(text = " in component.script
