@@ -28,10 +28,16 @@ class TestLoadComponent:
     
     def test_component_has_correct_properties(self, example_xml_path: Path) -> None:
         component = load_component(example_xml_path)
-
-        assert component.props["name"] == "fm_example_frame"
-        assert component.props["type"] == "framesource"
         assert component.props["datatype"] == "integer"
+        assert component.props["windowheight"] == "1625"
+    
+    def test_component_has_correct_name(self, example_xml_path: Path) -> None:
+        component = load_component(example_xml_path)
+        assert component.name == "fm_example_frame"
+    
+    def test_component_has_correct_type(self, example_xml_path: Path) -> None:
+        component = load_component(example_xml_path)
+        assert component.type == "framesource"
 
 class TestExtractProps:
     """Tests for the `extract_props()` function"""
@@ -42,14 +48,6 @@ class TestExtractProps:
         props = extract_props(component_node)
 
         assert isinstance(props, dict)
-    
-    def test_extract_props_retrieves_meta_values(self, example_xml_path: Path) -> None:
-        tree = etree.parse(str(example_xml_path))
-        component_node = tree.find(".//COMPONENT")
-        props = extract_props(component_node)
-
-        assert props["name"] == "fm_example_frame"
-        assert props["type"] == "framesource"
     
     def test_extract_props_retrieves_component_properties(self, example_xml_path: Path) -> None:
         tree = etree.parse(str(example_xml_path))
@@ -83,7 +81,7 @@ class TestWriteScript:
             }
         """).strip()
 
-        component = Component(script=fake_script, props={})
+        component = Component(name="fake", type="framesource", script=fake_script, props={})
 
         # Call the write_script function
         output_path = tmp_path / "test_frame.4gl"
@@ -105,7 +103,7 @@ class TestWriteProps:
             "templatename": "standard",
             "hasstatusbar": "1",
         }
-        component = Component(script="", props=fake_props)
+        component = Component(name="fake", type="framesource", script="", props=fake_props)
 
         # Call the write_props function
         output_path = tmp_path / "test_frame.props.toml"

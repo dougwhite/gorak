@@ -1,14 +1,16 @@
 import tomlkit
 from pathlib import Path
 from lxml import etree
-from typing import Any
+from typing import Any, Dict
+from dataclasses import dataclass
 
+@dataclass
 class Component:
     """Represents an OpenROAD source component (frame, userclass, etc.)"""
-
-    def __init__(self, script: str, props: dict[str, Any]) -> None:
-        self.script = script
-        self.props = props
+    name: str
+    type: str
+    props: Dict[str, str]
+    script: str
 
 # Namespace (used to get the xsi:type attribute)
 NS = {
@@ -25,11 +27,16 @@ def load_component(xml_path: Path) -> Component:
     script_node = tree.find(".//script")
     script = (script_node.text or "").strip() if script_node is not None else ""
 
-    # Extract the props
-    component_node = tree.find(".//COMPONENT")
-    props = extract_props(component_node)
+    # Find the root component node
+    node = tree.find(".//COMPONENT")
 
-    return Component(script, props)
+    # If the node was found, extract the properties we want
+    if node is not None:
+        name = node.get("name")
+        type = node.get("{%s}type" % NS["xsi"])
+        props = extract_props(node)
+
+    return Component(name, type, props, script)
 
 IGNORED_PROPERTIES = {"script", "startmenu", "topform", "fielddefaults"}
 
@@ -39,12 +46,7 @@ def extract_props(node: etree._Element) -> dict[str, Any]:
     # Setup the props dictionary
     props: dict[str, Any] = {}
 
-    # Extract the meta props first
-    if node is not None:
-        props["name"] = node.get("name")
-        props["type"] = node.get("{%s}type" % NS["xsi"])
-
-    # Loop through each child property and add it
+    # Loop through each child property and add it to the props
     for child in node:
         if child.tag not in IGNORED_PROPERTIES:
             props[child.tag] = (child.text or "").strip()
