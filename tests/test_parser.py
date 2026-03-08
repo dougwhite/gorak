@@ -3,9 +3,10 @@ import tomlkit
 from pathlib import Path
 from textwrap import dedent
 from lxml import etree
+from tomlkit.items import Table
 from tests._helpers import _wrap_xml
 from openroad_vscode_sync.parser import (
-    parse_xml, extract_props, write_script, write_props, get_base_path, Component
+    parse_xml, extract_props, toml_props, write_script, write_props, get_base_path, Component
 )
 
 class TestParseXml:
@@ -109,6 +110,47 @@ class TestExtractProps:
 
         assert "datatype" not in props
         assert "script" in props
+
+class TestTomlProps:
+    """Tests for the `toml_props()` function"""
+
+    def test_returns_a_toml_document(self) -> None:
+        component = Component("fm_simple", "framesource", {})
+        doc = toml_props(component)
+
+        assert isinstance(doc, tomlkit.TOMLDocument)
+    
+    def test_uses_component_type_as_section_header(self) -> None:
+        component = Component("fm_simple", "framesource", {})
+        doc = toml_props(component)
+
+        assert "framesource" in doc
+        assert isinstance(doc["framesource"], Table)
+    
+    def test_props_are_encoded_correctly_under_section(self) -> None:
+        component = Component("fm_simple", "framesource", {"foo": "bar"})
+        doc = toml_props(component)
+        
+        section = doc["framesource"]
+        assert section["foo"] == "bar"
+
+    def test_nested_props_encode_correctly(self) -> None:
+        component = Component("fm_nested", "framesource", {
+            "flat": "value",
+            "nested" : { "foo": "bar" }
+        })
+        doc = toml_props(component)
+
+        # Test the main section heading contains both flat and nested children
+        main_section = doc["framesource"]
+        assert "flat" in main_section
+        assert "nested" in main_section
+        assert main_section["flat"] == "value"
+
+        # Test the nested section contains a flat value
+        subsection = main_section["nested"]
+        assert "foo" in subsection
+        assert subsection["foo"] == "bar"
 
 class TestWriteScript:
     """Tests for the `write_script()` function"""

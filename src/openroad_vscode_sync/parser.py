@@ -62,6 +62,20 @@ def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) 
 
     return props
 
+def toml_props(component: Component) -> tomlkit.TOMLDocument:
+    """Encodes a component's properties into a toml document
+       using the component type as a section header.
+
+       e.g  
+       [framesource]  
+       foo = bar
+       """
+
+    doc = tomlkit.document()
+    doc.add(component.type, tomlkit.item(component.props))
+
+    return doc
+
 def write_script(component: Component, output_path: Path) -> None:
     """Writes a component's script to the specified output file. Encoded in UTF-8"""
 
