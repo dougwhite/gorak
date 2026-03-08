@@ -18,7 +18,7 @@ class Component:
     name: str
     type: str
     props: Dict[str, str]
-    script: str
+    script: str | None = None
 
 def parse_xml(tree: etree.ElementTree) -> Component:
     """Parses an OpenROAD export xml into a `Component` object"""
@@ -48,11 +48,11 @@ def parse_xml(tree: etree.ElementTree) -> Component:
     # Return the complete Component object
     return Component(name, type, props, script)
 
-def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) -> dict[str, Any]:
+def extract_props(node: etree._Element, ignored: set[str] = IGNORED_PROPERTIES) -> dict[str, str]:
     """Extracts properties from a component node, except for certain ignored complex cases"""
     
     # Setup the props dictionary
-    props: dict[str, Any] = {}
+    props: dict[str, str] = {}
 
     # Loop through each child property and add it to the props 
     # (unless it's on the ignore list)
