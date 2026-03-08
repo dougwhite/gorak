@@ -4,6 +4,14 @@ from lxml import etree
 from typing import Any, Dict
 from dataclasses import dataclass
 
+# Properties ignored by the xml importer
+IGNORED_PROPERTIES = {"script", "startmenu", "topform", "fielddefaults"}
+
+# Namespace (used to get the xsi:type attribute)
+NS = {
+    "xsi": "http://www.w3.org/2001/XMLSchema-instance",
+}
+
 @dataclass
 class Component:
     """Represents an OpenROAD source component (frame, userclass, etc.)"""
@@ -11,11 +19,6 @@ class Component:
     type: str
     props: Dict[str, str]
     script: str
-
-# Namespace (used to get the xsi:type attribute)
-NS = {
-    "xsi": "http://www.w3.org/2001/XMLSchema-instance",
-}
 
 def load_component(xml_path: Path) -> Component:
     """Loads a component from an OpenROAD XML export"""
@@ -37,8 +40,6 @@ def load_component(xml_path: Path) -> Component:
         props = extract_props(node)
 
     return Component(name, type, props, script)
-
-IGNORED_PROPERTIES = {"script", "startmenu", "topform", "fielddefaults"}
 
 def extract_props(node: etree._Element) -> dict[str, Any]:
     """Extracts properties from a component node, except for certain ignored complex cases"""
