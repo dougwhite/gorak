@@ -1,46 +1,58 @@
 import pytest
 import tomlkit
 from pathlib import Path
-from lxml import etree
 from textwrap import dedent
+from lxml import etree
+from tests._helpers import _wrap_xml
 from openroad_vscode_sync.parser import (
     parse_xml, extract_props, write_script, write_props, get_base_path, Component
 )
 
-# Simple example frame export from OpenROAD for verification purposes
-EXAMPLE_XML_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
-
-@pytest.fixture
-def example_xml() -> Path:
-    """Provides the example xml file as a preloaded fixture"""
-    return etree.parse(EXAMPLE_XML_PATH)
-
 class TestParseXml:
     """Tests for the `parse_xml()` function"""
 
-    def test_parse_xml_returns_a_component_class(self, example_xml: Path) -> None:
-        component = parse_xml(example_xml)
+    def test_parse_xml_returns_a_component_class(self) -> None:
+        xml = _wrap_xml('<COMPONENT name="fm_component_check" xsi:type="framesource"></COMPONENT>')
+        component = parse_xml(xml)
+
         assert isinstance(component, Component)
     
-    def test_component_has_a_matching_script(self, example_xml: Path) -> None:
-        component = parse_xml(example_xml)
+    def test_component_has_a_matching_script(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_has_script" xsi:type="framesource">
+                <script><![CDATA[initialize()= { CurFrame.Trace(text = 'Hello'); }]]></script>
+            </COMPONENT>
+        """)
+        component = parse_xml(xml)
 
         assert component.script is not None
         assert "initialize()=" in component.script
-        assert "CurFrame.Trace" in component.script
+        assert "CurFrame.Trace(text = 'Hello')" in component.script
     
-    def test_component_has_correct_properties(self, example_xml: Path) -> None:
-        component = parse_xml(example_xml)
+    def test_component_has_correct_properties(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <datatype>integer</datatype>
+                <windowheight>1625</windowheight>
+            </COMPONENT>
+        """)
+        component = parse_xml(xml)
+
         assert component.props["datatype"] == "integer"
         assert component.props["windowheight"] == "1625"
     
-    def test_component_has_a_name_and_type(self, example_xml: Path) -> None:
-        component = parse_xml(example_xml)
+    def test_component_has_a_name_and_type(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+            </COMPONENT>
+        """)
+        component = parse_xml(xml)
+        
         assert component.name == "fm_example_frame"
         assert component.type == "framesource"
     
     def test_missing_component_node_raises_an_exception(self) -> None:
-        bad_xml = etree.fromstring("<OPENROAD></OPENROAD>")
+        bad_xml = _wrap_xml('')
         
         with pytest.raises(ValueError) as ex:
             parse_xml(bad_xml)
@@ -48,21 +60,13 @@ class TestParseXml:
         assert "Missing <COMPONENT> node" in str(ex.value)
 
     def test_missing_script_doesnt_raise_an_exception(self) -> None:
-        no_script = etree.fromstring("""
-            <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-                <COMPONENT name="fm_example_frame" xsi:type="framesource"></COMPONENT>
-            </OPENROAD>
-        """)
+        no_script = _wrap_xml('<COMPONENT name="fm_example_frame" xsi:type="framesource"></COMPONENT>')
         component = parse_xml(no_script)
 
         assert component.script is None
     
     def test_missing_name_raises_an_exception(self) -> None:
-        no_name = etree.fromstring("""
-            <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-                <COMPONENT xsi:type="framesource"></COMPONENT>
-            </OPENROAD>
-        """)
+        no_name = _wrap_xml('<COMPONENT xsi:type="framesource"></COMPONENT>')
 
         with pytest.raises(ValueError) as ex:
             parse_xml(no_name)
@@ -70,11 +74,7 @@ class TestParseXml:
         assert "<COMPONENT> node must have a name attribute" in str(ex.value)
     
     def test_missing_type_raises_an_exception(self) -> None:
-        no_type = etree.fromstring("""
-            <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-                <COMPONENT name="fm_example_frame"></COMPONENT>
-            </OPENROAD>
-        """)
+        no_type = _wrap_xml('<COMPONENT name="fm_example_frame"></COMPONENT>')
 
         with pytest.raises(ValueError) as ex:
             parse_xml(no_type)
