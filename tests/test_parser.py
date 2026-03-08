@@ -4,7 +4,7 @@ from pathlib import Path
 from lxml import etree
 from textwrap import dedent
 from openroad_vscode_sync.parser import (
-    load_component, extract_props, write_script, write_props, get_base_path, Component
+    parse_xml, extract_props, write_script, write_props, get_base_path, Component
 )
 
 # Simple example frame export from OpenROAD for verification purposes
@@ -15,31 +15,28 @@ def example_xml() -> Path:
     """Provides the example xml file as a preloaded fixture"""
     return etree.parse(EXAMPLE_XML_PATH)
 
-class TestLoadComponent:
-    """Tests for the `load_component()` function"""
+class TestParseXml:
+    """Tests for the `parse_xml()` function"""
 
-    def test_load_component_returns_a_component_class(self, example_xml: Path) -> None:
-        component = load_component(example_xml)
+    def test_parse_xml_returns_a_component_class(self, example_xml: Path) -> None:
+        component = parse_xml(example_xml)
         assert isinstance(component, Component)
     
     def test_component_has_a_matching_script(self, example_xml: Path) -> None:
-        component = load_component(example_xml)
+        component = parse_xml(example_xml)
 
         assert component.script is not None
         assert "initialize()=" in component.script
         assert "CurFrame.Trace" in component.script
     
     def test_component_has_correct_properties(self, example_xml: Path) -> None:
-        component = load_component(example_xml)
+        component = parse_xml(example_xml)
         assert component.props["datatype"] == "integer"
         assert component.props["windowheight"] == "1625"
     
-    def test_component_has_correct_name(self, example_xml: Path) -> None:
-        component = load_component(example_xml)
+    def test_component_has_a_name_and_type(self, example_xml: Path) -> None:
+        component = parse_xml(example_xml)
         assert component.name == "fm_example_frame"
-    
-    def test_component_has_correct_type(self, example_xml: Path) -> None:
-        component = load_component(example_xml)
         assert component.type == "framesource"
 
 class TestExtractProps:
