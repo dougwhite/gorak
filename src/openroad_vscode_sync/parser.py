@@ -77,6 +77,37 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
 
     return doc
 
+def join_segments(segments: list[str | None], separator: str) -> str:
+    """Joins multiple script segments together with the chosen separator,
+       ensuring that each separator is on its own line and sandwiched between blank lines.
+
+       Removes any None segments, and trims whitespace from each segment.
+       
+       Used to join code body segments to toml frontmatter in a reliable and clean fashion.
+       
+       Example:
+       
+       ```
+       join_segments(["foo", "bar"], "===")
+       ```
+       
+       Output:
+       
+       ```
+       foo
+       
+       ===
+       
+       bar
+       ```"""
+
+    # Join the entries, removing any nulls 
+    return ("\n\n" + separator + "\n\n").join(
+        segment.strip() 
+        for segment in segments 
+        if segment is not None
+    )
+
 def write_script(component: Component, output_path: Path) -> None:
     """Writes a component's script to the specified output file. Encoded in UTF-8"""
 

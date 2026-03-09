@@ -10,6 +10,7 @@ from openroad_vscode_sync.parser import (
     Component,
     extract_props,
     get_base_path,
+    join_segments,
     parse_xml,
     toml_props,
     write_script,
@@ -162,6 +163,81 @@ class TestTomlProps:
         assert isinstance(subsection, Table)
         assert "foo" in subsection
         assert subsection["foo"] == tomlkit.string("bar")
+
+class TestJoinSegments:
+    """Tests for the `join_segments()` function"""
+
+    def test_empty_list_returns_an_empty_string(self) -> None:
+        result = join_segments([], separator="===")
+        assert result == ""
+    
+    def test_single_segment_returns_the_segment_without_separators(self) -> None:
+        result = join_segments(["single segment"], separator="===")
+        assert result == "single segment"
+    
+    def test_multiple_segments_are_joined_with_separators_and_blank_lines(self) -> None:
+        segments = ["first segment", "second segment", "third segment"]
+        result = join_segments(segments, separator="===")
+
+        expected = dedent("""
+            first segment
+            
+            ===
+            
+            second segment
+            
+            ===
+            
+            third segment
+        """).strip()
+        
+        assert result == expected
+    
+    def test_none_segments_are_removed_from_the_list(self) -> None:
+        segments = ["first segment", None, "third segment"]
+        result = join_segments(segments, separator="===")
+
+        expected = dedent("""
+            first segment
+            
+            ===
+            
+            third segment
+        """).strip()
+        
+        assert result == expected
+     
+    def test_all_whitespace_segments_are_treated_as_empty_but_included(self) -> None:
+        segments = ["first segment", "", "third segment"]
+        result = join_segments(segments, separator="===")
+
+        expected = dedent("""
+            first segment
+            
+            ===
+            
+
+            
+            ===
+            
+            third segment
+        """).strip()
+        
+        assert result == expected
+    
+    def test_a_single_segment_and_a_none_returns_without_separators(self) -> None:
+        segments = ["only segment", None]
+        result = join_segments(segments, separator="===")
+
+        expected = "only segment"
+        assert result == expected
+
+    def test_none_and_a_single_segment_returns_without_separators(self) -> None:
+        segments = [None, "only segment"]
+        result = join_segments(segments, separator="===")
+
+        expected = "only segment"
+        assert result == expected
 
 class TestWriteScript:
     """Tests for the `write_script()` function"""
