@@ -12,7 +12,6 @@ from openroad_vscode_sync.parser import (
     get_base_path,
     parse_xml,
     toml_props,
-    write_props,
     write_script,
 )
 from tests._helpers import _wrap_xml
@@ -185,30 +184,6 @@ class TestWriteScript:
         # Verify
         assert output_path.exists()
         assert output_path.read_text().strip() == fake_script
-
-class TestWriteProps:
-    """Tests for the `write_props()` function"""
-
-    def test_write_props_saves_the_props_to_a_dot_toml_file(self, tmp_path: Path) -> None:
-        # Setup a fake component with simple props
-        fake_props = {
-            "name": "fm_example_frame",
-            "type": "framesource",
-            "datatype": "integer",
-            "templatename": "standard",
-            "hasstatusbar": "1",
-        }
-        component = Component(name="fake", type="framesource", script="", props=fake_props)
-
-        # Call the write_props function
-        output_path = tmp_path / "test_frame.props.toml"
-        write_props(component, output_path)
-
-        # Verify the file exists and matches the correct props
-        assert output_path.exists()
-        
-        parsed_back = tomlkit.parse(output_path.read_text())
-        assert parsed_back == fake_props
 
 class TestGetBasePath:
     """Tests for the `get_base_path()` function"""

@@ -82,15 +82,6 @@ def write_script(component: Component, output_path: Path) -> None:
 
     output_path.write_text(component.script, encoding="utf-8") # type: ignore
 
-def write_props(component: Component, output_path: Path) -> None:
-    """Writes a component's props to the specified output file, in toml format"""
-
-    doc = tomlkit.document()
-    for key, value in sorted(component.props.items()):
-        doc.add(key, tomlkit.string(value))
-
-    output_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
-
 def get_base_path(application: str, component_name: str, project_root: Path | str) -> Path:
     """Returns the correct base filename for a given application and component, 
        relative to `project_root`"""
