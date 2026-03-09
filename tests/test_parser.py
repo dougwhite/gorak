@@ -6,7 +6,7 @@ import tomlkit
 from lxml import etree
 from tomlkit.items import Table
 
-from openroad_vscode_sync.parser import (
+from gorak.parser import (
     Component,
     encode_4gl,
     extract_props,

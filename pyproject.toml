@@ -1,7 +1,7 @@
 [project]
-name = "openroad-vscode-sync"
+name = "gorak"
 version = "0.1.0"
-description = "Disk-based Git/VSCode bridge for Actian OpenROAD"
+description = "OpenROAD git source file importer/exporter/transpiler"
 readme = "README.md"
 authors = [
     { name = "Doug White", email = "doug.white@versatechit.com.au" }
