@@ -12,3 +12,4 @@ wheels/
 # Developer specific files
 .vscode
 todo
+.llm
