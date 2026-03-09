@@ -108,6 +108,25 @@ def join_segments(segments: list[str | None], separator: str) -> str:
         if segment is not None
     )
 
+def encode_4gl(component: Component) -> str:
+    """Encodes a Component to segmented .4gl format, 
+       with toml frontmatter props prepended of the main code body
+       
+       Example file format:
+       ```
+       [framesource]
+       datatype = "integer"
+       
+       ===
+       
+       initialize() = 
+       {
+           CurFrame.Trace(text = 'Hello World!');
+       }
+       ```"""
+    props = tomlkit.dumps(toml_props(component))
+    return join_segments([ props, component.script ], "===")
+
 def write_script(component: Component, output_path: Path) -> None:
     """Writes a component's script to the specified output file. Encoded in UTF-8"""
 

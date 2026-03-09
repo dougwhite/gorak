@@ -8,6 +8,7 @@ from tomlkit.items import Table
 
 from openroad_vscode_sync.parser import (
     Component,
+    encode_4gl,
     extract_props,
     get_base_path,
     join_segments,
@@ -17,6 +18,21 @@ from openroad_vscode_sync.parser import (
 )
 from tests._helpers import _wrap_xml
 
+
+@pytest.fixture
+def simple_frame() -> Component:
+    """A simple framesource component fixture for testing"""
+    return Component(
+        name="fm_simple",
+        type="framesource",
+        props={"foo": "bar"},
+        script=dedent("""
+            initialize() =
+            {
+                CurFrame.Trace(text = 'Hello');
+            }
+        """).strip()
+    )
 
 class TestParseXml:
     """Tests for the `parse_xml()` function"""
@@ -237,6 +253,41 @@ class TestJoinSegments:
         result = join_segments(segments, separator="===")
 
         expected = "only segment"
+        assert result == expected
+
+class Test4glEncode:
+    """Tests for the `encode_4gl()` function"""
+
+    def test_component_to_4gl_returns_a_string(self, simple_frame: Component) -> None:
+        result = encode_4gl(simple_frame)
+        assert isinstance(result, str)
+    
+    def test_component_encodes_correctly_to_string(self, simple_frame: Component) -> None:
+        result = encode_4gl(simple_frame)
+        expected = dedent("""
+            [framesource]
+            foo = "bar"
+            
+            ===
+            
+            initialize() =
+            {
+                CurFrame.Trace(text = 'Hello');
+            }
+        """).strip()
+        
+        assert result == expected
+    
+    def test_component_with_no_script_just_returns_promps_toml(self) -> None:
+        component = Component("simple", "constsource", { "datatype": "integer", "defaultvalue": "5" })
+        result = encode_4gl(component)
+        
+        expected = dedent("""
+            [constsource]
+            datatype = "integer"
+            defaultvalue = "5"
+        """).strip()
+        
         assert result == expected
 
 class TestWriteScript:
