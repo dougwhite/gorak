@@ -16,10 +16,13 @@ mkdir -p "$(dirname "$output_file")"  # Create .llm dir if it doesn't exist
 exec > "$output_file"
 
 # Patterns to ignore (supports bash glob patterns like *.lock or tests/*)
-ignore_patterns=("uv.lock" ".gitignore" ".python-version" "**/__init__.py" "README.md" "tests/fixtures/fm_example_frame.xml")
+ignore_patterns=("uv.lock" ".gitignore" "**/.gitkeep" ".python-version" "*.xml" "*.4gl" "**/__init__.py" "README.md" "utils/*")
 
-# Prepend summary.md with the contents of the README
-cat "$project_root/README.md"
+# Prepend summary.md with the contents of the README.md
+# Adding the readme to LLM project context works better than prepending it to each new context window
+# Also the human readable version requires some modification to transform it into a concise
+# llm optimized instruction set - so for now we've removed this and left it up to the user.
+# cat "$project_root/README.md"
 
 # Get all tracked files in the repo
 files=$(git ls-files)
@@ -58,3 +61,15 @@ for file in $files; do
     # Blank line between files
     echo ""
 done
+
+# Output the tree structure of the program
+echo "Project layout"
+echo "\`\`\`"
+tree --gitignore
+echo "\`\`\`"
+echo ""
+
+# Output the todo
+echo "Todo"
+echo "=========="
+cat "$project_root/todo"
