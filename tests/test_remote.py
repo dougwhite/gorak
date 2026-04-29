@@ -1,6 +1,9 @@
 import subprocess
 
+import pytest
+
 from gorak.remote import (
+    RemoteCommandError,
     RemoteHost,
     backup_component,
     build_remote_command,
@@ -155,3 +158,31 @@ class TestRunSubprocess:
                 "text": True,
             }
         ]
+
+    def test_raises_an_error_when_process_fails(self, monkeypatch) -> None:
+        def fake_run(
+            command: list[str],
+            check: bool,
+            capture_output: bool,
+            text: bool,
+        ) -> subprocess.CompletedProcess[str]:
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=command,
+                output="ERROR: Cannot fetch component _api_row2 from database.\n",
+                stderr=(
+                    "** WARNING: connection is not using a post-quantum key exchange algorithm.\n"
+                    "w4gldev failed with exit code 1\n"
+                    r'Log: "C:\Users\paul\AppData\Local\Temp\gorak-export-_api_row2-12464.log"'
+                    "\n"
+                ),
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(RemoteCommandError) as ex:
+            run_subprocess(["ssh", "-T", "test@WINDOWS-PC", "remote command"])
+
+        assert "Remote command failed with exit code 1" in str(ex.value)
+        assert "Cannot fetch component _api_row2" in str(ex.value)
+        assert "gorak-export-_api_row2-12464.log" in str(ex.value)
