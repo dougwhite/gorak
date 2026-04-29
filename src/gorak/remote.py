@@ -28,6 +28,11 @@ def build_download_command(remote: RemoteHost, remote_path: str, local_path: str
 
     return ["scp", f"{remote.ssh_target}:{remote_path}", local_path]
 
+def windows_path_to_scp_path(path: str) -> str:
+    """Converts a Windows path to the format expected by scp"""
+
+    return f"/{path.replace('\\', '/')}"
+
 def run_subprocess(command: list[str]) -> str:
     """Runs a command using subprocess and returns the stdout as a string"""
     
