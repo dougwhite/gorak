@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import tomlkit
@@ -126,14 +125,3 @@ def encode_4gl(component: Component) -> str:
        ```"""
     props = tomlkit.dumps(toml_props(component))
     return join_segments([ props, component.script ], "===")
-
-def write_script(component: Component, output_path: Path) -> None:
-    """Writes a component's script to the specified output file. Encoded in UTF-8"""
-
-    output_path.write_text(component.script, encoding="utf-8") # type: ignore
-
-def get_base_path(application: str, component_name: str, project_root: Path | str) -> Path:
-    """Returns the correct base filename for a given application and component, 
-       relative to `project_root`"""
-    root = Path(project_root)
-    return root / application / component_name

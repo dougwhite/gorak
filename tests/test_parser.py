@@ -1,4 +1,3 @@
-from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -10,11 +9,9 @@ from gorak.parser import (
     Component,
     encode_4gl,
     extract_props,
-    get_base_path,
     join_segments,
     parse_xml,
     toml_props,
-    write_script,
 )
 from tests._helpers import _wrap_xml
 
@@ -289,53 +286,3 @@ class Test4glEncode:
         """).strip()
         
         assert result == expected
-
-class TestWriteScript:
-    """Tests for the `write_script()` function"""
-
-    def test_write_script_saves_a_script_to_a_dot_4gl_file(self, tmp_path: Path) -> None:
-        # Create a fake component with script
-        fake_script = dedent("""
-            initialize() =
-            {
-                CurFrame.Trace(text = 'Hello');
-            }
-        """).strip()
-
-        component = Component(name="fake", type="framesource", script=fake_script, props={})
-
-        # Call the write_script function
-        output_path = tmp_path / "test_frame.4gl"
-        write_script(component, output_path)
-
-        # Verify
-        assert output_path.exists()
-        assert output_path.read_text().strip() == fake_script
-
-class TestGetBasePath:
-    """Tests for the `get_base_path()` function"""
-
-    def test_base_path_returns_correct_path(self, tmp_path: Path) -> None:
-        # Set up a fake repo folder
-        project_root = tmp_path / "MyRepo"
-        project_root.mkdir()
-
-        # Call get_base_path to generate the component path
-        base_path = get_base_path("myapp", "fm_example_frame", project_root)
-
-        expected = project_root / "myapp" / "fm_example_frame"
-        assert base_path == expected
-        assert base_path.is_absolute()
-        assert isinstance(base_path, Path)
-    
-    def test_base_path_accepts_string_root_path(self, tmp_path: Path) -> None:
-        # Set up a fake repo folder
-        project_root = tmp_path / "MyRepo"
-        project_root.mkdir()
-        root_str = str(project_root)
-
-        # Call get_base_path to generate the component path
-        base_path = get_base_path("myapp", "fm_example_frame", root_str)
-        expected = project_root / "myapp" / "fm_example_frame"
-        assert base_path == expected
-        assert isinstance(base_path, Path)
