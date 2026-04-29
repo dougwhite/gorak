@@ -39,4 +39,5 @@ def backup_component(remote: RemoteHost, vnode: str, database: str, app: str, co
         args=[f"{vnode}::{database}", app, component]
     )
     
-    return run_cmd(command).strip()
+    output = run_cmd(command).strip()
+    return output.splitlines()[-1]

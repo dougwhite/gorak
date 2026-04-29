@@ -95,6 +95,26 @@ class TestBackupComponent:
             ]
         ]
 
+    def test_returns_only_the_last_output_line(self) -> None:
+        def fake_run(command: list[str]) -> str:
+            return (
+                "** WARNING: connection is not using a post-quantum key exchange algorithm.\n"
+                "** This session may be vulnerable to store now, decrypt later attacks.\n"
+                r"C:\Development\gorak\repos\vnode\db\app\component.xml"
+                "\n"
+            )
+
+        result = backup_component(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            app="app",
+            component="component",
+            run_cmd=fake_run
+        )
+
+        assert result == r"C:\Development\gorak\repos\vnode\db\app\component.xml"
+
 class TestRunSubprocess:
     """Tests for the run_subprocess() function"""
 
