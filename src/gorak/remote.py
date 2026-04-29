@@ -23,6 +23,11 @@ def build_remote_command(remote: RemoteHost, script: str, args: list[str]) -> li
     
     return ["ssh", "-T", remote.ssh_target, remote_command]
 
+def build_download_command(remote: RemoteHost, remote_path: str, local_path: str) -> list[str]:
+    """Constructs an scp command to download a remote file to a local path"""
+
+    return ["scp", f"{remote.ssh_target}:{remote_path}", local_path]
+
 def run_subprocess(command: list[str]) -> str:
     """Runs a command using subprocess and returns the stdout as a string"""
     

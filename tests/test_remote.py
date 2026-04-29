@@ -6,6 +6,7 @@ from gorak.remote import (
     RemoteCommandError,
     RemoteHost,
     backup_component,
+    build_download_command,
     build_remote_command,
     run_subprocess,
 )
@@ -30,6 +31,22 @@ class TestBuildRemoteCommand:
             "-T",
             "test@WINDOWS-PC",
             r"c:\Development\gorak\backup-component.bat vnode::db app component"
+        ]
+
+class TestBuildDownloadCommand:
+    """Tests for the build_download_command() function"""
+
+    def test_returns_an_scp_command_for_downloading_a_remote_file(self) -> None:
+        command = build_download_command(
+            remote=REMOTE_HOST,
+            remote_path="/C:/Development/gorak/repos/vnode/db/app/component.xml",
+            local_path="component.xml",
+        )
+
+        assert command == [
+            "scp",
+            "test@WINDOWS-PC:/C:/Development/gorak/repos/vnode/db/app/component.xml",
+            "component.xml",
         ]
 
 class TestBackupComponent:
