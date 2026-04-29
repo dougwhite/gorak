@@ -19,7 +19,7 @@ REMOTE_HOST = RemoteHost(
 class TestBuildRemoteCommand:
     """Tests for the build_remote_command() function"""
     
-    def test_returns_a_list_of_strings(self) -> None:
+    def test_returns_an_ssh_command_for_calling_a_gorak_script(self) -> None:
         command = build_remote_command(
             remote=REMOTE_HOST,
             script="backup-component.bat",
