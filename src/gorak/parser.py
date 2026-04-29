@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -76,7 +77,7 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
 
     return doc
 
-def join_segments(segments: list[str | None], separator: str) -> str:
+def join_segments(segments: Sequence[str | None], separator: str) -> str:
     """Joins multiple script segments together with the chosen separator,
        ensuring that each separator is on its own line and sandwiched between blank lines.
 

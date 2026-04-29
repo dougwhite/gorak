@@ -1,6 +1,7 @@
 import subprocess
 
 import pytest
+from pytest import MonkeyPatch
 
 from gorak.remote import (
     RemoteCommandError,
@@ -78,7 +79,7 @@ class TestBackupComponent:
             ]
         ]
 
-    def test_uses_subprocess_runner_by_default(self, monkeypatch) -> None:
+    def test_uses_subprocess_runner_by_default(self, monkeypatch: MonkeyPatch) -> None:
         calls = []
 
         def fake_run(
@@ -138,7 +139,7 @@ class TestBackupComponent:
 class TestRunSubprocess:
     """Tests for the run_subprocess() function"""
 
-    def test_returns_stdout_from_completed_process(self, monkeypatch) -> None:
+    def test_returns_stdout_from_completed_process(self, monkeypatch: MonkeyPatch) -> None:
         calls = []
 
         def fake_run(
@@ -176,7 +177,7 @@ class TestRunSubprocess:
             }
         ]
 
-    def test_raises_an_error_when_process_fails(self, monkeypatch) -> None:
+    def test_raises_an_error_when_process_fails(self, monkeypatch: MonkeyPatch) -> None:
         def fake_run(
             command: list[str],
             check: bool,
