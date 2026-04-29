@@ -7,7 +7,7 @@ if "%~3"=="" (
 )
 
 if not defined GORAK_ROOT (
-    for %%I in ("%~dp0..") do set "GORAK_ROOT=%%~fI"
+    for %%I in ("%~dp0.") do set "GORAK_ROOT=%%~fI"
 )
 
 if not defined II_SYSTEM (
