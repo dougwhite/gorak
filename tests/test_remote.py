@@ -1,14 +1,16 @@
-from gorak.remote import build_remote_command
+from gorak.remote import RemoteHost, build_remote_command
 
+REMOTE_HOST = RemoteHost(
+    ssh_target="test@WINDOWS-PC",
+    gorak_root=r"c:\Development\gorak"
+)
 
 class TestBuildRemoteCommand:
     """Tests for the build_remote_command() function"""
     
     def test_returns_a_list_of_strings(self) -> None:
         command = build_remote_command(
-            user="test",
-            host="WINDOWS-PC",
-            gorak_root=r"c:\Development\gorak",
+            remote=REMOTE_HOST,
             script="backup-component.bat",
             args=["vnode::db", "app", "component"]
         )
