@@ -1,3 +1,4 @@
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -18,7 +19,20 @@ def build_remote_command(remote: RemoteHost, script: str, args: list[str]) -> li
     
     return ["ssh", "-T", remote.ssh_target, remote_command]
 
-def backup_component(remote: RemoteHost, vnode: str, database: str, app: str, component: str, run_cmd: RunCommand) -> str:
+def run_subprocess(command: list[str]) -> str:
+    """Runs a command using subprocess and returns the stdout as a string"""
+    
+    result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+def backup_component(remote: RemoteHost, vnode: str, database: str, app: str, component: str, run_cmd: RunCommand = run_subprocess) -> str:
+    """Backs up a component from the remote host and returns the path to the backup file"""
+    
     command = build_remote_command(
         remote=remote,
         script="backup-component.bat",
