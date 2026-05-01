@@ -132,15 +132,19 @@ To cross these hurdles, we are building the `gorak` compiler.
 `gorak` transforms the traditional source_db -> applications -> components model and transforms it into something like this:
 ```
 source_repo
+├── gorak.json
 ├── app1
-│   ├── .openroad
-│   │    └── fm_example_frame.xml
+│   ├── app.json
 │   ├── fm_example_frame.w4gl
 │   └── fm_example_frame.4ml
-└── app2
-    ├── .openroad
-    │    └── uc_example.xml
-    └── uc_example.w4gl
+├── app2
+│   ├── app.json
+│   └── uc_example.w4gl
+└── .openroad
+    ├── app1
+    │   └── fm_example_frame.xml
+    └── app2
+        └── uc_example.xml
 ```
 
 ### Enter `gorak`
