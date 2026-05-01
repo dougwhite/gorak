@@ -11,29 +11,29 @@ from gorak.project import (
     load_project,
 )
 
+FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "example.skel"
+
 
 def test_create_project_creates_default_project_skeleton(tmp_path: Path) -> None:
     project = create_project(tmp_path / "example_application")
+    expected_manifest = json.loads((FIXTURE_ROOT / "gorak.json").read_text())
+    expected_app = json.loads(
+        (FIXTURE_ROOT / "example_application" / "app.json").read_text()
+    )
+    expected_manifest["name"] = "example_application"
 
     assert project == GorakProject(
         root=tmp_path / "example_application",
         name="example_application",
     )
-    assert json.loads((project.root / "gorak.json").read_text()) == {
-        "name": "example_application",
-        "version": "0.1.0",
-        "description": "An example gorak project",
-        "author": "Your Name",
-        "contact": "your.name@example.com",
-        "license": "MIT",
-    }
-    assert json.loads((project.root / "example_application" / "app.json").read_text()) == {
-        "starting_component": "p4_init",
-        "included_applications": [],
-    }
-    assert (project.root / "example_application" / "p4_init.w4gl").read_text() == (
-        Path("tests/fixtures/example.skel/example_application/p4_init.w4gl").read_text()
+    assert json.loads((project.root / "gorak.json").read_text()) == expected_manifest
+    assert (
+        json.loads((project.root / "example_application" / "app.json").read_text())
+        == expected_app
     )
+    assert (project.root / "example_application" / "p4_init.w4gl").read_text() == (
+        FIXTURE_ROOT / "example_application" / "p4_init.w4gl"
+    ).read_text()
 
 
 def test_create_project_allows_existing_empty_directory(tmp_path: Path) -> None:
