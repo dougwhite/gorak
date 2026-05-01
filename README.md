@@ -22,12 +22,45 @@ uv run pytest
 
 ## CLI helpers
 
-### Trying out the util
+Show the available commands and options with:
+```
+uv run gorak --help
+```
 
-You can run the tool against the example .xml fixture (or your own OpenROAD `.xml` export)
+Subcommands also provide their own help, for example:
 ```
-uv run gorak tests/fixtures/fm_example_frame.xml
+uv run gorak remote export-component --help
 ```
+
+### Encoding an OpenROAD XML export
+
+You can encode an OpenROAD `.xml` export as `.w4gl` text on stdout:
+```
+uv run gorak encode tests/fixtures/fm_example_frame.xml
+```
+
+Or write the result directly to a file:
+```
+uv run gorak encode tests/fixtures/fm_example_frame.xml --output fm_example_frame.w4gl
+```
+
+### Exporting a remote component XML file
+
+You can ask a Windows OpenROAD development host to export one component, then
+download the generated XML locally over SCP:
+```
+uv run gorak remote export-component \
+  --ssh-target user@WINDOWS-PC \
+  --gorak-root 'C:\Development\gorak' \
+  --vnode vnode \
+  --database database \
+  --app application \
+  --component component \
+  --output component.xml
+```
+
+The Windows-side SSH helper files and setup notes live in
+`utils/win_ssh_remote/`.
 
 ### Generating a project summary for llm assisted development
 
