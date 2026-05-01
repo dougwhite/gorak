@@ -94,5 +94,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.print_help()
     raise SystemExit(1)
 
+
 if __name__ == "__main__":
     main()
