@@ -4,6 +4,7 @@ import pytest
 from pytest import CaptureFixture, MonkeyPatch
 
 from gorak import cli
+from gorak.project import GorakProject
 from gorak.remote import RemoteHost
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
@@ -114,6 +115,39 @@ class TestEncodeCommand:
         assert 'datatype = "integer"' in output
         assert "===" in output
         assert "initialize()=" in output
+
+
+class TestNewCommand:
+    """Tests for the new project CLI command."""
+
+    def test_creates_project_and_prints_path(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[Path] = []
+
+        def fake_create_project(path: Path) -> GorakProject:
+            calls.append(path)
+            return GorakProject(
+                root=tmp_path / "my_project",
+                name="my_project",
+            )
+
+        monkeypatch.setattr(cli, "create_project", fake_create_project)
+
+        cli.main(["new", "my_project"])
+
+        assert calls == [Path("my_project")]
+        assert capsys.readouterr().out == f"{tmp_path / 'my_project'}\n"
+
+    def test_requires_project_name(self, capsys: CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit) as ex:
+            cli.main(["new"])
+
+        assert ex.value.code == 2
+        assert "the following arguments are required: name" in capsys.readouterr().err
 
     def test_bare_xml_file_is_not_supported(self, capsys: CaptureFixture[str]) -> None:
         with pytest.raises(SystemExit) as ex:

@@ -44,6 +44,22 @@ Or write the result directly to a file:
 uv run gorak encode tests/fixtures/fm_example_frame.xml --output fm_example_frame.w4gl
 ```
 
+### Creating a Gorak project
+
+Create a new Gorak project folder with:
+```
+uv run gorak new my_project
+```
+
+This creates `my_project/gorak.json` and a starter application folder:
+```
+my_project/
+├── gorak.json
+└── my_project
+    ├── app.json
+    └── p4_init.w4gl
+```
+
 ### Exporting a remote component XML file
 
 You can ask a Windows OpenROAD development host to export one component, then

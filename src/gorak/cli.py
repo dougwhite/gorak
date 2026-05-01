@@ -1,11 +1,13 @@
 import argparse
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import cast
 
 from lxml import etree
 
 from .parser import encode_w4gl, parse_xml
+from .project import create_project
 from .remote import RemoteHost, backup_component, download_file
 
 
@@ -22,6 +24,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(prog="gorak")
     subparsers = parser.add_subparsers(dest="command")
+
+    new_parser = subparsers.add_parser("new")
+    new_parser.add_argument("name")
 
     encode_parser = subparsers.add_parser("encode")
     encode_parser.add_argument("xml_file")
@@ -40,6 +45,14 @@ def build_parser() -> argparse.ArgumentParser:
     export_component.add_argument("--output", required=True)
 
     return parser
+
+
+def new_command(args: argparse.Namespace) -> str:
+    """Creates a new gorak project."""
+
+    name = cast(str, args.name)
+    project = create_project(Path(name))
+    return str(project.root)
 
 
 def encode_command(args: argparse.Namespace) -> str:
@@ -82,6 +95,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     parser = build_parser()
     parsed = parser.parse_args(args)
+
+    if parsed.command == "new":
+        print(new_command(parsed))
+        return
 
     if parsed.command == "encode":
         print(encode_command(parsed))
