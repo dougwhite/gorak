@@ -16,7 +16,7 @@ mkdir -p "$(dirname "$output_file")"  # Create .llm dir if it doesn't exist
 exec > "$output_file"
 
 # Patterns to ignore (supports bash glob patterns like *.lock or tests/*)
-ignore_patterns=("uv.lock" ".gitignore" "**/.gitkeep" ".python-version" "*.xml" "*.4gl" "**/__init__.py" "README.md" "utils/*")
+ignore_patterns=("uv.lock" ".gitignore" "**/.gitkeep" ".python-version" "*.xml" "*.w4gl" "**/__init__.py" "README.md" "utils/*")
 
 # Prepend summary.md with the contents of the README.md
 # Adding the readme to LLM project context works better than prepending it to each new context window

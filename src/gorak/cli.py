@@ -5,16 +5,16 @@ from typing import cast
 
 from lxml import etree
 
-from .parser import encode_4gl, parse_xml
+from .parser import encode_w4gl, parse_xml
 from .remote import RemoteHost, backup_component, download_file
 
 
 def encode_xml_file(xml_path: str) -> str:
-    """Parses an OpenROAD XML export and returns encoded .4gl text."""
+    """Parses an OpenROAD XML export and returns encoded .w4gl text."""
 
     xml = etree.parse(xml_path)
     component = parse_xml(xml)
-    return encode_4gl(component)
+    return encode_w4gl(component)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def encode_command(args: argparse.Namespace) -> str:
-    """Encodes an OpenROAD XML export to .4gl text."""
+    """Encodes an OpenROAD XML export to .w4gl text."""
 
     xml_file = cast(str, args.xml_file)
     output_path = cast(str | None, args.output)

@@ -1,0 +1,36 @@
+[classsource]
+superclass = "userobject"
+
+[attributes]
+id = "INTEGER NOT NULL"
+name = "VARCHAR(32) NOT NULL"
+nullable_prop = "VARCHAR(32)"
+date_prop = "DATE NOT NULL"
+float_prop = "FLOAT NOT NULL"
+money_prop = "MONEY NOT NULL"
+decimal_prop = "DECIMAL(10,0) NOT NULL"
+
+[methods]
+ExampleMethod = "METHOD RETURNING INTEGER NOT NULL"
+PrivateMethod = "PRIVATE METHOD"
+ObjectReturnMethod = "METHOD RETURNING STRINGOBJECT"
+
+===
+
+METHOD ExampleMethod() =
+{
+    RETURN TRUE;
+}
+
+METHOD ObjectReturnMethod() =
+DECLARE
+    so = StringObject;
+ENDDECLARE
+{
+    RETURN so;
+}
+
+METHOD PrivateMethod() =
+{
+    CurMethod.Trace(text = 'Example encapsulation private method');
+}

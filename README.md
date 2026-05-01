@@ -119,18 +119,18 @@ source_repo
 ├── app1
 │   ├── .openroad
 │   │    └── fm_example_frame.xml
-│   ├── fm_example_frame.4gl
+│   ├── fm_example_frame.w4gl
 │   └── fm_example_frame.4ml
 └── app2
     ├── .openroad
     │    └── uc_example.xml
-    └── uc_example.4gl
+    └── uc_example.w4gl
 ```
 
 ### Enter `gorak`
 
-- `gorak` is a "compiler" that transpiles a bespoke dialect of OpenROAD (represented in `.4gl` and `.4ml` files) to the Ingres OpenROAD based source database via OpenROAD `.xml` imports
-- `gorak` can also transpile an OpenROAD `.xml` export file into `.4gl` and `.4ml` files
+- `gorak` is a "compiler" that transpiles a bespoke dialect of OpenROAD (represented in `.w4gl` and `.4ml` files) to the Ingres OpenROAD based source database via OpenROAD `.xml` imports
+- `gorak` can also transpile an OpenROAD `.xml` export file into `.w4gl` and `.4ml` files
 - in fact `gorak` can export an entire OpenROAD source database into a flat file syntax that is:
     - easily modifiable with modern development tools
     - plaintext / readable file formats
