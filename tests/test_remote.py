@@ -16,25 +16,27 @@ from gorak.remote import (
 
 REMOTE_HOST = RemoteHost(
     ssh_target="test@WINDOWS-PC",
-    gorak_root=r"c:\Development\gorak"
+    gorak_root=r"c:\Development\gorak",
 )
+
 
 class TestBuildRemoteCommand:
     """Tests for the build_remote_command() function"""
-    
+
     def test_returns_an_ssh_command_for_calling_a_gorak_script(self) -> None:
         command = build_remote_command(
             remote=REMOTE_HOST,
             script="backup-component.bat",
-            args=["vnode::db", "app", "component"]
+            args=["vnode::db", "app", "component"],
         )
-        
+
         assert command == [
             "ssh",
             "-T",
             "test@WINDOWS-PC",
-            r"c:\Development\gorak\backup-component.bat vnode::db app component"
+            r"c:\Development\gorak\backup-component.bat vnode::db app component",
         ]
+
 
 class TestBuildDownloadCommand:
     """Tests for the build_download_command() function"""
@@ -52,6 +54,7 @@ class TestBuildDownloadCommand:
             "component.xml",
         ]
 
+
 class TestWindowsPathToScpPath:
     """Tests for the windows_path_to_scp_path() function"""
 
@@ -61,6 +64,7 @@ class TestWindowsPathToScpPath:
         )
 
         assert result == "/C:/Development/gorak/repos/vnode/db/app/component.xml"
+
 
 class TestDownloadFile:
     """Tests for the download_file() function"""
@@ -88,32 +92,33 @@ class TestDownloadFile:
             ]
         ]
 
+
 class TestBackupComponent:
     """Tests for the backup_component() function"""
-    
+
     def test_backup_component_runs_remote_command(self) -> None:
         calls = []
-        
+
         def fake_run(command: list[str]) -> str:
             calls.append(command)
             return r"C:\Development\gorak\repos\vnode\db\app\component.xml"
-        
+
         result = backup_component(
             remote=REMOTE_HOST,
             vnode="vnode",
             database="db",
             app="app",
             component="component",
-            run_cmd=fake_run
+            run_cmd=fake_run,
         )
-        
+
         assert result == r"C:\Development\gorak\repos\vnode\db\app\component.xml"
         assert calls == [
             [
                 "ssh",
                 "-T",
                 "test@WINDOWS-PC",
-                r"c:\Development\gorak\backup-component.bat vnode::db app component"
+                r"c:\Development\gorak\backup-component.bat vnode::db app component",
             ]
         ]
 
@@ -169,15 +174,18 @@ class TestBackupComponent:
             database="db",
             app="app",
             component="component",
-            run_cmd=fake_run
+            run_cmd=fake_run,
         )
 
         assert result == r"C:\Development\gorak\repos\vnode\db\app\component.xml"
 
+
 class TestRunSubprocess:
     """Tests for the run_subprocess() function"""
 
-    def test_returns_stdout_from_completed_process(self, monkeypatch: MonkeyPatch) -> None:
+    def test_returns_stdout_from_completed_process(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         calls = []
 
         def fake_run(

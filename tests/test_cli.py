@@ -98,7 +98,9 @@ class TestRemoteExportComponent:
             )
 
         assert ex.value.code == 2
-        assert "the following arguments are required: --output" in capsys.readouterr().err
+        assert (
+            "the following arguments are required: --output" in capsys.readouterr().err
+        )
 
 
 class TestEncodeCommand:
