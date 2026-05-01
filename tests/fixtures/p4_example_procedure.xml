@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <COMPONENT name="p4_example_procedure" xsi:type="proc4glsource">
+        <script><![CDATA[PROCEDURE p4_example_procedure
+(
+
+) =
+DECLARE
+ENDDECLARE
+{
+    CurProcedure.Trace(text = 'Hello World!');
+    RETURN ER_OK;
+}
+]]></script>
+        <datatype>integer</datatype>
+    </COMPONENT>
+</OPENROAD>

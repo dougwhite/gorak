@@ -1,0 +1,15 @@
+[proc4glsource]
+datatype = "integer"
+
+===
+
+PROCEDURE p4_example_procedure
+(
+
+) =
+DECLARE
+ENDDECLARE
+{
+    CurProcedure.Trace(text = 'Hello World!');
+    RETURN ER_OK;
+}
