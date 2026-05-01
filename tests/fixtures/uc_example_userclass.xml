@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <COMPONENT name="uc_example_userclass" xsi:type="classsource">
+        <superclass>userobject</superclass>
+        <script><![CDATA[METHOD ExampleMethod() =
+{
+    RETURN TRUE;
+}
+
+METHOD ObjectReturnMethod() =
+DECLARE
+    so = StringObject;
+ENDDECLARE
+{
+    RETURN so;
+}
+
+METHOD PrivateMethod() =
+{
+    CurMethod.Trace(text = 'Example encapsulation private method');
+}]]></script>
+        <attributes>
+            <row>
+                <displayname>id</displayname>
+                <datatype>integer</datatype>
+            </row>
+            <row>
+                <displayname>name</displayname>
+                <datatype>varchar(32)</datatype>
+            </row>
+            <row>
+                <displayname>nullable_prop</displayname>
+                <datatype>varchar(32)</datatype>
+                <isnullable>1</isnullable>
+            </row>
+            <row>
+                <displayname>date_prop</displayname>
+                <datatype>date</datatype>
+            </row>
+            <row>
+                <displayname>float_prop</displayname>
+                <datatype>float</datatype>
+            </row>
+            <row>
+                <displayname>money_prop</displayname>
+                <datatype>money</datatype>
+            </row>
+            <row>
+                <displayname>decimal_prop</displayname>
+                <datatype>decimal(10,0)</datatype>
+            </row>
+            <row_class>attributeobject</row_class>
+        </attributes>
+        <methods>
+            <row>
+                <displayname>ExampleMethod</displayname>
+                <datatype>integer</datatype>
+            </row>
+            <row>
+                <displayname>PrivateMethod</displayname>
+                <isprivate>1</isprivate>
+            </row>
+            <row>
+                <displayname>ObjectReturnMethod</displayname>
+                <datatype>stringobject</datatype>
+                <isnullable>1</isnullable>
+            </row>
+            <row_class>methodobject</row_class>
+        </methods>
+    </COMPONENT>
+</OPENROAD>
