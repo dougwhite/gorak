@@ -21,7 +21,7 @@ class Component:
     props: dict[str, Any]
     script: str | None = None
 
-def parse_xml(tree: etree.ElementTree) -> Component:
+def parse_xml(tree: etree._ElementTree | etree._Element) -> Component:
     """Parses an OpenROAD export xml into a `Component` object"""
 
     # First locate the root <COMPONENT> node

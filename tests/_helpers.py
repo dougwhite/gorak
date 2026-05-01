@@ -5,7 +5,7 @@ from textwrap import dedent
 from lxml import etree
 
 
-def _wrap_xml(content: str) -> etree.ElementTree:
+def _wrap_xml(content: str) -> etree._Element:
     """Wraps inner XML content in standard OpenROAD boilerplate."""
     xml = dedent(
         """<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
