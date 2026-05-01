@@ -1,0 +1,8 @@
+{
+    "name": "example_project",
+    "version": "0.1.0",
+    "description": "An example gorak project",
+    "author": "Your Name",
+    "contact": "your.name@example.com",
+    "license": "MIT"
+}
