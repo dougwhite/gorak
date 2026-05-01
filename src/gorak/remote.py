@@ -55,6 +55,19 @@ def run_subprocess(command: list[str]) -> str:
 
     return result.stdout
 
+def download_file(
+    remote: RemoteHost,
+    remote_path: str,
+    local_path: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> str:
+    """Downloads a remote Windows file path over scp and returns the local path"""
+
+    scp_path = windows_path_to_scp_path(remote_path)
+    command = build_download_command(remote, scp_path, local_path)
+    run_cmd(command)
+    return local_path
+
 def backup_component(remote: RemoteHost, vnode: str, database: str, app: str, component: str, run_cmd: RunCommand = run_subprocess) -> str:
     """Backs up a component from the remote host and returns the path to the backup file"""
     

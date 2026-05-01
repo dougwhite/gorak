@@ -9,6 +9,7 @@ from gorak.remote import (
     backup_component,
     build_download_command,
     build_remote_command,
+    download_file,
     run_subprocess,
     windows_path_to_scp_path,
 )
@@ -60,6 +61,32 @@ class TestWindowsPathToScpPath:
         )
 
         assert result == "/C:/Development/gorak/repos/vnode/db/app/component.xml"
+
+class TestDownloadFile:
+    """Tests for the download_file() function"""
+
+    def test_downloads_remote_file_to_local_path(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return ""
+
+        result = download_file(
+            remote=REMOTE_HOST,
+            remote_path=r"C:\Development\gorak\repos\vnode\db\app\component.xml",
+            local_path="component.xml",
+            run_cmd=fake_run,
+        )
+
+        assert result == "component.xml"
+        assert calls == [
+            [
+                "scp",
+                "test@WINDOWS-PC:/C:/Development/gorak/repos/vnode/db/app/component.xml",
+                "component.xml",
+            ]
+        ]
 
 class TestBackupComponent:
     """Tests for the backup_component() function"""
