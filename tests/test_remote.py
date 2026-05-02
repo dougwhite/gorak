@@ -4,12 +4,15 @@ import pytest
 from pytest import MonkeyPatch
 
 from gorak.remote import (
+    RemoteApplication,
     RemoteCommandError,
     RemoteHost,
     backup_component,
     build_download_command,
     build_remote_command,
     download_file,
+    get_app_list,
+    parse_app_list_output,
     run_subprocess,
     windows_path_to_scp_path,
 )
@@ -18,6 +21,29 @@ REMOTE_HOST = RemoteHost(
     ssh_target="test@WINDOWS-PC",
     gorak_root=r"c:\Development\gorak",
 )
+
+APP_LIST_OUTPUT = """
+INGRES TERMINAL MONITOR Copyright 2024 Actian Corporation
+continue
+* * * * /* SQL Startup File */
+select e.entity_name as application_name, a.proc_start as start_component, e.short_remark
+from ii_applications a
+left join ii_entities e on a.entity_id = e.entity_id
+Executing . . .
+
+
++--------------------------------+--------------------------------+------------------------------------------------------------+
+|application_name                |start_component                 |short_remark                                                |
++--------------------------------+--------------------------------+------------------------------------------------------------+
+|sample_app                      |                                |Example application                                         |
+|orders_app                      |fm_order_entry                  |Order entry screens                                         |
+|shared_library                  |                                |Shared utility components                                   |
+|empty_shell                     |                                |                                                            |
++--------------------------------+--------------------------------+------------------------------------------------------------+
+(4 rows)
+
+Your SQL statement(s) have been committed.
+"""
 
 
 class TestBuildRemoteCommand:
@@ -178,6 +204,62 @@ class TestBackupComponent:
         )
 
         assert result == r"C:\Development\gorak\repos\vnode\db\app\component.xml"
+
+
+class TestParseAppListOutput:
+    """Tests for parsing Ingres application list output."""
+
+    def test_parses_application_rows_from_terminal_monitor_output(self) -> None:
+        assert parse_app_list_output(APP_LIST_OUTPUT) == [
+            RemoteApplication(
+                name="sample_app",
+                start_component="",
+                description="Example application",
+            ),
+            RemoteApplication(
+                name="orders_app",
+                start_component="fm_order_entry",
+                description="Order entry screens",
+            ),
+            RemoteApplication(
+                name="shared_library",
+                start_component="",
+                description="Shared utility components",
+            ),
+            RemoteApplication(name="empty_shell", start_component="", description=""),
+        ]
+
+
+class TestGetAppList:
+    """Tests for the get_app_list() function."""
+
+    def test_runs_remote_get_app_list_command(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return APP_LIST_OUTPUT
+
+        result = get_app_list(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            run_cmd=fake_run,
+        )
+
+        assert result[0] == RemoteApplication(
+            name="sample_app",
+            start_component="",
+            description="Example application",
+        )
+        assert calls == [
+            [
+                "ssh",
+                "-T",
+                "test@WINDOWS-PC",
+                r"c:\Development\gorak\get-app-list.bat vnode db",
+            ]
+        ]
 
 
 class TestRunSubprocess:

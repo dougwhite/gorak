@@ -1,6 +1,10 @@
 import argparse
+import csv
+import io
+import json
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 from typing import cast
 
@@ -8,7 +12,13 @@ from lxml import etree
 
 from .parser import encode_w4gl, parse_xml
 from .project import configure_remote, create_project, load_project
-from .remote import RemoteHost, backup_component, download_file
+from .remote import (
+    RemoteApplication,
+    RemoteHost,
+    backup_component,
+    download_file,
+    get_app_list,
+)
 
 
 def encode_xml_file(xml_path: str) -> str:
@@ -53,6 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
     export_component.add_argument("--app", required=True)
     export_component.add_argument("--component", required=True)
     export_component.add_argument("--output", required=True)
+
+    get_app_list_parser = remote_subparsers.add_parser("get-app-list")
+    get_app_list_parser.add_argument("--ssh-target", required=True)
+    get_app_list_parser.add_argument("--gorak-root", required=True)
+    get_app_list_parser.add_argument("--vnode", required=True)
+    get_app_list_parser.add_argument("--database", required=True)
+    get_app_list_parser.add_argument(
+        "--format",
+        choices=["json", "csv"],
+        default="json",
+    )
 
     return parser
 
@@ -115,6 +136,46 @@ def export_remote_component(args: argparse.Namespace) -> str:
     )
 
 
+def remote_applications_to_json(applications: list[RemoteApplication]) -> str:
+    """Format remote applications as JSON."""
+
+    return json.dumps([asdict(app) for app in applications], indent=2)
+
+
+def remote_applications_to_csv(applications: list[RemoteApplication]) -> str:
+    """Format remote applications as CSV."""
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["name", "start_component", "description"],
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerows(asdict(app) for app in applications)
+
+    return output.getvalue().rstrip("\n")
+
+
+def get_remote_app_list(args: argparse.Namespace) -> str:
+    """Reads remote OpenROAD applications and formats them for stdout."""
+
+    remote = RemoteHost(
+        ssh_target=args.ssh_target,
+        gorak_root=args.gorak_root,
+    )
+    applications = get_app_list(
+        remote=remote,
+        vnode=args.vnode,
+        database=args.database,
+    )
+
+    if cast(str, args.format) == "csv":
+        return remote_applications_to_csv(applications)
+
+    return remote_applications_to_json(applications)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
 
@@ -135,6 +196,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if parsed.command == "remote" and parsed.remote_command == "export-component":
         print(export_remote_component(parsed))
+        return
+
+    if parsed.command == "remote" and parsed.remote_command == "get-app-list":
+        print(get_remote_app_list(parsed))
         return
 
     parser.print_help()

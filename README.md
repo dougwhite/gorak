@@ -76,6 +76,28 @@ uv run gorak config remote \
 
 This writes the settings to `.env`, which is local-only and ignored by git.
 
+### Listing remote OpenROAD applications
+
+You can ask a Windows OpenROAD development host to list applications in a source
+database:
+```
+uv run gorak remote get-app-list \
+  --ssh-target user@WINDOWS-PC \
+  --gorak-root 'C:\Development\gorak' \
+  --vnode myvnode \
+  --database exampledb
+```
+
+The default output is JSON. CSV is also available:
+```
+uv run gorak remote get-app-list \
+  --ssh-target user@WINDOWS-PC \
+  --gorak-root 'C:\Development\gorak' \
+  --vnode myvnode \
+  --database exampledb \
+  --format csv
+```
+
 ### Exporting a remote component XML file
 
 You can ask a Windows OpenROAD development host to export one component, then

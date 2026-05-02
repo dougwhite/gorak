@@ -11,6 +11,15 @@ class RemoteHost:
     gorak_root: str
 
 
+@dataclass(frozen=True)
+class RemoteApplication:
+    """Application metadata read from an OpenROAD source database."""
+
+    name: str
+    start_component: str
+    description: str
+
+
 RunCommand = Callable[[list[str]], str]
 
 
@@ -92,3 +101,45 @@ def backup_component(
 
     output = run_cmd(command).strip()
     return output.splitlines()[-1]
+
+
+def parse_app_list_output(output: str) -> list[RemoteApplication]:
+    """Parse Ingres terminal monitor table output into applications."""
+
+    applications: list[RemoteApplication] = []
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+
+        cells = [cell.strip() for cell in stripped.split("|")[1:-1]]
+        if len(cells) != 3 or cells[0] == "application_name":
+            continue
+
+        applications.append(
+            RemoteApplication(
+                name=cells[0],
+                start_component=cells[1],
+                description=cells[2],
+            )
+        )
+
+    return applications
+
+
+def get_app_list(
+    remote: RemoteHost,
+    vnode: str,
+    database: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[RemoteApplication]:
+    """Read OpenROAD application metadata from the remote source database."""
+
+    command = build_remote_command(
+        remote=remote,
+        script="get-app-list.bat",
+        args=[vnode, database],
+    )
+
+    return parse_app_list_output(run_cmd(command))
