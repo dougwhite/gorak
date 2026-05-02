@@ -2,7 +2,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .domain import Application
+from .domain import Application, ComponentInfo
 
 
 @dataclass(frozen=True)
@@ -141,3 +141,47 @@ def get_app_list(
     )
 
     return parse_app_list_output(run_cmd(command))
+
+
+def parse_component_list_output(output: str) -> list[ComponentInfo]:
+    """Parse Ingres terminal monitor table output into components."""
+
+    components: list[ComponentInfo] = []
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+
+        cells = [cell.strip() for cell in stripped.split("|")[1:-1]]
+        if len(cells) != 4 or cells[0] == "application_name":
+            continue
+
+        components.append(
+            ComponentInfo(
+                application_name=cells[0],
+                name=cells[1],
+                type=cells[2],
+                description=cells[3],
+            )
+        )
+
+    return components
+
+
+def get_component_list(
+    remote: RemoteHost,
+    vnode: str,
+    database: str,
+    app: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[ComponentInfo]:
+    """Read OpenROAD component metadata from a remote source database."""
+
+    command = build_remote_command(
+        remote=remote,
+        script="get-component-list.bat",
+        args=[vnode, database, app],
+    )
+
+    return parse_component_list_output(run_cmd(command))

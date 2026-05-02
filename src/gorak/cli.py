@@ -11,7 +11,7 @@ from typing import cast
 
 from lxml import etree
 
-from .domain import Application
+from .domain import Application, ComponentInfo
 from .parser import encode_w4gl, parse_xml
 from .project import (
     GorakContext,
@@ -26,6 +26,7 @@ from .remote import (
     backup_component,
     download_file,
     get_app_list,
+    get_component_list,
 )
 
 
@@ -87,6 +88,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     component_parser = subparsers.add_parser("component")
     component_subparsers = component_parser.add_subparsers(dest="component_command")
+
+    component_list = component_subparsers.add_parser("list")
+    add_openroad_connection_args(component_list)
+    component_list.add_argument("app")
+    component_list.add_argument(
+        "--format",
+        choices=["json", "csv"],
+        default="json",
+    )
 
     export_component = component_subparsers.add_parser("export")
     add_openroad_connection_args(export_component)
@@ -290,6 +300,27 @@ def applications_to_csv(applications: list[Application]) -> str:
     return output.getvalue().rstrip("\n")
 
 
+def components_to_json(components: list[ComponentInfo]) -> str:
+    """Format components as JSON."""
+
+    return json.dumps([asdict(component) for component in components], indent=2)
+
+
+def components_to_csv(components: list[ComponentInfo]) -> str:
+    """Format components as CSV."""
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["application_name", "name", "type", "description"],
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerows(asdict(component) for component in components)
+
+    return output.getvalue().rstrip("\n")
+
+
 def app_list_command(args: argparse.Namespace) -> str:
     """Reads remote OpenROAD applications and formats them for stdout."""
 
@@ -304,6 +335,23 @@ def app_list_command(args: argparse.Namespace) -> str:
         return applications_to_csv(applications)
 
     return applications_to_json(applications)
+
+
+def component_list_command(args: argparse.Namespace) -> str:
+    """Reads OpenROAD component metadata and formats it for stdout."""
+
+    connection = resolve_openroad_connection(args, load_context(Path.cwd()))
+    components = get_component_list(
+        remote=connection.remote_host,
+        vnode=connection.vnode,
+        database=connection.database,
+        app=cast(str, args.app),
+    )
+
+    if cast(str, args.format) == "csv":
+        return components_to_csv(components)
+
+    return components_to_json(components)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -327,6 +375,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "app" and parsed.app_command == "list":
             print(app_list_command(parsed))
+            return
+
+        if parsed.command == "component" and parsed.component_command == "list":
+            print(component_list_command(parsed))
             return
 
         if parsed.command == "component" and parsed.component_command == "export":

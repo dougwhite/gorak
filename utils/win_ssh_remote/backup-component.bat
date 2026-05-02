@@ -27,7 +27,14 @@ set "EXPORT_DIR=%GORAK_ROOT%\repos\%EXPORT_DB%\%EXPORT_APP%"
 set "EXPORT_DIR=%EXPORT_DIR:::=\%"
 set "EXPORT_DEST=%EXPORT_DIR%\%EXPORT_COMP%.xml"
 
-set "LOG=%TEMP%\gorak-export-%EXPORT_COMP%-%RANDOM%.log"
+set "TEMP_DIR=%GORAK_ROOT%/temp"
+if not exist "%TEMP_DIR%\" mkdir "%TEMP_DIR%"
+if errorlevel 1 (
+    >&2 echo Failed to create temp dir: "%TEMP_DIR%"
+    exit /b 1
+)
+
+set "LOG=%TEMP_DIR%\gorak-export-%EXPORT_COMP%-%RANDOM%.log"
 set "FLAGS=-nowindows -c%EXPORT_COMP% -xml -TALL,logonly -L%LOG%"
 
 if not exist "%EXPORT_DIR%\" mkdir "%EXPORT_DIR%"

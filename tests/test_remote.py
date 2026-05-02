@@ -3,7 +3,7 @@ import subprocess
 import pytest
 from pytest import MonkeyPatch
 
-from gorak.domain import Application
+from gorak.domain import Application, ComponentInfo
 from gorak.remote import (
     RemoteCommandError,
     RemoteHost,
@@ -12,7 +12,9 @@ from gorak.remote import (
     build_remote_command,
     download_file,
     get_app_list,
+    get_component_list,
     parse_app_list_output,
+    parse_component_list_output,
     run_subprocess,
     windows_path_to_scp_path,
 )
@@ -42,6 +44,32 @@ Executing . . .
 |empty_shell                     |                                |                                                            |
 +--------------------------------+--------------------------------+------------------------------------------------------------+
 (4 rows)
+
+Your SQL statement(s) have been committed.
+"""
+
+COMPONENT_LIST_OUTPUT = """
+INGRES TERMINAL MONITOR Copyright 2024 Actian Corporation
+continue
+* * * * * * * * /* SQL Startup File */
+select ea.entity_name as application_name, e.entity_name as component_name, e.entity_type, e.short_remark
+from ii_entities e
+left join ii_entities ea on e.folder_id = ea.entity_id
+left join ii_applications a on ea.base_entity_id = a.entity_id
+where e.base_entity_id = 0
+and e.folder_id != 0
+and ea.entity_name = 'sample_app'
+Executing . . .
+
+
++--------------------------------+--------------------------------+--------------------------------+------------------------------------------------------------+
+|application_name                |component_name                  |entity_type                     |short_remark                                                |
++--------------------------------+--------------------------------+--------------------------------+------------------------------------------------------------+
+|sample_app                      |uc_order                        |classsource                     |Order model                                                 |
+|sample_app                      |p4_check_order                  |proc4glsource                   |                                                            |
+|sample_app                      |fm_order_entry                  |framesource                     |Main order entry screen                                     |
++--------------------------------+--------------------------------+--------------------------------+------------------------------------------------------------+
+(3 rows)
 
 Your SQL statement(s) have been committed.
 """
@@ -262,6 +290,66 @@ class TestGetAppList:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-app-list.bat vnode db",
+            ]
+        ]
+
+
+class TestParseComponentListOutput:
+    """Tests for parsing Ingres component list output."""
+
+    def test_parses_component_rows_from_terminal_monitor_output(self) -> None:
+        assert parse_component_list_output(COMPONENT_LIST_OUTPUT) == [
+            ComponentInfo(
+                application_name="sample_app",
+                name="uc_order",
+                type="classsource",
+                description="Order model",
+            ),
+            ComponentInfo(
+                application_name="sample_app",
+                name="p4_check_order",
+                type="proc4glsource",
+                description="",
+            ),
+            ComponentInfo(
+                application_name="sample_app",
+                name="fm_order_entry",
+                type="framesource",
+                description="Main order entry screen",
+            ),
+        ]
+
+
+class TestGetComponentList:
+    """Tests for the get_component_list() function."""
+
+    def test_runs_remote_get_component_list_command(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return COMPONENT_LIST_OUTPUT
+
+        result = get_component_list(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            app="sample_app",
+            run_cmd=fake_run,
+        )
+
+        assert result[0] == ComponentInfo(
+            application_name="sample_app",
+            name="uc_order",
+            type="classsource",
+            description="Order model",
+        )
+        assert calls == [
+            [
+                "ssh",
+                "-T",
+                "test@WINDOWS-PC",
+                r"c:\Development\gorak\get-component-list.bat vnode db sample_app",
             ]
         ]
 

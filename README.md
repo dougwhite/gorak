@@ -100,6 +100,21 @@ uv run gorak app list \
   --format csv
 ```
 
+### Listing OpenROAD components
+
+List the components in one OpenROAD application:
+```
+uv run gorak component list \
+  --user test \
+  --host WINDOWS-PC \
+  --gorak-root 'C:\Development\gorak' \
+  --vnode myvnode \
+  --database exampledb \
+  application
+```
+
+The default output is JSON. CSV is also available with `--format csv`.
+
 ### Exporting a component
 
 You can ask a Windows OpenROAD development host to export one component, then

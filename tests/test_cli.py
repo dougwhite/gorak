@@ -6,7 +6,7 @@ from dotenv import dotenv_values
 from pytest import CaptureFixture, MonkeyPatch
 
 from gorak import cli
-from gorak.domain import Application
+from gorak.domain import Application, ComponentInfo
 from gorak.project import GorakProject
 from gorak.remote import RemoteHost
 
@@ -591,6 +591,186 @@ class TestAppList:
 
         assert ex.value.code == 1
         assert "OpenROAD backend is not implemented: local" in capsys.readouterr().err
+
+
+class TestComponentList:
+    """Tests for the component list CLI command."""
+
+    def test_prints_json_by_default(
+        self,
+        monkeypatch: MonkeyPatch,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+
+        def fake_get_component_list(
+            remote: RemoteHost,
+            vnode: str,
+            database: str,
+            app: str,
+        ) -> list[ComponentInfo]:
+            calls.append(("get_component_list", remote, vnode, database, app))
+            return [
+                ComponentInfo(
+                    application_name="sample_app",
+                    name="uc_order",
+                    type="classsource",
+                    description="Order model",
+                )
+            ]
+
+        monkeypatch.setattr(cli, "get_component_list", fake_get_component_list)
+
+        cli.main(
+            [
+                "component",
+                "list",
+                "--user",
+                "test",
+                "--host",
+                "WINDOWS-PC",
+                "--gorak-root",
+                r"c:\Development\gorak",
+                "--vnode",
+                "vnode",
+                "--database",
+                "db",
+                "sample_app",
+            ]
+        )
+
+        remote = RemoteHost(
+            user="test",
+            host="WINDOWS-PC",
+            gorak_root=r"c:\Development\gorak",
+        )
+        assert calls == [("get_component_list", remote, "vnode", "db", "sample_app")]
+        assert json.loads(capsys.readouterr().out) == [
+            {
+                "application_name": "sample_app",
+                "name": "uc_order",
+                "type": "classsource",
+                "description": "Order model",
+            }
+        ]
+
+    def test_prints_csv_when_requested(
+        self,
+        monkeypatch: MonkeyPatch,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        def fake_get_component_list(
+            remote: RemoteHost,
+            vnode: str,
+            database: str,
+            app: str,
+        ) -> list[ComponentInfo]:
+            return [
+                ComponentInfo(
+                    application_name="sample_app",
+                    name="uc_order",
+                    type="classsource",
+                    description="Order model",
+                )
+            ]
+
+        monkeypatch.setattr(cli, "get_component_list", fake_get_component_list)
+
+        cli.main(
+            [
+                "component",
+                "list",
+                "--user",
+                "test",
+                "--host",
+                "WINDOWS-PC",
+                "--gorak-root",
+                r"c:\Development\gorak",
+                "--vnode",
+                "vnode",
+                "--database",
+                "db",
+                "--format",
+                "csv",
+                "sample_app",
+            ]
+        )
+
+        assert capsys.readouterr().out == (
+            "application_name,name,type,description\n"
+            "sample_app,uc_order,classsource,Order model\n"
+        )
+
+    def test_reads_connection_settings_from_project_env(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        app_dir = project_root / "my_project"
+        app_dir.mkdir(parents=True)
+        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
+        (project_root / ".env").write_text(
+            "GORAK_BACKEND=remote\n"
+            "GORAK_REMOTE_USER=project-user\n"
+            "GORAK_REMOTE_HOST=project-host\n"
+            "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
+            "GORAK_VNODE=project-vnode\n"
+            "GORAK_DATABASE=project-db\n"
+        )
+        monkeypatch.chdir(app_dir)
+
+        def fake_get_component_list(
+            remote: RemoteHost,
+            vnode: str,
+            database: str,
+            app: str,
+        ) -> list[ComponentInfo]:
+            calls.append(("get_component_list", remote, vnode, database, app))
+            return []
+
+        monkeypatch.setattr(cli, "get_component_list", fake_get_component_list)
+
+        cli.main(["component", "list", "sample_app"])
+
+        assert calls == [
+            (
+                "get_component_list",
+                RemoteHost(
+                    user="project-user",
+                    host="project-host",
+                    gorak_root=r"C:\Development\gorak",
+                ),
+                "project-vnode",
+                "project-db",
+                "sample_app",
+            )
+        ]
+        assert json.loads(capsys.readouterr().out) == []
+
+    def test_requires_remote_flags(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        for key in [
+            "GORAK_REMOTE_USER",
+            "GORAK_REMOTE_HOST",
+            "GORAK_REMOTE_ROOT",
+            "GORAK_VNODE",
+            "GORAK_DATABASE",
+        ]:
+            monkeypatch.delenv(key, raising=False)
+
+        with pytest.raises(SystemExit) as ex:
+            cli.main(["component", "list", "sample_app"])
+
+        assert ex.value.code == 1
+        assert "Missing OpenROAD connection settings" in capsys.readouterr().err
 
 
 class TestEncodeCommand:

@@ -24,3 +24,8 @@ To list applications in an OpenROAD source database:
 ```
 ssh -T [user]@[hostname-or-ip] 'c:\Development\gorak\get-app-list.bat [vnode] [database]'
 ```
+
+To list components in one OpenROAD application:
+```
+ssh -T [user]@[hostname-or-ip] 'c:\Development\gorak\get-component-list.bat [vnode] [database] [application]'
+```
