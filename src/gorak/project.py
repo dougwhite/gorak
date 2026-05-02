@@ -14,10 +14,7 @@ DEFAULT_VERSION = "0.1.0"
 DEFAULT_STARTING_COMPONENT = "p4_init"
 RunCommand = Callable[[list[str], Path], None]
 
-ENV_EXAMPLE = """GORAK_BACKEND=remote
-GORAK_REMOTE_HOST=windows-pc
-GORAK_REMOTE_USER=test
-GORAK_REMOTE_ROOT=C:\\Development\\gorak
+ENV_EXAMPLE = """GORAK_BACKEND=local
 GORAK_VNODE=myvnode
 GORAK_DATABASE=exampledb
 """

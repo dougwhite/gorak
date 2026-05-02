@@ -76,6 +76,18 @@ uv run gorak config remote \
 
 This writes the settings to `.env`, which is local-only and ignored by git.
 
+The local backend is the default. For a local Windows OpenROAD development
+machine, only the database settings are needed:
+```
+GORAK_VNODE=myvnode
+GORAK_DATABASE=exampledb
+```
+
+The same values can also be passed directly to database commands with
+`--vnode myvnode --database exampledb`. Remote settings such as `--host`,
+`--user`, and `--gorak-root` automatically select the remote backend unless
+`GORAK_BACKEND` or `--backend` explicitly says otherwise.
+
 ### Installing Windows SSH helpers
 
 Copy the Windows-side SSH helper files to the configured remote gorak root with:
@@ -93,8 +105,8 @@ source checkout.
 
 ### Listing OpenROAD applications
 
-You can ask a Windows OpenROAD development host to list applications in a source
-database:
+You can list applications in a source database through either the remote or
+local backend:
 ```
 uv run gorak app list \
   --user test \

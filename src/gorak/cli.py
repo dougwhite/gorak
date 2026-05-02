@@ -14,6 +14,7 @@ from typing import cast
 
 from lxml import etree
 
+from . import local
 from .domain import Application, ComponentInfo
 from .parser import encode_w4gl, parse_xml
 from .project import (
@@ -34,6 +35,9 @@ from .remote import (
 )
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
+local_backup_component = local.backup_component
+local_get_app_list = local.get_app_list
+local_get_component_list = local.get_component_list
 
 
 @dataclass(frozen=True)
@@ -41,7 +45,7 @@ class OpenRoadConnection:
     backend: str
     vnode: str
     database: str
-    remote_host: RemoteHost
+    remote_host: RemoteHost | None
 
 
 @dataclass(frozen=True)
@@ -120,6 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_openroad_connection_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--backend", choices=["remote", "local"])
     add_remote_host_args(parser)
     parser.add_argument("--vnode")
     parser.add_argument("--database")
@@ -212,17 +217,21 @@ def resolve_openroad_connection(
     args: argparse.Namespace, context: GorakContext
 ) -> OpenRoadConnection:
     env = context.env
-    backend = env_value(args, "backend", env, "GORAK_BACKEND") or "remote"
-    if backend != "remote":
+    backend = resolve_backend(args, env)
+    if backend not in ["remote", "local"]:
         raise ProjectError(f"OpenROAD backend is not implemented: {backend}")
 
-    remote_values = remote_host_values(args, env)
     openroad_values = {
         "vnode": env_value(args, "vnode", env, "GORAK_VNODE"),
         "database": env_value(args, "database", env, "GORAK_DATABASE"),
     }
-    values = {**remote_values, **openroad_values}
-    missing = [key for key, value in values.items() if value is None]
+    missing = [key for key, value in openroad_values.items() if value is None]
+    if backend == "remote":
+        remote_values = remote_host_values(args, env)
+        missing.extend(key for key, value in remote_values.items() if value is None)
+    else:
+        remote_values = {"user": None, "host": None, "gorak_root": None}
+
     if missing:
         raise ProjectError(
             "Missing OpenROAD connection settings: "
@@ -233,12 +242,25 @@ def resolve_openroad_connection(
         backend=backend,
         vnode=cast(str, openroad_values["vnode"]),
         database=cast(str, openroad_values["database"]),
-        remote_host=RemoteHost(
-            user=cast(str, remote_values["user"]),
-            host=cast(str, remote_values["host"]),
-            gorak_root=cast(str, remote_values["gorak_root"]),
+        remote_host=(
+            RemoteHost(
+                user=cast(str, remote_values["user"]),
+                host=cast(str, remote_values["host"]),
+                gorak_root=cast(str, remote_values["gorak_root"]),
+            )
+            if backend == "remote"
+            else None
         ),
     )
+
+
+def resolve_backend(args: argparse.Namespace, env: dict[str, str]) -> str:
+    configured = env_value(args, "backend", env, "GORAK_BACKEND")
+    if configured is not None:
+        return configured
+    if any(remote_host_values(args, env).values()):
+        return "remote"
+    return "local"
 
 
 def resolve_remote_host(args: argparse.Namespace, context: GorakContext) -> RemoteHost:
@@ -304,25 +326,17 @@ def export_component_command(args: argparse.Namespace) -> str:
     connection = resolve_openroad_connection(args, context)
     app = cast(str, args.app)
     component = cast(str, args.component)
-    remote_xml_path = backup_component(
-        remote=connection.remote_host,
-        vnode=connection.vnode,
-        database=connection.database,
-        app=app,
-        component=component,
-    )
-
     if context.project is None:
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = ComponentExportPaths(
                 xml_path=Path(temp_dir) / f"{component}.xml",
                 w4gl_path=Path(cast(str, output_path)),
             )
-            export_component_to_paths(connection, remote_xml_path, paths)
+            export_component_to_paths(connection, app, component, paths)
             return str(paths.w4gl_path)
 
     paths = resolve_project_component_export_paths(context, app, component)
-    export_component_to_paths(connection, remote_xml_path, paths)
+    export_component_to_paths(connection, app, component, paths)
     return str(paths.w4gl_path)
 
 
@@ -342,16 +356,34 @@ def resolve_project_component_export_paths(
 
 def export_component_to_paths(
     connection: OpenRoadConnection,
-    remote_xml_path: str,
+    app: str,
+    component: str,
     paths: ComponentExportPaths,
 ) -> None:
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.w4gl_path.parent.mkdir(parents=True, exist_ok=True)
-    download_file(
-        remote=connection.remote_host,
-        remote_path=remote_xml_path,
-        local_path=str(paths.xml_path),
-    )
+    if connection.backend == "local":
+        local_backup_component(
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+            component=component,
+            output_path=paths.xml_path,
+        )
+    else:
+        remote = require_remote_host(connection)
+        remote_xml_path = backup_component(
+            remote=remote,
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+            component=component,
+        )
+        download_file(
+            remote=remote,
+            remote_path=remote_xml_path,
+            local_path=str(paths.xml_path),
+        )
     paths.w4gl_path.write_text(encode_xml_file(str(paths.xml_path)))
 
 
@@ -398,14 +430,17 @@ def components_to_csv(components: list[ComponentInfo]) -> str:
 
 
 def app_list_command(args: argparse.Namespace) -> str:
-    """Reads remote OpenROAD applications and formats them for stdout."""
+    """Reads OpenROAD applications and formats them for stdout."""
 
     connection = resolve_openroad_connection(args, load_context(Path.cwd()))
-    applications = get_app_list(
-        remote=connection.remote_host,
-        vnode=connection.vnode,
-        database=connection.database,
-    )
+    if connection.backend == "local":
+        applications = local_get_app_list(connection.vnode, connection.database)
+    else:
+        applications = get_app_list(
+            remote=require_remote_host(connection),
+            vnode=connection.vnode,
+            database=connection.database,
+        )
 
     if cast(str, args.format) == "csv":
         return applications_to_csv(applications)
@@ -417,17 +452,31 @@ def component_list_command(args: argparse.Namespace) -> str:
     """Reads OpenROAD component metadata and formats it for stdout."""
 
     connection = resolve_openroad_connection(args, load_context(Path.cwd()))
-    components = get_component_list(
-        remote=connection.remote_host,
-        vnode=connection.vnode,
-        database=connection.database,
-        app=cast(str, args.app),
-    )
+    app = cast(str, args.app)
+    if connection.backend == "local":
+        components = local_get_component_list(
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+        )
+    else:
+        components = get_component_list(
+            remote=require_remote_host(connection),
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+        )
 
     if cast(str, args.format) == "csv":
         return components_to_csv(components)
 
     return components_to_json(components)
+
+
+def require_remote_host(connection: OpenRoadConnection) -> RemoteHost:
+    if connection.remote_host is None:
+        raise ProjectError("Remote host is required for remote OpenROAD backend")
+    return connection.remote_host
 
 
 def main(argv: Sequence[str] | None = None) -> None:

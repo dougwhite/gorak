@@ -291,6 +291,60 @@ class TestComponentExport:
         assert ex.value.code == 2
         assert "unrecognized arguments: --app --component" in capsys.readouterr().err
 
+    def test_exports_component_with_local_backend(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
+        (project_root / ".env").write_text(
+            "GORAK_BACKEND=local\n"
+            "GORAK_VNODE=project-vnode\n"
+            "GORAK_DATABASE=project-db\n"
+        )
+        monkeypatch.chdir(project_root)
+
+        def fake_local_backup_component(
+            vnode: str,
+            database: str,
+            app: str,
+            component: str,
+            output_path: Path,
+        ) -> str:
+            calls.append(
+                ("local_backup", vnode, database, app, component, output_path)
+            )
+            output_path.write_text(FIXTURE_PATH.read_text())
+            return str(output_path)
+
+        monkeypatch.setattr(
+            cli,
+            "local_backup_component",
+            fake_local_backup_component,
+        )
+
+        cli.main(["component", "export", "app", "component"])
+
+        xml_path = project_root / ".openroad" / "app" / "component.xml"
+        w4gl_path = project_root / "app" / "component.w4gl"
+        assert calls == [
+            (
+                "local_backup",
+                "project-vnode",
+                "project-db",
+                "app",
+                "component",
+                xml_path,
+            )
+        ]
+        assert xml_path.read_text() == FIXTURE_PATH.read_text()
+        assert "[framesource]" in w4gl_path.read_text()
+        assert capsys.readouterr().out == f"{w4gl_path}\n"
+
 
 class TestAppList:
     """Tests for the app list CLI command."""
@@ -426,7 +480,7 @@ class TestAppList:
         assert ex.value.code == 2
         assert "invalid choice" in capsys.readouterr().err
 
-    def test_requires_remote_flags(
+    def test_defaults_to_local_backend_and_requires_database_settings(
         self,
         monkeypatch: MonkeyPatch,
         tmp_path: Path,
@@ -448,6 +502,45 @@ class TestAppList:
         assert ex.value.code == 1
         assert "Missing OpenROAD connection settings" in capsys.readouterr().err
 
+    def test_defaults_to_local_backend(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        monkeypatch.chdir(tmp_path)
+        for key in [
+            "GORAK_BACKEND",
+            "GORAK_REMOTE_USER",
+            "GORAK_REMOTE_HOST",
+            "GORAK_REMOTE_ROOT",
+        ]:
+            monkeypatch.delenv(key, raising=False)
+
+        def fake_local_get_app_list(
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("local_get_app_list", vnode, database))
+            return []
+
+        monkeypatch.setattr(cli, "local_get_app_list", fake_local_get_app_list)
+
+        cli.main(
+            [
+                "app",
+                "list",
+                "--vnode",
+                "vnode",
+                "--database",
+                "db",
+            ]
+        )
+
+        assert calls == [("local_get_app_list", "vnode", "db")]
+        assert json.loads(capsys.readouterr().out) == []
+
     def test_reads_connection_settings_from_project_env(
         self,
         monkeypatch: MonkeyPatch,
@@ -460,7 +553,6 @@ class TestAppList:
         app_dir.mkdir(parents=True)
         (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
         (project_root / ".env").write_text(
-            "GORAK_BACKEND=remote\n"
             "GORAK_REMOTE_USER=project-user\n"
             "GORAK_REMOTE_HOST=project-host\n"
             "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
@@ -493,6 +585,40 @@ class TestAppList:
                 "project-db",
             )
         ]
+        assert json.loads(capsys.readouterr().out) == []
+
+    def test_explicit_local_backend_ignores_remote_env(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
+        (project_root / ".env").write_text(
+            "GORAK_BACKEND=local\n"
+            "GORAK_REMOTE_USER=project-user\n"
+            "GORAK_REMOTE_HOST=project-host\n"
+            "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
+            "GORAK_VNODE=project-vnode\n"
+            "GORAK_DATABASE=project-db\n"
+        )
+        monkeypatch.chdir(project_root)
+
+        def fake_local_get_app_list(
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("local_get_app_list", vnode, database))
+            return []
+
+        monkeypatch.setattr(cli, "local_get_app_list", fake_local_get_app_list)
+
+        cli.main(["app", "list"])
+
+        assert calls == [("local_get_app_list", "project-vnode", "project-db")]
         assert json.loads(capsys.readouterr().out) == []
 
     def test_flags_override_project_env(
@@ -583,14 +709,59 @@ class TestAppList:
         project_root = tmp_path / "my_project"
         project_root.mkdir()
         (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text("GORAK_BACKEND=local\n")
+        (project_root / ".env").write_text("GORAK_BACKEND=unsupported\n")
         monkeypatch.chdir(project_root)
 
         with pytest.raises(SystemExit) as ex:
             cli.main(["app", "list"])
 
         assert ex.value.code == 1
-        assert "OpenROAD backend is not implemented: local" in capsys.readouterr().err
+        assert "OpenROAD backend is not implemented: unsupported" in (
+            capsys.readouterr().err
+        )
+
+    def test_uses_local_backend_from_project_env(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
+        (project_root / ".env").write_text(
+            "GORAK_BACKEND=local\n"
+            "GORAK_VNODE=project-vnode\n"
+            "GORAK_DATABASE=project-db\n"
+        )
+        monkeypatch.chdir(project_root)
+
+        def fake_local_get_app_list(
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("local_get_app_list", vnode, database))
+            return [
+                Application(
+                    name="sample_app",
+                    start_component="fm_start",
+                    description="Example application",
+                )
+            ]
+
+        monkeypatch.setattr(cli, "local_get_app_list", fake_local_get_app_list)
+
+        cli.main(["app", "list"])
+
+        assert calls == [("local_get_app_list", "project-vnode", "project-db")]
+        assert json.loads(capsys.readouterr().out) == [
+            {
+                "name": "sample_app",
+                "start_component": "fm_start",
+                "description": "Example application",
+            }
+        ]
 
 
 class TestComponentList:
@@ -771,6 +942,58 @@ class TestComponentList:
 
         assert ex.value.code == 1
         assert "Missing OpenROAD connection settings" in capsys.readouterr().err
+
+    def test_uses_local_backend_from_project_env(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
+        (project_root / ".env").write_text(
+            "GORAK_BACKEND=local\n"
+            "GORAK_VNODE=project-vnode\n"
+            "GORAK_DATABASE=project-db\n"
+        )
+        monkeypatch.chdir(project_root)
+
+        def fake_local_get_component_list(
+            vnode: str,
+            database: str,
+            app: str,
+        ) -> list[ComponentInfo]:
+            calls.append(("local_get_component_list", vnode, database, app))
+            return [
+                ComponentInfo(
+                    application_name="sample_app",
+                    name="p4_start",
+                    type="proc4glsource",
+                    description="Startup procedure",
+                )
+            ]
+
+        monkeypatch.setattr(
+            cli,
+            "local_get_component_list",
+            fake_local_get_component_list,
+        )
+
+        cli.main(["component", "list", "sample_app"])
+
+        assert calls == [
+            ("local_get_component_list", "project-vnode", "project-db", "sample_app")
+        ]
+        assert json.loads(capsys.readouterr().out) == [
+            {
+                "application_name": "sample_app",
+                "name": "p4_start",
+                "type": "proc4glsource",
+                "description": "Startup procedure",
+            }
+        ]
 
 
 class TestEncodeCommand:
