@@ -2,22 +2,20 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from .domain import Application
+
 
 @dataclass(frozen=True)
 class RemoteHost:
     """A Windows OpenROAD host reachable over SSH."""
 
-    ssh_target: str
+    user: str
+    host: str
     gorak_root: str
 
-
-@dataclass(frozen=True)
-class RemoteApplication:
-    """Application metadata read from an OpenROAD source database."""
-
-    name: str
-    start_component: str
-    description: str
+    @property
+    def ssh_target(self) -> str:
+        return f"{self.user}@{self.host}"
 
 
 RunCommand = Callable[[list[str]], str]
@@ -103,10 +101,10 @@ def backup_component(
     return output.splitlines()[-1]
 
 
-def parse_app_list_output(output: str) -> list[RemoteApplication]:
+def parse_app_list_output(output: str) -> list[Application]:
     """Parse Ingres terminal monitor table output into applications."""
 
-    applications: list[RemoteApplication] = []
+    applications: list[Application] = []
 
     for line in output.splitlines():
         stripped = line.strip()
@@ -118,7 +116,7 @@ def parse_app_list_output(output: str) -> list[RemoteApplication]:
             continue
 
         applications.append(
-            RemoteApplication(
+            Application(
                 name=cells[0],
                 start_component=cells[1],
                 description=cells[2],
@@ -133,7 +131,7 @@ def get_app_list(
     vnode: str,
     database: str,
     run_cmd: RunCommand = run_subprocess,
-) -> list[RemoteApplication]:
+) -> list[Application]:
     """Read OpenROAD application metadata from the remote source database."""
 
     command = build_remote_command(

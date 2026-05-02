@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from dotenv import dotenv_values
-from pytest import CaptureFixture
+from pytest import CaptureFixture, MonkeyPatch
 
 from gorak.project import (
     GorakProject,
@@ -12,6 +12,7 @@ from gorak.project import (
     configure_remote,
     create_project,
     find_project_root,
+    load_context,
     load_project,
 )
 
@@ -107,6 +108,13 @@ def test_find_project_root_errors_outside_project(tmp_path: Path) -> None:
         find_project_root(tmp_path)
 
 
+def test_load_context_is_empty_outside_project(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("GORAK_VNODE=ignored-vnode\n")
+
+    assert load_context(tmp_path).project is None
+    assert load_context(tmp_path).env == {}
+
+
 def test_load_project_reads_manifest(tmp_path: Path) -> None:
     root = tmp_path / "my_project"
     root.mkdir()
@@ -124,6 +132,29 @@ def test_load_project_reads_manifest(tmp_path: Path) -> None:
     )
 
     assert load_project(root) == GorakProject(root=root, name="Custom Name")
+
+
+def test_load_context_reads_project_env(tmp_path: Path) -> None:
+    project = create_project(tmp_path / "my_project", run_cmd=lambda command, cwd: None)
+    (project.root / ".env").write_text("GORAK_VNODE=project-vnode\n")
+
+    context = load_context(project.root / "my_project")
+
+    assert context.project == project
+    assert context.env["GORAK_VNODE"] == "project-vnode"
+
+
+def test_load_context_process_env_overrides_project_env(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    project = create_project(tmp_path / "my_project", run_cmd=lambda command, cwd: None)
+    (project.root / ".env").write_text("GORAK_VNODE=project-vnode\n")
+    monkeypatch.setenv("GORAK_VNODE", "process-vnode")
+
+    context = load_context(project.root)
+
+    assert context.env["GORAK_VNODE"] == "process-vnode"
 
 
 def test_configure_remote_creates_env_file(tmp_path: Path) -> None:

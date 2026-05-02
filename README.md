@@ -29,7 +29,7 @@ uv run gorak --help
 
 Subcommands also provide their own help, for example:
 ```
-uv run gorak remote export-component --help
+uv run gorak component export --help
 ```
 
 ### Encoding an OpenROAD XML export
@@ -76,13 +76,14 @@ uv run gorak config remote \
 
 This writes the settings to `.env`, which is local-only and ignored by git.
 
-### Listing remote OpenROAD applications
+### Listing OpenROAD applications
 
 You can ask a Windows OpenROAD development host to list applications in a source
 database:
 ```
-uv run gorak remote get-app-list \
-  --ssh-target user@WINDOWS-PC \
+uv run gorak app list \
+  --user test \
+  --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
   --vnode myvnode \
   --database exampledb
@@ -90,21 +91,23 @@ uv run gorak remote get-app-list \
 
 The default output is JSON. CSV is also available:
 ```
-uv run gorak remote get-app-list \
-  --ssh-target user@WINDOWS-PC \
+uv run gorak app list \
+  --user test \
+  --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
   --vnode myvnode \
   --database exampledb \
   --format csv
 ```
 
-### Exporting a remote component XML file
+### Exporting a component XML file
 
 You can ask a Windows OpenROAD development host to export one component, then
 download the generated XML locally over SCP:
 ```
-uv run gorak remote export-component \
-  --ssh-target user@WINDOWS-PC \
+uv run gorak component export \
+  --user test \
+  --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
   --vnode vnode \
   --database database \

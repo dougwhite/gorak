@@ -3,8 +3,8 @@ import subprocess
 import pytest
 from pytest import MonkeyPatch
 
+from gorak.domain import Application
 from gorak.remote import (
-    RemoteApplication,
     RemoteCommandError,
     RemoteHost,
     backup_component,
@@ -18,7 +18,8 @@ from gorak.remote import (
 )
 
 REMOTE_HOST = RemoteHost(
-    ssh_target="test@WINDOWS-PC",
+    user="test",
+    host="WINDOWS-PC",
     gorak_root=r"c:\Development\gorak",
 )
 
@@ -48,6 +49,9 @@ Your SQL statement(s) have been committed.
 
 class TestBuildRemoteCommand:
     """Tests for the build_remote_command() function"""
+
+    def test_remote_host_derives_ssh_target(self) -> None:
+        assert REMOTE_HOST.ssh_target == "test@WINDOWS-PC"
 
     def test_returns_an_ssh_command_for_calling_a_gorak_script(self) -> None:
         command = build_remote_command(
@@ -211,22 +215,22 @@ class TestParseAppListOutput:
 
     def test_parses_application_rows_from_terminal_monitor_output(self) -> None:
         assert parse_app_list_output(APP_LIST_OUTPUT) == [
-            RemoteApplication(
+            Application(
                 name="sample_app",
                 start_component="",
                 description="Example application",
             ),
-            RemoteApplication(
+            Application(
                 name="orders_app",
                 start_component="fm_order_entry",
                 description="Order entry screens",
             ),
-            RemoteApplication(
+            Application(
                 name="shared_library",
                 start_component="",
                 description="Shared utility components",
             ),
-            RemoteApplication(name="empty_shell", start_component="", description=""),
+            Application(name="empty_shell", start_component="", description=""),
         ]
 
 
@@ -247,7 +251,7 @@ class TestGetAppList:
             run_cmd=fake_run,
         )
 
-        assert result[0] == RemoteApplication(
+        assert result[0] == Application(
             name="sample_app",
             start_component="",
             description="Example application",

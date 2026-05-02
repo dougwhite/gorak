@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -6,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from dotenv import set_key
+from dotenv import dotenv_values, set_key
 
 PROJECT_MANIFEST = "gorak.json"
 DEFAULT_VERSION = "0.1.0"
@@ -46,6 +47,12 @@ class ProjectError(RuntimeError):
 class GorakProject:
     root: Path
     name: str
+
+
+@dataclass(frozen=True)
+class GorakContext:
+    project: GorakProject | None
+    env: dict[str, str]
 
 
 def create_project(path: Path, run_cmd: RunCommand | None = None) -> GorakProject:
@@ -90,12 +97,40 @@ def find_project_root(start: Path) -> Path:
     raise ProjectError(f"No gorak project found from: {start}")
 
 
+def find_project_root_or_none(start: Path) -> Path | None:
+    try:
+        return find_project_root(start)
+    except ProjectError:
+        return None
+
+
 def load_project(start: Path) -> GorakProject:
     root = find_project_root(start)
     manifest = read_json(root / PROJECT_MANIFEST)
     name = cast(str, manifest["name"])
 
     return GorakProject(root=root, name=name)
+
+
+def load_context(start: Path) -> GorakContext:
+    """Load project and local environment context for a path."""
+
+    root = find_project_root_or_none(start)
+    if root is None:
+        return GorakContext(project=None, env={})
+
+    project = load_project(root)
+    env = read_project_env(root)
+    env.update(
+        {key: value for key, value in os.environ.items() if key.startswith("GORAK_")}
+    )
+
+    return GorakContext(project=project, env=env)
+
+
+def read_project_env(root: Path) -> dict[str, str]:
+    values = dotenv_values(root / ".env")
+    return {key: value for key, value in values.items() if value is not None}
 
 
 def write_project_skeleton(root: Path, name: str) -> None:

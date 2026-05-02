@@ -4,21 +4,36 @@ import io
 import json
 import sys
 from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 
 from lxml import etree
 
+from .domain import Application
 from .parser import encode_w4gl, parse_xml
-from .project import configure_remote, create_project, load_project
+from .project import (
+    GorakContext,
+    ProjectError,
+    configure_remote,
+    create_project,
+    load_context,
+    load_project,
+)
 from .remote import (
-    RemoteApplication,
     RemoteHost,
     backup_component,
     download_file,
     get_app_list,
 )
+
+
+@dataclass(frozen=True)
+class OpenRoadConnection:
+    backend: str
+    vnode: str
+    database: str
+    remote_host: RemoteHost
 
 
 def encode_xml_file(xml_path: str) -> str:
@@ -52,34 +67,45 @@ def build_parser() -> argparse.ArgumentParser:
     encode_parser.add_argument("xml_file")
     encode_parser.add_argument("--output")
 
-    remote_parser = subparsers.add_parser("remote")
-    remote_subparsers = remote_parser.add_subparsers(dest="remote_command")
+    app_parser = subparsers.add_parser("app")
+    app_subparsers = app_parser.add_subparsers(dest="app_command")
 
-    export_component = remote_subparsers.add_parser("export-component")
-    export_component.add_argument("--ssh-target", required=True)
-    export_component.add_argument("--gorak-root", required=True)
-    export_component.add_argument("--vnode", required=True)
-    export_component.add_argument("--database", required=True)
-    export_component.add_argument("--app", required=True)
-    export_component.add_argument("--component", required=True)
-    export_component.add_argument("--output", required=True)
-
-    get_app_list_parser = remote_subparsers.add_parser("get-app-list")
-    get_app_list_parser.add_argument("--ssh-target", required=True)
-    get_app_list_parser.add_argument("--gorak-root", required=True)
-    get_app_list_parser.add_argument("--vnode", required=True)
-    get_app_list_parser.add_argument("--database", required=True)
-    get_app_list_parser.add_argument(
+    app_list = app_subparsers.add_parser("list")
+    add_openroad_connection_args(app_list)
+    app_list.add_argument(
         "--format",
         choices=["json", "csv"],
         default="json",
     )
 
+    component_parser = subparsers.add_parser("component")
+    component_subparsers = component_parser.add_subparsers(dest="component_command")
+
+    export_component = component_subparsers.add_parser("export")
+    add_openroad_connection_args(export_component)
+    export_component.add_argument("--app", required=True)
+    export_component.add_argument("--component", required=True)
+    export_component.add_argument("--output", required=True)
+
     return parser
+
+
+def add_openroad_connection_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--user")
+    parser.add_argument("--host")
+    parser.add_argument("--gorak-root")
+    parser.add_argument("--vnode")
+    parser.add_argument("--database")
 
 
 def new_command(args: argparse.Namespace) -> str:
     """Creates a new gorak project."""
+
+    context = load_context(Path.cwd())
+    if context.project is not None:
+        raise ProjectError(
+            f"Cannot create a gorak project inside existing project: {context.project.root}"
+        )
 
     name = cast(str, args.name)
     project = create_project(Path(name))
@@ -115,35 +141,89 @@ def config_remote_command(args: argparse.Namespace) -> str:
     return str(env_path)
 
 
-def export_remote_component(args: argparse.Namespace) -> str:
+def resolve_openroad_connection(
+    args: argparse.Namespace, context: GorakContext
+) -> OpenRoadConnection:
+    env = context.env
+    backend = env_value(args, "backend", env, "GORAK_BACKEND") or "remote"
+    if backend != "remote":
+        raise ProjectError(f"OpenROAD backend is not implemented: {backend}")
+
+    values = {
+        "user": env_value(args, "user", env, "GORAK_REMOTE_USER"),
+        "host": env_value(args, "host", env, "GORAK_REMOTE_HOST"),
+        "gorak_root": env_value(args, "gorak_root", env, "GORAK_REMOTE_ROOT"),
+        "vnode": env_value(args, "vnode", env, "GORAK_VNODE"),
+        "database": env_value(args, "database", env, "GORAK_DATABASE"),
+    }
+    missing = [key for key, value in values.items() if value is None]
+    if missing:
+        raise ProjectError(
+            "Missing OpenROAD connection settings: "
+            + ", ".join(connection_hint(key) for key in missing)
+        )
+
+    return OpenRoadConnection(
+        backend=backend,
+        vnode=cast(str, values["vnode"]),
+        database=cast(str, values["database"]),
+        remote_host=RemoteHost(
+            user=cast(str, values["user"]),
+            host=cast(str, values["host"]),
+            gorak_root=cast(str, values["gorak_root"]),
+        ),
+    )
+
+
+def env_value(
+    args: argparse.Namespace,
+    arg_name: str,
+    env: dict[str, str],
+    env_name: str,
+) -> str | None:
+    value = getattr(args, arg_name, None)
+    if value:
+        return cast(str, value)
+    return env.get(env_name)
+
+
+def connection_hint(key: str) -> str:
+    hints = {
+        "user": "--user/GORAK_REMOTE_USER",
+        "host": "--host/GORAK_REMOTE_HOST",
+        "gorak_root": "--gorak-root/GORAK_REMOTE_ROOT",
+        "vnode": "--vnode/GORAK_VNODE",
+        "database": "--database/GORAK_DATABASE",
+    }
+    return hints[key]
+
+
+def export_component_command(args: argparse.Namespace) -> str:
     """Exports a remote OpenROAD component XML file and downloads it locally."""
 
-    remote = RemoteHost(
-        ssh_target=args.ssh_target,
-        gorak_root=args.gorak_root,
-    )
+    connection = resolve_openroad_connection(args, load_context(Path.cwd()))
     remote_xml_path = backup_component(
-        remote=remote,
-        vnode=args.vnode,
-        database=args.database,
+        remote=connection.remote_host,
+        vnode=connection.vnode,
+        database=connection.database,
         app=args.app,
         component=args.component,
     )
     return download_file(
-        remote=remote,
+        remote=connection.remote_host,
         remote_path=remote_xml_path,
         local_path=args.output,
     )
 
 
-def remote_applications_to_json(applications: list[RemoteApplication]) -> str:
-    """Format remote applications as JSON."""
+def applications_to_json(applications: list[Application]) -> str:
+    """Format applications as JSON."""
 
     return json.dumps([asdict(app) for app in applications], indent=2)
 
 
-def remote_applications_to_csv(applications: list[RemoteApplication]) -> str:
-    """Format remote applications as CSV."""
+def applications_to_csv(applications: list[Application]) -> str:
+    """Format applications as CSV."""
 
     output = io.StringIO()
     writer = csv.DictWriter(
@@ -157,23 +237,20 @@ def remote_applications_to_csv(applications: list[RemoteApplication]) -> str:
     return output.getvalue().rstrip("\n")
 
 
-def get_remote_app_list(args: argparse.Namespace) -> str:
+def app_list_command(args: argparse.Namespace) -> str:
     """Reads remote OpenROAD applications and formats them for stdout."""
 
-    remote = RemoteHost(
-        ssh_target=args.ssh_target,
-        gorak_root=args.gorak_root,
-    )
+    connection = resolve_openroad_connection(args, load_context(Path.cwd()))
     applications = get_app_list(
-        remote=remote,
-        vnode=args.vnode,
-        database=args.database,
+        remote=connection.remote_host,
+        vnode=connection.vnode,
+        database=connection.database,
     )
 
     if cast(str, args.format) == "csv":
-        return remote_applications_to_csv(applications)
+        return applications_to_csv(applications)
 
-    return remote_applications_to_json(applications)
+    return applications_to_json(applications)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -182,25 +259,29 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     parsed = parser.parse_args(args)
 
-    if parsed.command == "new":
-        print(new_command(parsed))
-        return
+    try:
+        if parsed.command == "new":
+            print(new_command(parsed))
+            return
 
-    if parsed.command == "config" and parsed.config_command == "remote":
-        print(config_remote_command(parsed))
-        return
+        if parsed.command == "config" and parsed.config_command == "remote":
+            print(config_remote_command(parsed))
+            return
 
-    if parsed.command == "encode":
-        print(encode_command(parsed))
-        return
+        if parsed.command == "encode":
+            print(encode_command(parsed))
+            return
 
-    if parsed.command == "remote" and parsed.remote_command == "export-component":
-        print(export_remote_component(parsed))
-        return
+        if parsed.command == "app" and parsed.app_command == "list":
+            print(app_list_command(parsed))
+            return
 
-    if parsed.command == "remote" and parsed.remote_command == "get-app-list":
-        print(get_remote_app_list(parsed))
-        return
+        if parsed.command == "component" and parsed.component_command == "export":
+            print(export_component_command(parsed))
+            return
+    except ProjectError as ex:
+        print(f"ERROR: {ex}", file=sys.stderr)
+        raise SystemExit(1) from ex
 
     parser.print_help()
     raise SystemExit(1)
