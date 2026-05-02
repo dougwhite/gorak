@@ -52,7 +52,11 @@ class GorakContext:
     env: dict[str, str]
 
 
-def create_project(path: Path, run_cmd: RunCommand | None = None) -> GorakProject:
+def create_project(
+    path: Path,
+    run_cmd: RunCommand | None = None,
+    init_repo: bool = True,
+) -> GorakProject:
     root = path.resolve()
     manifest_path = root / PROJECT_MANIFEST
 
@@ -64,7 +68,8 @@ def create_project(path: Path, run_cmd: RunCommand | None = None) -> GorakProjec
 
     root.mkdir(parents=True, exist_ok=True)
     write_project_skeleton(root, root.name)
-    init_git(root, run_cmd or run_subprocess)
+    if init_repo:
+        init_git(root, run_cmd or run_subprocess)
 
     return load_project(root)
 

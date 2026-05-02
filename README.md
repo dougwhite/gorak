@@ -51,6 +51,12 @@ Create a new Gorak project folder with:
 uv run gorak new my_project
 ```
 
+By default this also runs `git init` in the new project. For a temporary project
+without its own git repository, use:
+```
+uv run gorak new --nogit my_project
+```
+
 This creates `my_project/gorak.json` and a starter application folder:
 ```
 my_project/

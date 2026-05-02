@@ -68,6 +68,22 @@ def test_create_project_warns_when_git_init_fails(
     assert "WARNING: git init failed" in capsys.readouterr().err
 
 
+def test_create_project_can_skip_git_init(tmp_path: Path) -> None:
+    calls: list[tuple[list[str], Path]] = []
+
+    def fake_run(command: list[str], cwd: Path) -> None:
+        calls.append((command, cwd))
+
+    project = create_project(
+        tmp_path / "my_project",
+        run_cmd=fake_run,
+        init_repo=False,
+    )
+
+    assert (project.root / "gorak.json").is_file()
+    assert calls == []
+
+
 def test_create_project_allows_existing_empty_directory(tmp_path: Path) -> None:
     root = tmp_path / "my_project"
     root.mkdir()

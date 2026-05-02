@@ -69,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     new_parser = subparsers.add_parser("new")
+    new_parser.add_argument("--nogit", action="store_true")
     new_parser.add_argument("name")
 
     config_parser = subparsers.add_parser("config")
@@ -151,7 +152,7 @@ def new_command(args: argparse.Namespace) -> str:
         )
 
     name = cast(str, args.name)
-    project = create_project(Path(name))
+    project = create_project(Path(name), init_repo=not cast(bool, args.nogit))
     return str(project.root)
 
 

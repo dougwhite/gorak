@@ -1323,11 +1323,14 @@ class TestNewCommand:
         tmp_path: Path,
         capsys: CaptureFixture[str],
     ) -> None:
-        calls: list[Path] = []
+        calls: list[object] = []
         monkeypatch.chdir(tmp_path)
 
-        def fake_create_project(path: Path) -> GorakProject:
-            calls.append(path)
+        def fake_create_project(
+            path: Path,
+            init_repo: bool = True,
+        ) -> GorakProject:
+            calls.append((path, init_repo))
             return GorakProject(
                 root=tmp_path / "my_project",
                 name="my_project",
@@ -1337,7 +1340,33 @@ class TestNewCommand:
 
         cli.main(["new", "my_project"])
 
-        assert calls == [Path("my_project")]
+        assert calls == [(Path("my_project"), True)]
+        assert capsys.readouterr().out == f"{tmp_path / 'my_project'}\n"
+
+    def test_creates_project_without_git_when_requested(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        monkeypatch.chdir(tmp_path)
+
+        def fake_create_project(
+            path: Path,
+            init_repo: bool = True,
+        ) -> GorakProject:
+            calls.append((path, init_repo))
+            return GorakProject(
+                root=tmp_path / "my_project",
+                name="my_project",
+            )
+
+        monkeypatch.setattr(cli, "create_project", fake_create_project)
+
+        cli.main(["new", "--nogit", "my_project"])
+
+        assert calls == [(Path("my_project"), False)]
         assert capsys.readouterr().out == f"{tmp_path / 'my_project'}\n"
 
     def test_requires_project_name(self, capsys: CaptureFixture[str]) -> None:
