@@ -396,8 +396,11 @@ def app_export_command(args: argparse.Namespace) -> str:
         if context.project is not None
         else Path(cast(str, output_path))
     )
+    print(f"Exporting application {app} from {connection_source(connection)}")
+    print("Retrieving component list")
     components = read_components(connection, app)
     for component in components:
+        print(f"Exporting component {app}::{component.name}")
         export_component_to_paths(
             connection=connection,
             app=app,
@@ -405,10 +408,7 @@ def app_export_command(args: argparse.Namespace) -> str:
             paths=resolve_component_export_paths(root, app, component.name),
         )
 
-    return (
-        f"Exported {len(components)} {component_label(len(components))} "
-        f"to {root / app}"
-    )
+    return "Export complete"
 
 
 def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentInfo]:
@@ -427,8 +427,10 @@ def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentI
     )
 
 
-def component_label(count: int) -> str:
-    return "component" if count == 1 else "components"
+def connection_source(connection: OpenRoadConnection) -> str:
+    if connection.backend == "local":
+        return "local"
+    return f"remote host {require_remote_host(connection).ssh_target}"
 
 
 def resolve_project_component_export_paths(

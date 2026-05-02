@@ -104,7 +104,11 @@ class TestAppExport:
         assert "[framesource]" in first_w4gl.read_text()
         assert "[framesource]" in second_w4gl.read_text()
         assert capsys.readouterr().out == (
-            f"Exported 2 components to {project_root / 'sample_app'}\n"
+            "Exporting application sample_app from local\n"
+            "Retrieving component list\n"
+            "Exporting component sample_app::first_component\n"
+            "Exporting component sample_app::second_component\n"
+            "Export complete\n"
         )
 
     def test_exports_application_to_output_folder_outside_project(
@@ -177,7 +181,10 @@ class TestAppExport:
         assert xml_path.read_text() == FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (
-            f"Exported 1 component to {output_dir / 'sample_app'}\n"
+            "Exporting application sample_app from local\n"
+            "Retrieving component list\n"
+            "Exporting component sample_app::first_component\n"
+            "Export complete\n"
         )
 
     def test_requires_output_folder_outside_project(
@@ -224,7 +231,9 @@ class TestAppExport:
         cli.main(["app", "export", "sample_app"])
 
         assert capsys.readouterr().out == (
-            f"Exported 0 components to {project_root / 'sample_app'}\n"
+            "Exporting application sample_app from local\n"
+            "Retrieving component list\n"
+            "Export complete\n"
         )
 
     def test_exports_application_with_remote_backend(
@@ -314,7 +323,10 @@ class TestAppExport:
         ]
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (
-            f"Exported 1 component to {project_root / 'sample_app'}\n"
+            "Exporting application sample_app from remote host project-user@project-host\n"
+            "Retrieving component list\n"
+            "Exporting component sample_app::first_component\n"
+            "Export complete\n"
         )
 
 
