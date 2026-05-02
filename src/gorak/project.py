@@ -1,11 +1,25 @@
 import json
+import subprocess
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from dotenv import set_key
+
 PROJECT_MANIFEST = "gorak.json"
 DEFAULT_VERSION = "0.1.0"
 DEFAULT_STARTING_COMPONENT = "p4_init"
+RunCommand = Callable[[list[str], Path], None]
+
+ENV_EXAMPLE = """GORAK_BACKEND=remote
+GORAK_REMOTE_HOST=windows-pc
+GORAK_REMOTE_USER=test
+GORAK_REMOTE_ROOT=C:\\Development\\gorak
+GORAK_VNODE=myvnode
+GORAK_DATABASE=exampledb
+"""
 
 DEFAULT_P4_INIT = """[proc4glsource]
 datatype = "integer"
@@ -34,7 +48,7 @@ class GorakProject:
     name: str
 
 
-def create_project(path: Path) -> GorakProject:
+def create_project(path: Path, run_cmd: RunCommand | None = None) -> GorakProject:
     root = path.resolve()
     manifest_path = root / PROJECT_MANIFEST
 
@@ -46,8 +60,22 @@ def create_project(path: Path) -> GorakProject:
 
     root.mkdir(parents=True, exist_ok=True)
     write_project_skeleton(root, root.name)
+    init_git(root, run_cmd or run_subprocess)
 
     return load_project(root)
+
+
+def run_subprocess(command: list[str], cwd: Path) -> None:
+    subprocess.run(command, cwd=cwd, check=True)
+
+
+def init_git(root: Path, run_cmd: RunCommand) -> None:
+    try:
+        run_cmd(["git", "init"], root)
+    except subprocess.CalledProcessError as ex:
+        print(
+            f"WARNING: git init failed with exit code {ex.returncode}", file=sys.stderr
+        )
 
 
 def find_project_root(start: Path) -> Path:
@@ -93,6 +121,8 @@ def write_project_skeleton(root: Path, name: str) -> None:
         },
     )
     (app_dir / f"{DEFAULT_STARTING_COMPONENT}.w4gl").write_text(DEFAULT_P4_INIT)
+    (root / ".env.example").write_text(ENV_EXAMPLE)
+    (root / ".gitignore").write_text(".env\n.openroad/\n")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -101,3 +131,29 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=4) + "\n")
+
+
+def configure_remote(
+    project: GorakProject,
+    host: str,
+    user: str,
+    gorak_root: str,
+    vnode: str,
+    database: str,
+) -> Path:
+    env_path = project.root / ".env"
+    env_path.touch(exist_ok=True)
+
+    values = {
+        "GORAK_BACKEND": "remote",
+        "GORAK_REMOTE_HOST": host,
+        "GORAK_REMOTE_USER": user,
+        "GORAK_REMOTE_ROOT": gorak_root,
+        "GORAK_VNODE": vnode,
+        "GORAK_DATABASE": database,
+    }
+
+    for key, value in values.items():
+        set_key(env_path, key, value)
+
+    return env_path

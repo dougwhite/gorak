@@ -7,7 +7,7 @@ from typing import cast
 from lxml import etree
 
 from .parser import encode_w4gl, parse_xml
-from .project import create_project
+from .project import configure_remote, create_project, load_project
 from .remote import RemoteHost, backup_component, download_file
 
 
@@ -27,6 +27,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     new_parser = subparsers.add_parser("new")
     new_parser.add_argument("name")
+
+    config_parser = subparsers.add_parser("config")
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+
+    remote_config = config_subparsers.add_parser("remote")
+    remote_config.add_argument("--host", required=True)
+    remote_config.add_argument("--user", required=True)
+    remote_config.add_argument("--gorak-root", required=True)
+    remote_config.add_argument("--vnode", required=True)
+    remote_config.add_argument("--database", required=True)
 
     encode_parser = subparsers.add_parser("encode")
     encode_parser.add_argument("xml_file")
@@ -69,6 +79,21 @@ def encode_command(args: argparse.Namespace) -> str:
     return output_path
 
 
+def config_remote_command(args: argparse.Namespace) -> str:
+    """Configures remote OpenROAD access for the current project."""
+
+    project = load_project(Path.cwd())
+    env_path = configure_remote(
+        project=project,
+        host=cast(str, args.host),
+        user=cast(str, args.user),
+        gorak_root=cast(str, args.gorak_root),
+        vnode=cast(str, args.vnode),
+        database=cast(str, args.database),
+    )
+    return str(env_path)
+
+
 def export_remote_component(args: argparse.Namespace) -> str:
     """Exports a remote OpenROAD component XML file and downloads it locally."""
 
@@ -98,6 +123,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if parsed.command == "new":
         print(new_command(parsed))
+        return
+
+    if parsed.command == "config" and parsed.config_command == "remote":
+        print(config_remote_command(parsed))
         return
 
     if parsed.command == "encode":

@@ -54,11 +54,27 @@ uv run gorak new my_project
 This creates `my_project/gorak.json` and a starter application folder:
 ```
 my_project/
+├── .env.example
+├── .gitignore
 ├── gorak.json
 └── my_project
     ├── app.json
     └── p4_init.w4gl
 ```
+
+### Configuring remote OpenROAD access
+
+From inside a Gorak project, configure local remote access settings with:
+```
+uv run gorak config remote \
+  --host windows-pc \
+  --user test \
+  --gorak-root 'C:\Development\gorak' \
+  --vnode myvnode \
+  --database exampledb
+```
+
+This writes the settings to `.env`, which is local-only and ignored by git.
 
 ### Exporting a remote component XML file
 
