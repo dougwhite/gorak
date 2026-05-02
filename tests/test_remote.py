@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 from pytest import MonkeyPatch
@@ -9,10 +10,13 @@ from gorak.remote import (
     RemoteHost,
     backup_component,
     build_download_command,
+    build_make_remote_dir_command,
     build_remote_command,
+    build_upload_command,
     download_file,
     get_app_list,
     get_component_list,
+    install_remote_helpers,
     parse_app_list_output,
     parse_component_list_output,
     run_subprocess,
@@ -113,6 +117,37 @@ class TestBuildDownloadCommand:
         ]
 
 
+class TestBuildUploadCommand:
+    """Tests for the build_upload_command() function."""
+
+    def test_returns_an_scp_command_for_uploading_a_remote_file(self) -> None:
+        command = build_upload_command(
+            remote=REMOTE_HOST,
+            local_path="src/gorak/remote_scripts/backup-component.bat",
+            remote_path=r"c:\Development\gorak\backup-component.bat",
+        )
+
+        assert command == [
+            "scp",
+            "src/gorak/remote_scripts/backup-component.bat",
+            "test@WINDOWS-PC:/c:/Development/gorak/backup-component.bat",
+        ]
+
+
+class TestBuildMakeRemoteDirCommand:
+    """Tests for the build_make_remote_dir_command() function."""
+
+    def test_returns_an_ssh_command_for_creating_the_remote_root(self) -> None:
+        command = build_make_remote_dir_command(REMOTE_HOST)
+
+        assert command == [
+            "ssh",
+            "-T",
+            "test@WINDOWS-PC",
+            r'if not exist "c:\Development\gorak" mkdir "c:\Development\gorak"',
+        ]
+
+
 class TestWindowsPathToScpPath:
     """Tests for the windows_path_to_scp_path() function"""
 
@@ -148,6 +183,58 @@ class TestDownloadFile:
                 "test@WINDOWS-PC:/C:/Development/gorak/repos/vnode/db/app/component.xml",
                 "component.xml",
             ]
+        ]
+
+
+class TestInstallRemoteHelpers:
+    """Tests for installing Windows helper files to a remote gorak root."""
+
+    def test_installs_each_helper_file_to_the_remote_root(self, tmp_path: Path) -> None:
+        source_dir = tmp_path / "remote_scripts"
+        source_dir.mkdir()
+        (source_dir / "README.md").write_text("docs")
+        (source_dir / "backup-component.bat").write_text("@echo off")
+        (source_dir / "applist.sql").write_text("select 1")
+        (source_dir / "ignored").mkdir()
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return ""
+
+        result = install_remote_helpers(
+            remote=REMOTE_HOST,
+            helper_files=[
+                source_dir / "README.md",
+                source_dir / "backup-component.bat",
+                source_dir / "applist.sql",
+            ],
+            run_cmd=fake_run,
+        )
+
+        assert result == ["README.md", "applist.sql", "backup-component.bat"]
+        assert calls == [
+            [
+                "ssh",
+                "-T",
+                "test@WINDOWS-PC",
+                r'if not exist "c:\Development\gorak" mkdir "c:\Development\gorak"',
+            ],
+            [
+                "scp",
+                str(source_dir / "README.md"),
+                "test@WINDOWS-PC:/c:/Development/gorak/README.md",
+            ],
+            [
+                "scp",
+                str(source_dir / "applist.sql"),
+                "test@WINDOWS-PC:/c:/Development/gorak/applist.sql",
+            ],
+            [
+                "scp",
+                str(source_dir / "backup-component.bat"),
+                "test@WINDOWS-PC:/c:/Development/gorak/backup-component.bat",
+            ],
         ]
 
 

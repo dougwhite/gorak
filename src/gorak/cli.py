@@ -5,7 +5,10 @@ import json
 import sys
 import tempfile
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass
+from importlib.resources import as_file, files
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import cast
 
@@ -27,7 +30,10 @@ from .remote import (
     download_file,
     get_app_list,
     get_component_list,
+    install_remote_helpers,
 )
+
+REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
     encode_parser.add_argument("xml_file")
     encode_parser.add_argument("--output")
 
+    remote_parser = subparsers.add_parser("remote")
+    remote_subparsers = remote_parser.add_subparsers(dest="remote_command")
+
+    remote_install = remote_subparsers.add_parser("install")
+    add_remote_host_args(remote_install)
+
     app_parser = subparsers.add_parser("app")
     app_subparsers = app_parser.add_subparsers(dest="app_command")
 
@@ -108,11 +120,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_openroad_connection_args(parser: argparse.ArgumentParser) -> None:
+    add_remote_host_args(parser)
+    parser.add_argument("--vnode")
+    parser.add_argument("--database")
+
+
+def add_remote_host_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--user")
     parser.add_argument("--host")
     parser.add_argument("--gorak-root")
-    parser.add_argument("--vnode")
-    parser.add_argument("--database")
 
 
 def new_command(args: argparse.Namespace) -> str:
@@ -158,6 +174,40 @@ def config_remote_command(args: argparse.Namespace) -> str:
     return str(env_path)
 
 
+def remote_install_command(args: argparse.Namespace) -> str:
+    """Installs Windows SSH helper files to the remote gorak root."""
+
+    remote = resolve_remote_host(args, load_context(Path.cwd()))
+    copied = install_packaged_remote_helpers(remote)
+    file_label = "file" if len(copied) == 1 else "files"
+    return (
+        f"Installed {len(copied)} {file_label} "
+        f"to {remote.ssh_target}:{remote.gorak_root}"
+    )
+
+
+def install_packaged_remote_helpers(remote: RemoteHost) -> list[str]:
+    """Installs packaged Windows SSH helper files to the remote host."""
+
+    with ExitStack() as stack:
+        helper_files = [
+            stack.enter_context(as_file(resource))
+            for resource in remote_script_resources()
+        ]
+        return install_remote_helpers(remote, helper_files)
+
+
+def remote_script_resources() -> list[Traversable]:
+    return sorted(
+        (
+            resource
+            for resource in files(REMOTE_SCRIPT_PACKAGE).iterdir()
+            if resource.is_file() and resource.name != "__init__.py"
+        ),
+        key=lambda resource: resource.name,
+    )
+
+
 def resolve_openroad_connection(
     args: argparse.Namespace, context: GorakContext
 ) -> OpenRoadConnection:
@@ -166,13 +216,12 @@ def resolve_openroad_connection(
     if backend != "remote":
         raise ProjectError(f"OpenROAD backend is not implemented: {backend}")
 
-    values = {
-        "user": env_value(args, "user", env, "GORAK_REMOTE_USER"),
-        "host": env_value(args, "host", env, "GORAK_REMOTE_HOST"),
-        "gorak_root": env_value(args, "gorak_root", env, "GORAK_REMOTE_ROOT"),
+    remote_values = remote_host_values(args, env)
+    openroad_values = {
         "vnode": env_value(args, "vnode", env, "GORAK_VNODE"),
         "database": env_value(args, "database", env, "GORAK_DATABASE"),
     }
+    values = {**remote_values, **openroad_values}
     missing = [key for key, value in values.items() if value is None]
     if missing:
         raise ProjectError(
@@ -182,14 +231,41 @@ def resolve_openroad_connection(
 
     return OpenRoadConnection(
         backend=backend,
-        vnode=cast(str, values["vnode"]),
-        database=cast(str, values["database"]),
+        vnode=cast(str, openroad_values["vnode"]),
+        database=cast(str, openroad_values["database"]),
         remote_host=RemoteHost(
-            user=cast(str, values["user"]),
-            host=cast(str, values["host"]),
-            gorak_root=cast(str, values["gorak_root"]),
+            user=cast(str, remote_values["user"]),
+            host=cast(str, remote_values["host"]),
+            gorak_root=cast(str, remote_values["gorak_root"]),
         ),
     )
+
+
+def resolve_remote_host(args: argparse.Namespace, context: GorakContext) -> RemoteHost:
+    values = remote_host_values(args, context.env)
+    missing = [key for key, value in values.items() if value is None]
+    if missing:
+        raise ProjectError(
+            "Missing remote settings: "
+            + ", ".join(connection_hint(key) for key in missing)
+        )
+
+    return RemoteHost(
+        user=cast(str, values["user"]),
+        host=cast(str, values["host"]),
+        gorak_root=cast(str, values["gorak_root"]),
+    )
+
+
+def remote_host_values(
+    args: argparse.Namespace,
+    env: dict[str, str],
+) -> dict[str, str | None]:
+    return {
+        "user": env_value(args, "user", env, "GORAK_REMOTE_USER"),
+        "host": env_value(args, "host", env, "GORAK_REMOTE_HOST"),
+        "gorak_root": env_value(args, "gorak_root", env, "GORAK_REMOTE_ROOT"),
+    }
 
 
 def env_value(
@@ -371,6 +447,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "encode":
             print(encode_command(parsed))
+            return
+
+        if parsed.command == "remote" and parsed.remote_command == "install":
+            print(remote_install_command(parsed))
             return
 
         if parsed.command == "app" and parsed.app_command == "list":

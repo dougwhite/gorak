@@ -1,6 +1,7 @@
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from .domain import Application, ComponentInfo
 
@@ -42,6 +43,25 @@ def build_download_command(
     return ["scp", f"{remote.ssh_target}:{remote_path}", local_path]
 
 
+def build_upload_command(
+    remote: RemoteHost, local_path: str, remote_path: str
+) -> list[str]:
+    """Build an SCP command that uploads a local file."""
+
+    return [
+        "scp",
+        local_path,
+        f"{remote.ssh_target}:{windows_path_to_scp_path(remote_path)}",
+    ]
+
+
+def build_make_remote_dir_command(remote: RemoteHost) -> list[str]:
+    """Build an SSH command that creates the remote gorak root if needed."""
+
+    command = f'if not exist "{remote.gorak_root}" mkdir "{remote.gorak_root}"'
+    return ["ssh", "-T", remote.ssh_target, command]
+
+
 def windows_path_to_scp_path(path: str) -> str:
     """Convert a Windows path to the format expected by SCP."""
 
@@ -79,6 +99,28 @@ def download_file(
     command = build_download_command(remote, scp_path, local_path)
     run_cmd(command)
     return local_path
+
+
+def install_remote_helpers(
+    remote: RemoteHost,
+    helper_files: Sequence[Path],
+    run_cmd: RunCommand = run_subprocess,
+) -> list[str]:
+    """Install local Windows helper files into the remote gorak root."""
+
+    files = sorted(helper_files, key=lambda path: path.name)
+    run_cmd(build_make_remote_dir_command(remote))
+
+    for path in files:
+        run_cmd(
+            build_upload_command(
+                remote=remote,
+                local_path=str(path),
+                remote_path=f"{remote.gorak_root}\\{path.name}",
+            )
+        )
+
+    return [path.name for path in files]
 
 
 def backup_component(

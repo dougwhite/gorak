@@ -76,6 +76,21 @@ uv run gorak config remote \
 
 This writes the settings to `.env`, which is local-only and ignored by git.
 
+### Installing Windows SSH helpers
+
+Copy the Windows-side SSH helper files to the configured remote gorak root with:
+```
+uv run gorak remote install \
+  --user test \
+  --host WINDOWS-PC \
+  --gorak-root 'C:\Development\gorak'
+```
+
+When run inside a Gorak project, `remote install` can read `--user`, `--host`,
+and `--gorak-root` from the project `.env`. The helper files are packaged with
+`gorak`, so this command works from an installed distribution as well as from a
+source checkout.
+
 ### Listing OpenROAD applications
 
 You can ask a Windows OpenROAD development host to list applications in a source
@@ -134,8 +149,8 @@ Inside a Gorak project this writes `.openroad/application/component.xml` and
 `application/component.w4gl`. Outside a project, pass `--output component.w4gl`
 to write the encoded source to an explicit path.
 
-The Windows-side SSH helper files and setup notes live in
-`utils/win_ssh_remote/`.
+The Windows-side SSH helper files are packaged with `gorak` and installed to
+the remote host with `gorak remote install`.
 
 ### Generating a project summary for llm assisted development
 
