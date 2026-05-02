@@ -142,6 +142,29 @@ uv run gorak component list \
 
 The default output is JSON. CSV is also available with `--format csv`.
 
+### Exporting an application
+
+Export every component in one OpenROAD application:
+```
+uv run gorak app export \
+  --vnode myvnode \
+  --database exampledb \
+  application
+```
+
+Inside a Gorak project this writes `.openroad/application/*.xml` and
+`application/*.w4gl`. Outside a project, pass an output directory:
+```
+uv run gorak app export \
+  --vnode myvnode \
+  --database exampledb \
+  --output ./backup \
+  application
+```
+
+Outside a project this writes `backup/.openroad/application/*.xml` and
+`backup/application/*.w4gl`.
+
 ### Exporting a component
 
 You can ask a Windows OpenROAD development host to export one component, then

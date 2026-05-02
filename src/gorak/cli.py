@@ -102,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="json",
     )
 
+    app_export = app_subparsers.add_parser("export")
+    add_openroad_connection_args(app_export)
+    app_export.add_argument("app")
+    app_export.add_argument("--output")
+
     component_parser = subparsers.add_parser("component")
     component_subparsers = component_parser.add_subparsers(dest="component_command")
 
@@ -340,20 +345,6 @@ def export_component_command(args: argparse.Namespace) -> str:
     return str(paths.w4gl_path)
 
 
-def resolve_project_component_export_paths(
-    context: GorakContext,
-    app: str,
-    component: str,
-) -> ComponentExportPaths:
-    if context.project is None:
-        raise ProjectError("Component export requires a gorak project")
-
-    return ComponentExportPaths(
-        xml_path=context.project.root / ".openroad" / app / f"{component}.xml",
-        w4gl_path=context.project.root / app / f"{component}.w4gl",
-    )
-
-
 def export_component_to_paths(
     connection: OpenRoadConnection,
     app: str,
@@ -385,6 +376,80 @@ def export_component_to_paths(
             local_path=str(paths.xml_path),
         )
     paths.w4gl_path.write_text(encode_xml_file(str(paths.xml_path)))
+
+
+def app_export_command(args: argparse.Namespace) -> str:
+    """Exports all components in one OpenROAD application."""
+
+    context = load_context(Path.cwd())
+    output_path = cast(str | None, args.output)
+    if context.project is None and output_path is None:
+        raise ProjectError("--output is required outside a gorak project")
+    if context.project is not None and output_path is not None:
+        raise ProjectError("--output is only supported outside a gorak project")
+
+    connection = resolve_openroad_connection(args, context)
+    app = cast(str, args.app)
+    root = (
+        context.project.root
+        if context.project is not None
+        else Path(cast(str, output_path))
+    )
+    components = read_components(connection, app)
+    for component in components:
+        export_component_to_paths(
+            connection=connection,
+            app=app,
+            component=component.name,
+            paths=resolve_component_export_paths(root, app, component.name),
+        )
+
+    return (
+        f"Exported {len(components)} {component_label(len(components))} "
+        f"to {root / app}"
+    )
+
+
+def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentInfo]:
+    if connection.backend == "local":
+        return local_get_component_list(
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+        )
+
+    return get_component_list(
+        remote=require_remote_host(connection),
+        vnode=connection.vnode,
+        database=connection.database,
+        app=app,
+    )
+
+
+def component_label(count: int) -> str:
+    return "component" if count == 1 else "components"
+
+
+def resolve_project_component_export_paths(
+    context: GorakContext,
+    app: str,
+    component: str,
+) -> ComponentExportPaths:
+    if context.project is None:
+        raise ProjectError("Component export requires a gorak project")
+
+    return resolve_component_export_paths(context.project.root, app, component)
+
+
+def resolve_component_export_paths(
+    root: Path,
+    app: str,
+    component: str,
+) -> ComponentExportPaths:
+    return ComponentExportPaths(
+        xml_path=root / ".openroad" / app / f"{component}.xml",
+        w4gl_path=root / app / f"{component}.w4gl",
+    )
 
 
 def applications_to_json(applications: list[Application]) -> str:
@@ -504,6 +569,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "app" and parsed.app_command == "list":
             print(app_list_command(parsed))
+            return
+
+        if parsed.command == "app" and parsed.app_command == "export":
+            print(app_export_command(parsed))
             return
 
         if parsed.command == "component" and parsed.component_command == "list":
