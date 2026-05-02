@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import sys
+import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -34,6 +35,12 @@ class OpenRoadConnection:
     vnode: str
     database: str
     remote_host: RemoteHost
+
+
+@dataclass(frozen=True)
+class ComponentExportPaths:
+    xml_path: Path
+    w4gl_path: Path
 
 
 def encode_xml_file(xml_path: str) -> str:
@@ -83,9 +90,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_component = component_subparsers.add_parser("export")
     add_openroad_connection_args(export_component)
-    export_component.add_argument("--app", required=True)
-    export_component.add_argument("--component", required=True)
-    export_component.add_argument("--output", required=True)
+    export_component.add_argument("app")
+    export_component.add_argument("component")
+    export_component.add_argument("--output")
 
     return parser
 
@@ -199,21 +206,67 @@ def connection_hint(key: str) -> str:
 
 
 def export_component_command(args: argparse.Namespace) -> str:
-    """Exports a remote OpenROAD component XML file and downloads it locally."""
+    """Exports an OpenROAD component to local .w4gl source."""
 
-    connection = resolve_openroad_connection(args, load_context(Path.cwd()))
+    context = load_context(Path.cwd())
+    output_path = cast(str | None, args.output)
+    if context.project is None and output_path is None:
+        raise ProjectError("--output is required outside a gorak project")
+    if context.project is not None and output_path is not None:
+        raise ProjectError("--output is only supported outside a gorak project")
+
+    connection = resolve_openroad_connection(args, context)
+    app = cast(str, args.app)
+    component = cast(str, args.component)
     remote_xml_path = backup_component(
         remote=connection.remote_host,
         vnode=connection.vnode,
         database=connection.database,
-        app=args.app,
-        component=args.component,
+        app=app,
+        component=component,
     )
-    return download_file(
+
+    if context.project is None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = ComponentExportPaths(
+                xml_path=Path(temp_dir) / f"{component}.xml",
+                w4gl_path=Path(cast(str, output_path)),
+            )
+            export_component_to_paths(connection, remote_xml_path, paths)
+            return str(paths.w4gl_path)
+
+    paths = resolve_project_component_export_paths(context, app, component)
+    export_component_to_paths(connection, remote_xml_path, paths)
+    return str(paths.w4gl_path)
+
+
+def resolve_project_component_export_paths(
+    context: GorakContext,
+    app: str,
+    component: str,
+) -> ComponentExportPaths:
+    if context.project is None:
+        raise ProjectError("Component export requires a gorak project")
+
+    return ComponentExportPaths(
+        xml_path=context.project.root / ".openroad" / app / f"{component}.xml",
+        w4gl_path=context.project.root / app / f"{component}.w4gl",
+    )
+
+
+def export_component_to_paths(
+    connection: OpenRoadConnection,
+    remote_xml_path: str,
+    paths: ComponentExportPaths,
+) -> None:
+    paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.w4gl_path.parent.mkdir(parents=True, exist_ok=True)
+    download_file(
         remote=connection.remote_host,
         remote_path=remote_xml_path,
-        local_path=args.output,
+        local_path=str(paths.xml_path),
     )
+    paths.w4gl_path.write_text(encode_xml_file(str(paths.xml_path)))
 
 
 def applications_to_json(applications: list[Application]) -> str:

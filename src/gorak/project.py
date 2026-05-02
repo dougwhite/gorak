@@ -117,15 +117,17 @@ def load_context(start: Path) -> GorakContext:
 
     root = find_project_root_or_none(start)
     if root is None:
-        return GorakContext(project=None, env={})
+        return GorakContext(project=None, env=read_process_env())
 
     project = load_project(root)
     env = read_project_env(root)
-    env.update(
-        {key: value for key, value in os.environ.items() if key.startswith("GORAK_")}
-    )
+    env.update(read_process_env())
 
     return GorakContext(project=project, env=env)
+
+
+def read_process_env() -> dict[str, str]:
+    return {key: value for key, value in os.environ.items() if key.startswith("GORAK_")}
 
 
 def read_project_env(root: Path) -> dict[str, str]:

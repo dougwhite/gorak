@@ -108,11 +108,25 @@ def test_find_project_root_errors_outside_project(tmp_path: Path) -> None:
         find_project_root(tmp_path)
 
 
-def test_load_context_is_empty_outside_project(tmp_path: Path) -> None:
+def test_load_context_ignores_dotenv_outside_project(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
     (tmp_path / ".env").write_text("GORAK_VNODE=ignored-vnode\n")
+    monkeypatch.delenv("GORAK_VNODE", raising=False)
 
     assert load_context(tmp_path).project is None
     assert load_context(tmp_path).env == {}
+
+
+def test_load_context_reads_process_env_outside_project(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GORAK_VNODE", "process-vnode")
+
+    assert load_context(tmp_path).project is None
+    assert load_context(tmp_path).env["GORAK_VNODE"] == "process-vnode"
 
 
 def test_load_project_reads_manifest(tmp_path: Path) -> None:

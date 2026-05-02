@@ -100,10 +100,10 @@ uv run gorak app list \
   --format csv
 ```
 
-### Exporting a component XML file
+### Exporting a component
 
 You can ask a Windows OpenROAD development host to export one component, then
-download the generated XML locally over SCP:
+download and encode it into the local source tree:
 ```
 uv run gorak component export \
   --user test \
@@ -111,10 +111,13 @@ uv run gorak component export \
   --gorak-root 'C:\Development\gorak' \
   --vnode vnode \
   --database database \
-  --app application \
-  --component component \
-  --output component.xml
+  application \
+  component
 ```
+
+Inside a Gorak project this writes `.openroad/application/component.xml` and
+`application/component.w4gl`. Outside a project, pass `--output component.w4gl`
+to write the encoded source to an explicit path.
 
 The Windows-side SSH helper files and setup notes live in
 `utils/win_ssh_remote/`.
