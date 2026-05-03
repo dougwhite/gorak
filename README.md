@@ -20,6 +20,37 @@ uv sync
 uv run pytest
 ```
 
+## Installing and building
+
+For day-to-day local development, install `gorak` as an editable command with:
+```
+uv tool install --editable .
+```
+
+After that, the `gorak` command can be run from outside this source checkout:
+```
+gorak --help
+gorak new my_project
+gorak app list --vnode myvnode --database exampledb
+```
+
+Because the install is editable, changes under `src/gorak` are picked up without
+rebuilding the package. To remove the command:
+```
+uv tool uninstall gorak
+```
+
+To build distribution artifacts:
+```
+uv build
+```
+
+This writes the wheel and source archive to `dist/`. The wheel can be installed
+as a standalone `gorak` command with:
+```
+uv tool install dist/gorak-0.1.0-py3-none-any.whl
+```
+
 ## CLI helpers
 
 Show the available commands and options with:
