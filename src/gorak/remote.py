@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .domain import Application, ComponentInfo
+from .sql_output import parse_app_list_output, parse_component_list_output
 
 
 @dataclass(frozen=True)
@@ -143,31 +144,6 @@ def backup_component(
     return output.splitlines()[-1]
 
 
-def parse_app_list_output(output: str) -> list[Application]:
-    """Parse Ingres terminal monitor table output into applications."""
-
-    applications: list[Application] = []
-
-    for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-
-        cells = [cell.strip() for cell in stripped.split("|")[1:-1]]
-        if len(cells) != 3 or cells[0] == "application_name":
-            continue
-
-        applications.append(
-            Application(
-                name=cells[0],
-                start_component=cells[1],
-                description=cells[2],
-            )
-        )
-
-    return applications
-
-
 def get_app_list(
     remote: RemoteHost,
     vnode: str,
@@ -183,32 +159,6 @@ def get_app_list(
     )
 
     return parse_app_list_output(run_cmd(command))
-
-
-def parse_component_list_output(output: str) -> list[ComponentInfo]:
-    """Parse Ingres terminal monitor table output into components."""
-
-    components: list[ComponentInfo] = []
-
-    for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-
-        cells = [cell.strip() for cell in stripped.split("|")[1:-1]]
-        if len(cells) != 4 or cells[0] == "application_name":
-            continue
-
-        components.append(
-            ComponentInfo(
-                application_name=cells[0],
-                name=cells[1],
-                type=cells[2],
-                description=cells[3],
-            )
-        )
-
-    return components
 
 
 def get_component_list(

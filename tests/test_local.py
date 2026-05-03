@@ -11,6 +11,7 @@ from gorak.local import (
     build_backup_component_command,
     build_database_target,
     build_sql_command,
+    component_list_query,
     get_app_list,
     get_component_list,
     run_subprocess,
@@ -161,6 +162,10 @@ def test_get_component_list_runs_sql_for_application() -> None:
     assert command == ["sql", "myvnode::exampledb"]
     assert input_text is not None
     assert "and ea.entity_name = 'sample_app'" in input_text
+
+
+def test_component_list_query_escapes_application_name() -> None:
+    assert "and ea.entity_name = 'owner''s_app'" in component_list_query("owner's_app")
 
 
 def test_run_subprocess_passes_stdin_to_process(monkeypatch: MonkeyPatch) -> None:

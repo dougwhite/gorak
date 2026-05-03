@@ -5,8 +5,8 @@ import tomlkit
 from lxml import etree
 from tomlkit.items import Table
 
+from gorak.domain import Component
 from gorak.parser import (
-    Component,
     encode_w4gl,
     extract_attributes,
     extract_methods,

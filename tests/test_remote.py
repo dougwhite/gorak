@@ -17,8 +17,6 @@ from gorak.remote import (
     get_app_list,
     get_component_list,
     install_remote_helpers,
-    parse_app_list_output,
-    parse_component_list_output,
     run_subprocess,
     windows_path_to_scp_path,
 )
@@ -325,30 +323,6 @@ class TestBackupComponent:
         assert result == r"C:\Development\gorak\repos\vnode\db\app\component.xml"
 
 
-class TestParseAppListOutput:
-    """Tests for parsing Ingres application list output."""
-
-    def test_parses_application_rows_from_terminal_monitor_output(self) -> None:
-        assert parse_app_list_output(APP_LIST_OUTPUT) == [
-            Application(
-                name="sample_app",
-                start_component="",
-                description="Example application",
-            ),
-            Application(
-                name="orders_app",
-                start_component="fm_order_entry",
-                description="Order entry screens",
-            ),
-            Application(
-                name="shared_library",
-                start_component="",
-                description="Shared utility components",
-            ),
-            Application(name="empty_shell", start_component="", description=""),
-        ]
-
-
 class TestGetAppList:
     """Tests for the get_app_list() function."""
 
@@ -378,32 +352,6 @@ class TestGetAppList:
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-app-list.bat vnode db",
             ]
-        ]
-
-
-class TestParseComponentListOutput:
-    """Tests for parsing Ingres component list output."""
-
-    def test_parses_component_rows_from_terminal_monitor_output(self) -> None:
-        assert parse_component_list_output(COMPONENT_LIST_OUTPUT) == [
-            ComponentInfo(
-                application_name="sample_app",
-                name="uc_order",
-                type="classsource",
-                description="Order model",
-            ),
-            ComponentInfo(
-                application_name="sample_app",
-                name="p4_check_order",
-                type="proc4glsource",
-                description="",
-            ),
-            ComponentInfo(
-                application_name="sample_app",
-                name="fm_order_entry",
-                type="framesource",
-                description="Main order entry screen",
-            ),
         ]
 
 

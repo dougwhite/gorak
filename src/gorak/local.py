@@ -5,7 +5,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from .domain import Application, ComponentInfo
-from .remote import parse_app_list_output, parse_component_list_output
+from .sql_output import parse_app_list_output, parse_component_list_output
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
 RunCommand = Callable[[list[str], str | None], str]

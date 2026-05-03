@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -18,3 +19,13 @@ class ComponentInfo:
     name: str
     type: str
     description: str
+
+
+@dataclass
+class Component:
+    """OpenROAD source component metadata and script."""
+
+    name: str
+    type: str
+    props: dict[str, Any]
+    script: str | None = None
