@@ -55,37 +55,37 @@ uv tool install dist/gorak-0.1.0-py3-none-any.whl
 
 Show the available commands and options with:
 ```
-uv run gorak --help
+gorak --help
 ```
 
 Subcommands also provide their own help, for example:
 ```
-uv run gorak component export --help
+gorak component export --help
 ```
 
 ### Encoding an OpenROAD XML export
 
 You can encode an OpenROAD `.xml` export as `.w4gl` text on stdout:
 ```
-uv run gorak encode tests/fixtures/fm_example_frame.xml
+gorak encode tests/fixtures/fm_example_frame.xml
 ```
 
 Or write the result directly to a file:
 ```
-uv run gorak encode tests/fixtures/fm_example_frame.xml --output fm_example_frame.w4gl
+gorak encode tests/fixtures/fm_example_frame.xml --output fm_example_frame.w4gl
 ```
 
 ### Creating a Gorak project
 
 Create a new Gorak project folder with:
 ```
-uv run gorak new my_project
+gorak new my_project
 ```
 
 By default this also runs `git init` in the new project. For a temporary project
 without its own git repository, use:
 ```
-uv run gorak new --nogit my_project
+gorak new --nogit my_project
 ```
 
 This creates `my_project/gorak.json` and a starter application folder:
@@ -103,7 +103,7 @@ my_project/
 
 From inside a Gorak project, configure local remote access settings with:
 ```
-uv run gorak config remote \
+gorak config remote \
   --host windows-pc \
   --user test \
   --gorak-root 'C:\Development\gorak' \
@@ -129,7 +129,7 @@ The same values can also be passed directly to database commands with
 
 Copy the Windows-side SSH helper files to the configured remote gorak root with:
 ```
-uv run gorak remote install \
+gorak remote install \
   --user test \
   --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak'
@@ -145,7 +145,7 @@ source checkout.
 You can list applications in a source database through either the remote or
 local backend:
 ```
-uv run gorak app list \
+gorak app list \
   --user test \
   --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
@@ -155,7 +155,7 @@ uv run gorak app list \
 
 The default output is JSON. CSV is also available:
 ```
-uv run gorak app list \
+gorak app list \
   --user test \
   --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
@@ -168,7 +168,7 @@ uv run gorak app list \
 
 List the components in one OpenROAD application:
 ```
-uv run gorak component list \
+gorak component list \
   --user test \
   --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
@@ -183,7 +183,7 @@ The default output is JSON. CSV is also available with `--format csv`.
 
 Export every component in one OpenROAD application:
 ```
-uv run gorak app export \
+gorak app export \
   --vnode myvnode \
   --database exampledb \
   application
@@ -192,7 +192,7 @@ uv run gorak app export \
 Inside a Gorak project this writes `.openroad/application/*.xml` and
 `application/*.w4gl`. Outside a project, pass an output directory:
 ```
-uv run gorak app export \
+gorak app export \
   --vnode myvnode \
   --database exampledb \
   --output ./backup \
@@ -207,7 +207,7 @@ Outside a project this writes `backup/.openroad/application/*.xml` and
 You can ask a Windows OpenROAD development host to export one component, then
 download and encode it into the local source tree:
 ```
-uv run gorak component export \
+gorak component export \
   --user test \
   --host WINDOWS-PC \
   --gorak-root 'C:\Development\gorak' \
