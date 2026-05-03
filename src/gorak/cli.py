@@ -22,8 +22,10 @@ from .export import (
     encode_xml_file,
     export_component,
     export_component_to_paths,
+    read_application,
     read_applications,
     read_components,
+    write_app_metadata,
 )
 from .project import (
     ProjectError,
@@ -230,6 +232,9 @@ def app_export_command(args: argparse.Namespace) -> str:
         else Path(cast(str, output_path))
     )
     print(f"Exporting application {app} from {connection_source(connection)}")
+    print("Retrieving application metadata")
+    application = read_application(connection, app)
+    write_app_metadata(root, application)
     print("Retrieving component list")
     components = read_components(connection, app)
     for component in components:

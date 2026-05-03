@@ -1,4 +1,5 @@
 {
     "starting_component": "p4_init",
-    "included_applications":[]
+    "description": "An example OpenROAD application",
+    "included_applications": []
 }

@@ -156,6 +156,7 @@ def write_project_skeleton(root: Path, name: str) -> None:
         app_dir / "app.json",
         {
             "starting_component": DEFAULT_STARTING_COMPONENT,
+            "description": "An example OpenROAD application",
             "included_applications": [],
         },
     )

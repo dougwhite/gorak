@@ -7,13 +7,16 @@ from gorak import export as export_module
 from gorak.connection import OpenRoadConnection
 from gorak.domain import Application, ComponentInfo
 from gorak.export import (
+    application_metadata,
     component_export_paths,
     encode_xml_file,
     export_component,
     export_component_to_paths,
     project_component_export_paths,
+    read_application,
     read_applications,
     read_components,
+    write_app_metadata,
 )
 from gorak.project import GorakContext, GorakProject, ProjectError
 from gorak.remote import RemoteHost
@@ -36,6 +39,51 @@ def test_encode_xml_file_returns_w4gl_text() -> None:
     assert "[framesource]" in output
     assert "===" in output
     assert "initialize()=" in output
+
+
+def test_application_metadata_uses_openroad_application_values() -> None:
+    assert application_metadata(
+        Application(
+            name="sample_app",
+            start_component="fm_start",
+            description="Example application",
+        )
+    ) == {
+        "starting_component": "fm_start",
+        "description": "Example application",
+        "included_applications": [],
+    }
+
+
+def test_application_metadata_preserves_existing_included_applications() -> None:
+    assert application_metadata(
+        Application(
+            name="sample_app",
+            start_component="fm_start",
+            description="Example application",
+        ),
+        existing={"included_applications": ["core", "ui"]},
+    )["included_applications"] == ["core", "ui"]
+
+
+def test_write_app_metadata_writes_app_json(tmp_path: Path) -> None:
+    path = write_app_metadata(
+        root=tmp_path,
+        application=Application(
+            name="sample_app",
+            start_component="fm_start",
+            description="Example application",
+        ),
+    )
+
+    assert path == tmp_path / "sample_app" / "app.json"
+    assert path.read_text() == (
+        "{\n"
+        '    "starting_component": "fm_start",\n'
+        '    "description": "Example application",\n'
+        '    "included_applications": []\n'
+        "}\n"
+    )
 
 
 def test_export_component_requires_output_outside_project() -> None:
@@ -211,6 +259,39 @@ def test_read_applications_routes_to_local_backend(monkeypatch: MonkeyPatch) -> 
         == []
     )
     assert calls == [("myvnode", "exampledb")]
+
+
+def test_read_application_returns_matching_application(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        export_module,
+        "local_get_app_list",
+        lambda vnode, database: [
+            Application("sample_app", "fm_start", "Example application")
+        ],
+    )
+
+    assert read_application(
+        OpenRoadConnection("local", "myvnode", "exampledb", None),
+        "sample_app",
+    ) == Application("sample_app", "fm_start", "Example application")
+
+
+def test_read_application_errors_when_application_is_missing(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        export_module,
+        "local_get_app_list",
+        lambda vnode, database: [],
+    )
+
+    with pytest.raises(ProjectError, match="Application not found: missing_app"):
+        read_application(
+            OpenRoadConnection("local", "myvnode", "exampledb", None),
+            "missing_app",
+        )
 
 
 def test_read_components_routes_to_remote_backend(monkeypatch: MonkeyPatch) -> None:

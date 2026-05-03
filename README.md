@@ -1,5 +1,7 @@
 # `gorak` 
 
+GORAK — the Greater OpenROAD Application Kit
+
 For developers who enjoy OpenROAD and their hair.
 
 ## Setting up for development
@@ -99,6 +101,10 @@ my_project/
     └── p4_init.w4gl
 ```
 
+The starter `app.json` contains the starting component, description, and an
+empty included application list placeholder. The application name is implied by
+the folder name.
+
 ### Configuring remote OpenROAD access
 
 From inside a Gorak project, configure local remote access settings with:
@@ -189,8 +195,14 @@ gorak app export \
   application
 ```
 
-Inside a Gorak project this writes `.openroad/application/*.xml` and
-`application/*.w4gl`. Outside a project, pass an output directory:
+Inside a Gorak project this writes `application/app.json`,
+`.openroad/application/*.xml`, and `application/*.w4gl`. The exported
+`app.json` currently contains the starting component and description from the
+source database. The application name is implied by the folder name. Existing
+`included_applications` values are preserved, otherwise they default to an empty
+list until included-application discovery is implemented.
+
+Outside a project, pass an output directory:
 ```
 gorak app export \
   --vnode myvnode \
@@ -199,8 +211,8 @@ gorak app export \
   application
 ```
 
-Outside a project this writes `backup/.openroad/application/*.xml` and
-`backup/application/*.w4gl`.
+Outside a project this writes `backup/application/app.json`,
+`backup/.openroad/application/*.xml`, and `backup/application/*.w4gl`.
 
 ### Exporting a component
 

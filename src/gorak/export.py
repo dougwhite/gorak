@@ -8,7 +8,7 @@ from . import local
 from .connection import OpenRoadConnection, require_remote_host
 from .domain import Application, ComponentInfo
 from .parser import encode_w4gl, parse_xml
-from .project import GorakContext, ProjectError
+from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import backup_component, download_file, get_app_list, get_component_list
 
 local_backup_component = local.backup_component
@@ -27,6 +27,28 @@ def encode_xml_file(xml_path: str) -> str:
 
     component = parse_xml(etree.parse(xml_path))
     return encode_w4gl(component)
+
+
+def application_metadata(
+    application: Application,
+    existing: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Build app.json data from known metadata and preserved local-only fields."""
+
+    existing = existing or {}
+    return {
+        "starting_component": application.start_component,
+        "description": application.description,
+        "included_applications": existing.get("included_applications", []),
+    }
+
+
+def write_app_metadata(root: Path, application: Application) -> Path:
+    path = root / application.name / "app.json"
+    existing = read_json(path) if path.is_file() else {}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(path, application_metadata(application, existing))
+    return path
 
 
 def export_component(
@@ -97,6 +119,14 @@ def read_applications(connection: OpenRoadConnection) -> list[Application]:
         vnode=connection.vnode,
         database=connection.database,
     )
+
+
+def read_application(connection: OpenRoadConnection, app: str) -> Application:
+    for application in read_applications(connection):
+        if application.name == app:
+            return application
+
+    raise ProjectError(f"Application not found: {app}")
 
 
 def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentInfo]:

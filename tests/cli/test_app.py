@@ -32,6 +32,19 @@ class TestAppExport:
         )
         monkeypatch.chdir(project_root)
 
+        def fake_local_get_app_list(
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("app", vnode, database))
+            return [
+                Application(
+                    name="sample_app",
+                    start_component="fm_start",
+                    description="Example application",
+                )
+            ]
+
         def fake_local_get_component_list(
             vnode: str,
             database: str,
@@ -66,6 +79,11 @@ class TestAppExport:
 
         monkeypatch.setattr(
             export_module,
+            "local_get_app_list",
+            fake_local_get_app_list,
+        )
+        monkeypatch.setattr(
+            export_module,
             "local_get_component_list",
             fake_local_get_component_list,
         )
@@ -82,6 +100,7 @@ class TestAppExport:
         second_xml = project_root / ".openroad" / "sample_app" / "second_component.xml"
         second_w4gl = project_root / "sample_app" / "second_component.w4gl"
         assert calls == [
+            ("app", "project-vnode", "project-db"),
             ("list", "project-vnode", "project-db", "sample_app"),
             (
                 "backup",
@@ -100,10 +119,16 @@ class TestAppExport:
                 second_xml,
             ),
         ]
+        assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
+            "starting_component": "fm_start",
+            "description": "Example application",
+            "included_applications": [],
+        }
         assert "[framesource]" in first_w4gl.read_text()
         assert "[framesource]" in second_w4gl.read_text()
         assert capsys.readouterr().out == (
             "Exporting application sample_app from local\n"
+            "Retrieving application metadata\n"
             "Retrieving component list\n"
             "Exporting component sample_app::first_component\n"
             "Exporting component sample_app::second_component\n"
@@ -119,6 +144,19 @@ class TestAppExport:
         calls: list[object] = []
         output_dir = tmp_path / "backup"
         monkeypatch.chdir(tmp_path)
+
+        def fake_local_get_app_list(
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("app", vnode, database))
+            return [
+                Application(
+                    name="sample_app",
+                    start_component="fm_start",
+                    description="Example application",
+                )
+            ]
 
         def fake_local_get_component_list(
             vnode: str,
@@ -148,6 +186,11 @@ class TestAppExport:
 
         monkeypatch.setattr(
             export_module,
+            "local_get_app_list",
+            fake_local_get_app_list,
+        )
+        monkeypatch.setattr(
+            export_module,
             "local_get_component_list",
             fake_local_get_component_list,
         )
@@ -174,13 +217,20 @@ class TestAppExport:
         xml_path = output_dir / ".openroad" / "sample_app" / "first_component.xml"
         w4gl_path = output_dir / "sample_app" / "first_component.w4gl"
         assert calls == [
+            ("app", "vnode", "db"),
             ("list", "vnode", "db", "sample_app"),
             ("backup", "vnode", "db", "sample_app", "first_component", xml_path),
         ]
+        assert json.loads((output_dir / "sample_app" / "app.json").read_text()) == {
+            "starting_component": "fm_start",
+            "description": "Example application",
+            "included_applications": [],
+        }
         assert xml_path.read_text() == FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (
             "Exporting application sample_app from local\n"
+            "Retrieving application metadata\n"
             "Retrieving component list\n"
             "Exporting component sample_app::first_component\n"
             "Export complete\n"
@@ -226,6 +276,17 @@ class TestAppExport:
         )
         monkeypatch.chdir(project_root)
         monkeypatch.setattr(
+            export_module,
+            "local_get_app_list",
+            lambda vnode, database: [
+                Application(
+                    name="sample_app",
+                    start_component="",
+                    description="",
+                )
+            ],
+        )
+        monkeypatch.setattr(
             export_module, "local_get_component_list", lambda vnode, database, app: []
         )
 
@@ -233,6 +294,7 @@ class TestAppExport:
 
         assert capsys.readouterr().out == (
             "Exporting application sample_app from local\n"
+            "Retrieving application metadata\n"
             "Retrieving component list\n"
             "Export complete\n"
         )
@@ -256,6 +318,20 @@ class TestAppExport:
             "GORAK_DATABASE=project-db\n"
         )
         monkeypatch.chdir(project_root)
+
+        def fake_get_app_list(
+            remote: RemoteHost,
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("app", remote, vnode, database))
+            return [
+                Application(
+                    name="sample_app",
+                    start_component="fm_start",
+                    description="Example application",
+                )
+            ]
 
         def fake_get_component_list(
             remote: RemoteHost,
@@ -292,6 +368,7 @@ class TestAppExport:
             Path(local_path).write_text(FIXTURE_PATH.read_text())
             return local_path
 
+        monkeypatch.setattr(export_module, "get_app_list", fake_get_app_list)
         monkeypatch.setattr(
             export_module, "get_component_list", fake_get_component_list
         )
@@ -308,6 +385,7 @@ class TestAppExport:
         xml_path = project_root / ".openroad" / "sample_app" / "first_component.xml"
         w4gl_path = project_root / "sample_app" / "first_component.w4gl"
         assert calls == [
+            ("app", remote, "project-vnode", "project-db"),
             ("list", remote, "project-vnode", "project-db", "sample_app"),
             (
                 "backup",
@@ -324,9 +402,15 @@ class TestAppExport:
                 str(xml_path),
             ),
         ]
+        assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
+            "starting_component": "fm_start",
+            "description": "Example application",
+            "included_applications": [],
+        }
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (
             "Exporting application sample_app from remote host project-user@project-host\n"
+            "Retrieving application metadata\n"
             "Retrieving component list\n"
             "Exporting component sample_app::first_component\n"
             "Export complete\n"
