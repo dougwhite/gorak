@@ -7,8 +7,14 @@ from pathlib import Path
 
 from lxml import etree
 
+from . import database as database_module
 from . import local
-from .connection import OpenRoadConnection, require_remote_host
+from .connection import (
+    OpenRoadConnection,
+    connection_sql_backend,
+    require_odbc_settings,
+    require_remote_host,
+)
 from .domain import Application, ApplicationExport, ComponentInfo
 from .parser import encode_w4gl, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
@@ -24,6 +30,8 @@ local_backup_application = local.backup_application
 local_backup_component = local.backup_component
 local_get_app_list = local.get_app_list
 local_get_component_list = local.get_component_list
+odbc_get_app_list = database_module.get_app_list
+odbc_get_component_list = database_module.get_component_list
 
 
 @dataclass(frozen=True)
@@ -212,7 +220,10 @@ def backup_component_xml(
 
 
 def read_applications(connection: OpenRoadConnection) -> list[Application]:
-    if connection.backend == "local":
+    sql_backend = connection_sql_backend(connection)
+    if sql_backend == "odbc":
+        return odbc_get_app_list(require_odbc_settings(connection))
+    if sql_backend == "local":
         return local_get_app_list(connection.vnode, connection.database)
 
     return get_app_list(
@@ -238,7 +249,10 @@ def read_application(connection: OpenRoadConnection, app: str) -> Application:
 
 
 def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentInfo]:
-    if connection.backend == "local":
+    sql_backend = connection_sql_backend(connection)
+    if sql_backend == "odbc":
+        return odbc_get_component_list(require_odbc_settings(connection), app)
+    if sql_backend == "local":
         return local_get_component_list(
             vnode=connection.vnode,
             database=connection.database,

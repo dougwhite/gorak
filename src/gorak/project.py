@@ -19,6 +19,15 @@ RunCommand = Callable[[list[str], Path], None]
 ENV_EXAMPLE = """GORAK_BACKEND=local
 GORAK_VNODE=myvnode
 GORAK_DATABASE=exampledb
+
+# Optional: use direct ODBC for read-only list commands.
+# Requires a configured Actian Ingres ODBC client/driver on this machine.
+# GORAK_SQL_BACKEND=odbc
+# GORAK_DB_DRIVER=Ingres AC
+# GORAK_DB_HOST=db-host.example
+# GORAK_DB_LISTEN_ADDRESS=II7
+# GORAK_DB_USER=ingres
+# GORAK_DB_PASSWORD=secret
 """
 
 DEFAULT_P4_INIT = """[proc4glsource]

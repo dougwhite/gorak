@@ -105,31 +105,40 @@ The starter `app.json` contains the starting component, description, and an
 empty included application list placeholder. The application name is implied by
 the folder name.
 
-### Configuring remote OpenROAD access
+### Configuring OpenROAD access
 
-From inside a Gorak project, configure local remote access settings with:
-```
-gorak config remote \
-  --host windows-pc \
-  --user test \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode myvnode \
-  --database exampledb
-```
-
-This writes the settings to `.env`, which is local-only and ignored by git.
-
-The local backend is the default. For a local Windows OpenROAD development
-machine, only the database settings are needed:
-```
+Everything local: OpenROAD CLI commands and SQL both run on this machine.
+```env
+GORAK_BACKEND=local
 GORAK_VNODE=myvnode
 GORAK_DATABASE=exampledb
 ```
 
-The same values can also be passed directly to database commands with
-`--vnode myvnode --database exampledb`. Remote settings such as `--host`,
-`--user`, and `--gorak-root` automatically select the remote backend unless
-`GORAK_BACKEND` or `--backend` explicitly says otherwise.
+Everything remote: OpenROAD CLI commands and SQL both run through SSH helpers.
+```env
+GORAK_BACKEND=remote
+GORAK_REMOTE_HOST=windows-pc
+GORAK_REMOTE_USER=test
+GORAK_REMOTE_ROOT=C:\Development\gorak
+GORAK_VNODE=myvnode
+GORAK_DATABASE=exampledb
+```
+
+You can also use Ingres ODBC for improved performance:
+```env
+GORAK_BACKEND=local
+GORAK_VNODE=myvnode
+GORAK_DATABASE=exampledb
+
+GORAK_SQL_BACKEND=odbc
+GORAK_DB_DRIVER=Ingres AC
+GORAK_DB_HOST=db-host.example
+GORAK_DB_LISTEN_ADDRESS=II7
+GORAK_DB_USER=ingres
+GORAK_DB_PASSWORD=secret
+```
+
+Direct SQL requires the Actian Ingres client runtime and ODBC driver.
 
 ### Installing Windows SSH helpers
 

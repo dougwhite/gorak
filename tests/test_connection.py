@@ -5,10 +5,12 @@ import pytest
 from gorak.connection import (
     OpenRoadConnection,
     connection_source,
+    require_odbc_settings,
     require_remote_host,
     resolve_openroad_connection,
     resolve_remote_host,
 )
+from gorak.database import OdbcSettings
 from gorak.project import GorakContext, ProjectError
 from gorak.remote import RemoteHost
 
@@ -21,6 +23,13 @@ def args(**values: object) -> argparse.Namespace:
         "gorak_root": None,
         "vnode": None,
         "database": None,
+        "sql_backend": None,
+        "db_driver": None,
+        "db_host": None,
+        "db_listen_address": None,
+        "db_database": None,
+        "db_user": None,
+        "db_password": None,
     }
     defaults.update(values)
     return argparse.Namespace(**defaults)
@@ -41,6 +50,7 @@ def test_defaults_to_local_backend() -> None:
         vnode="myvnode",
         database="exampledb",
         remote_host=None,
+        sql_backend="local",
     )
 
 
@@ -65,6 +75,7 @@ def test_infers_remote_backend_from_remote_settings() -> None:
             host="windows-pc",
             gorak_root=r"C:\Development\gorak",
         ),
+        sql_backend="remote",
     )
 
 
@@ -92,6 +103,7 @@ def test_reads_settings_from_env() -> None:
             host="project-host",
             gorak_root=r"C:\Development\gorak",
         ),
+        sql_backend="remote",
     )
 
 
@@ -125,6 +137,7 @@ def test_flags_override_env() -> None:
             host="flag-host",
             gorak_root=r"C:\Flag\gorak",
         ),
+        sql_backend="remote",
     )
 
 
@@ -148,7 +161,105 @@ def test_explicit_local_backend_ignores_remote_env() -> None:
         vnode="project-vnode",
         database="project-db",
         remote_host=None,
+        sql_backend="local",
     )
+
+
+def test_resolves_odbc_sql_backend_from_env() -> None:
+    connection = resolve_openroad_connection(
+        args(),
+        context(
+            {
+                "GORAK_BACKEND": "remote",
+                "GORAK_REMOTE_USER": "project-user",
+                "GORAK_REMOTE_HOST": "project-host",
+                "GORAK_REMOTE_ROOT": r"C:\Development\gorak",
+                "GORAK_VNODE": "project-vnode",
+                "GORAK_DATABASE": "project-db",
+                "GORAK_SQL_BACKEND": "odbc",
+                "GORAK_DB_DRIVER": "Ingres AC",
+                "GORAK_DB_HOST": "db-host.example",
+                "GORAK_DB_LISTEN_ADDRESS": "II7",
+                "GORAK_DB_DATABASE": "source_db",
+                "GORAK_DB_USER": "ingres",
+                "GORAK_DB_PASSWORD": "secret",
+            }
+        ),
+    )
+
+    assert connection.sql_backend == "odbc"
+    assert connection.odbc_settings == OdbcSettings(
+        driver="Ingres AC",
+        host="db-host.example",
+        listen_address="II7",
+        database="source_db",
+        user="ingres",
+        password="secret",
+    )
+
+
+def test_odbc_database_defaults_to_openroad_database() -> None:
+    connection = resolve_openroad_connection(
+        args(),
+        context(
+            {
+                "GORAK_VNODE": "project-vnode",
+                "GORAK_DATABASE": "project-db",
+                "GORAK_SQL_BACKEND": "odbc",
+                "GORAK_DB_DRIVER": "Ingres AC",
+                "GORAK_DB_HOST": "db-host.example",
+                "GORAK_DB_LISTEN_ADDRESS": "II7",
+                "GORAK_DB_USER": "ingres",
+                "GORAK_DB_PASSWORD": "secret",
+            }
+        ),
+    )
+
+    assert require_odbc_settings(connection).database == "project-db"
+
+
+def test_errors_for_unsupported_sql_backend() -> None:
+    with pytest.raises(ProjectError, match="SQL backend is not implemented"):
+        resolve_openroad_connection(
+            args(),
+            context(
+                {
+                    "GORAK_VNODE": "project-vnode",
+                    "GORAK_DATABASE": "project-db",
+                    "GORAK_SQL_BACKEND": "unsupported",
+                }
+            ),
+        )
+
+
+def test_remote_sql_backend_requires_remote_settings() -> None:
+    with pytest.raises(ProjectError, match="--user/GORAK_REMOTE_USER"):
+        resolve_openroad_connection(
+            args(),
+            context(
+                {
+                    "GORAK_BACKEND": "local",
+                    "GORAK_VNODE": "project-vnode",
+                    "GORAK_DATABASE": "project-db",
+                    "GORAK_SQL_BACKEND": "remote",
+                }
+            ),
+        )
+
+
+def test_errors_when_odbc_settings_are_missing() -> None:
+    with pytest.raises(ProjectError, match="--db-host/GORAK_DB_HOST"):
+        resolve_openroad_connection(
+            args(),
+            context(
+                {
+                    "GORAK_VNODE": "project-vnode",
+                    "GORAK_DATABASE": "project-db",
+                    "GORAK_SQL_BACKEND": "odbc",
+                    "GORAK_DB_DRIVER": "Ingres AC",
+                }
+            ),
+        )
 
 
 def test_errors_for_unsupported_backend() -> None:
@@ -194,6 +305,19 @@ def test_require_remote_host_errors_for_local_connection() -> None:
                 vnode="myvnode",
                 database="exampledb",
                 remote_host=None,
+            )
+        )
+
+
+def test_require_odbc_settings_errors_for_non_odbc_connection() -> None:
+    with pytest.raises(ProjectError, match="ODBC settings are required"):
+        require_odbc_settings(
+            OpenRoadConnection(
+                backend="local",
+                vnode="myvnode",
+                database="exampledb",
+                remote_host=None,
+                sql_backend="local",
             )
         )
 

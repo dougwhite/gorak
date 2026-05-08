@@ -5,6 +5,7 @@ from pytest import MonkeyPatch
 
 from gorak import export as export_module
 from gorak.connection import OpenRoadConnection
+from gorak.database import OdbcSettings
 from gorak.domain import Application, ComponentInfo
 from gorak.export import (
     application_export_paths,
@@ -433,6 +434,40 @@ def test_read_applications_routes_to_local_backend(monkeypatch: MonkeyPatch) -> 
     assert calls == [("myvnode", "exampledb")]
 
 
+def test_read_applications_routes_to_odbc_sql_backend(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    settings = OdbcSettings(
+        driver="Ingres AC",
+        host="db-host.example",
+        listen_address="II7",
+        database="source_db",
+        user="ingres",
+        password="secret",
+    )
+
+    def fake_odbc_get_app_list(
+        odbc_settings: OdbcSettings,
+    ) -> list[Application]:
+        calls.append(odbc_settings)
+        return [Application("sample_app", "fm_start", "Example application")]
+
+    monkeypatch.setattr(export_module, "odbc_get_app_list", fake_odbc_get_app_list)
+
+    assert read_applications(
+        OpenRoadConnection(
+            "local",
+            "myvnode",
+            "exampledb",
+            None,
+            sql_backend="odbc",
+            odbc_settings=settings,
+        )
+    ) == [Application("sample_app", "fm_start", "Example application")]
+    assert calls == [settings]
+
+
 def test_read_application_returns_matching_application(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -506,3 +541,43 @@ def test_read_components_routes_to_remote_backend(monkeypatch: MonkeyPatch) -> N
         == []
     )
     assert calls == [(remote, "myvnode", "exampledb", "sample_app")]
+
+
+def test_read_components_routes_to_odbc_sql_backend(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    settings = OdbcSettings(
+        driver="Ingres AC",
+        host="db-host.example",
+        listen_address="II7",
+        database="source_db",
+        user="ingres",
+        password="secret",
+    )
+
+    def fake_odbc_get_component_list(
+        odbc_settings: OdbcSettings,
+        app: str,
+    ) -> list[ComponentInfo]:
+        calls.append((odbc_settings, app))
+        return [ComponentInfo("sample_app", "fm_start", "framesource", "Start frame")]
+
+    monkeypatch.setattr(
+        export_module,
+        "odbc_get_component_list",
+        fake_odbc_get_component_list,
+    )
+
+    assert read_components(
+        OpenRoadConnection(
+            "remote",
+            "myvnode",
+            "exampledb",
+            RemoteHost("test", "windows-pc", r"C:\Development\gorak"),
+            sql_backend="odbc",
+            odbc_settings=settings,
+        ),
+        "sample_app",
+    ) == [ComponentInfo("sample_app", "fm_start", "framesource", "Start frame")]
+    assert calls == [(settings, "sample_app")]

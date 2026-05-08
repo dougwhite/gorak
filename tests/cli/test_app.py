@@ -6,6 +6,7 @@ from pytest import CaptureFixture, MonkeyPatch
 
 from gorak import cli
 from gorak import export as export_module
+from gorak.database import OdbcSettings
 from gorak.domain import Application
 from gorak.remote import RemoteHost
 
@@ -698,6 +699,72 @@ class TestAppList:
 
         assert calls == [("local_get_app_list", "project-vnode", "project-db")]
         assert json.loads(capsys.readouterr().out) == []
+
+    def test_can_read_application_list_through_odbc_sql_backend(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        monkeypatch.chdir(tmp_path)
+
+        def fake_odbc_get_app_list(
+            settings: OdbcSettings,
+        ) -> list[Application]:
+            calls.append(settings)
+            return [
+                Application(
+                    name="sample_app",
+                    start_component="fm_start",
+                    description="Example application",
+                )
+            ]
+
+        monkeypatch.setattr(export_module, "odbc_get_app_list", fake_odbc_get_app_list)
+
+        cli.main(
+            [
+                "app",
+                "list",
+                "--vnode",
+                "vnode",
+                "--database",
+                "db",
+                "--sql-backend",
+                "odbc",
+                "--db-driver",
+                "Ingres AC",
+                "--db-host",
+                "db-host.example",
+                "--db-listen-address",
+                "II7",
+                "--db-database",
+                "source_db",
+                "--db-user",
+                "ingres",
+                "--db-password",
+                "secret",
+            ]
+        )
+
+        assert calls == [
+            OdbcSettings(
+                driver="Ingres AC",
+                host="db-host.example",
+                listen_address="II7",
+                database="source_db",
+                user="ingres",
+                password="secret",
+            )
+        ]
+        assert json.loads(capsys.readouterr().out) == [
+            {
+                "name": "sample_app",
+                "start_component": "fm_start",
+                "description": "Example application",
+            }
+        ]
 
     def test_flags_override_project_env(
         self,

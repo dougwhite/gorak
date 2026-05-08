@@ -108,9 +108,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def add_openroad_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--backend", choices=["remote", "local"])
+    parser.add_argument("--sql-backend", choices=["remote", "local", "odbc"])
     add_remote_host_args(parser)
     parser.add_argument("--vnode")
     parser.add_argument("--database")
+    parser.add_argument("--db-driver")
+    parser.add_argument("--db-host")
+    parser.add_argument("--db-listen-address")
+    parser.add_argument("--db-database")
+    parser.add_argument("--db-user")
+    parser.add_argument("--db-password")
 
 
 def add_remote_host_args(parser: argparse.ArgumentParser) -> None:

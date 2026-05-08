@@ -6,6 +6,7 @@ from pytest import CaptureFixture, MonkeyPatch
 
 from gorak import cli
 from gorak import export as export_module
+from gorak.database import OdbcSettings
 from gorak.domain import ComponentInfo
 from gorak.remote import RemoteHost
 
@@ -567,6 +568,81 @@ class TestComponentList:
 
         assert calls == [
             ("local_get_component_list", "project-vnode", "project-db", "sample_app")
+        ]
+        assert json.loads(capsys.readouterr().out) == [
+            {
+                "application_name": "sample_app",
+                "name": "p4_start",
+                "type": "proc4glsource",
+                "description": "Startup procedure",
+            }
+        ]
+
+    def test_can_read_component_list_through_odbc_sql_backend(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        monkeypatch.chdir(tmp_path)
+
+        def fake_odbc_get_component_list(
+            settings: OdbcSettings,
+            app: str,
+        ) -> list[ComponentInfo]:
+            calls.append((settings, app))
+            return [
+                ComponentInfo(
+                    application_name="sample_app",
+                    name="p4_start",
+                    type="proc4glsource",
+                    description="Startup procedure",
+                )
+            ]
+
+        monkeypatch.setattr(
+            export_module,
+            "odbc_get_component_list",
+            fake_odbc_get_component_list,
+        )
+
+        cli.main(
+            [
+                "component",
+                "list",
+                "--vnode",
+                "vnode",
+                "--database",
+                "db",
+                "--sql-backend",
+                "odbc",
+                "--db-driver",
+                "Ingres AC",
+                "--db-host",
+                "db-host.example",
+                "--db-listen-address",
+                "II7",
+                "--db-user",
+                "ingres",
+                "--db-password",
+                "secret",
+                "sample_app",
+            ]
+        )
+
+        assert calls == [
+            (
+                OdbcSettings(
+                    driver="Ingres AC",
+                    host="db-host.example",
+                    listen_address="II7",
+                    database="db",
+                    user="ingres",
+                    password="secret",
+                ),
+                "sample_app",
+            )
         ]
         assert json.loads(capsys.readouterr().out) == [
             {
