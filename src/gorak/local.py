@@ -19,6 +19,12 @@ def build_database_target(vnode: str, database: str) -> str:
     return f"{vnode}::{database}"
 
 
+def command_path(path: Path) -> str:
+    if path.is_absolute():
+        return str(path)
+    return path.as_posix()
+
+
 def build_backup_component_command(
     vnode: str,
     database: str,
@@ -33,12 +39,12 @@ def build_backup_component_command(
         "out",
         build_database_target(vnode, database),
         app,
-        str(output_path),
+        command_path(output_path),
         "-nowindows",
         f"-c{component}",
         "-xml",
         "-TALL,logonly",
-        f"-L{log_path}",
+        f"-L{command_path(log_path)}",
     ]
 
 
