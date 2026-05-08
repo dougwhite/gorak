@@ -15,7 +15,14 @@ from .connection import (
     require_odbc_settings,
     require_remote_host,
 )
-from .domain import Application, ApplicationExport, ComponentInfo, IncludedApplication
+from .domain import (
+    Application,
+    ApplicationExport,
+    Component,
+    ComponentInfo,
+    IncludedApplication,
+)
+from .field_defaults import diff_defaults, effective_defaults
 from .parser import encode_w4gl, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
@@ -152,6 +159,7 @@ def export_application_to_paths(
     backup_application_xml(connection, app, paths.xml_path)
 
     exported = parse_application_xml(etree.parse(str(paths.xml_path)))
+    apply_field_default_inheritance(paths.source_dir.parent, app, exported.components)
     for component in exported.components:
         progress_message(progress, f"Encoding component {app}::{component.name}")
         write_component_w4gl(paths.source_dir, component.name, encode_w4gl(component))
@@ -172,11 +180,49 @@ def export_component_to_paths(
     backup_component_xml(connection, app, component, paths.xml_path)
 
     parsed_component = parse_xml(etree.parse(str(paths.xml_path)))
+    apply_field_default_inheritance(
+        paths.w4gl_path.parent.parent,
+        app,
+        [parsed_component],
+    )
     return write_component_w4gl(
         paths.w4gl_path.parent,
         parsed_component.name,
         encode_w4gl(parsed_component),
     )
+
+
+def apply_field_default_inheritance(
+    root: Path,
+    app: str,
+    components: list[Component],
+) -> None:
+    """Move frame field defaults into repo/app defaults and leave frame diffs."""
+
+    repo_path = root / "field_defaults.json"
+    app_path = root / app / "field_defaults.json"
+    repo_defaults = read_json(repo_path) if repo_path.is_file() else None
+    app_defaults = read_json(app_path) if app_path.is_file() else None
+
+    for component in components:
+        props = component.props
+        frame_defaults = props.pop("fielddefaults", None)
+        if not isinstance(frame_defaults, dict):
+            continue
+
+        if repo_defaults is None:
+            repo_defaults = frame_defaults
+            write_json(repo_path, repo_defaults)
+
+        if app_defaults is None:
+            app_defaults = diff_defaults(repo_defaults, frame_defaults)
+            app_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(app_path, app_defaults)
+
+        parent_defaults = effective_defaults(repo_defaults, app_defaults, {})
+        frame_override = diff_defaults(parent_defaults, frame_defaults)
+        if frame_override:
+            props["fielddefaults"] = frame_override
 
 
 def backup_application_xml(

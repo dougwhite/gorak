@@ -7,6 +7,7 @@ import tomlkit
 from lxml import etree
 
 from .domain import Application, ApplicationExport, Component, IncludedApplication
+from .field_defaults import parse_field_defaults_node
 
 IGNORED_PROPERTIES = {
     "script",
@@ -121,6 +122,10 @@ def parse_component_node(node: etree._Element) -> Component:
     if methods_node is not None:
         props["methods"] = extract_methods(methods_node)
 
+    field_defaults_node = node.find("fielddefaults")
+    if field_defaults_node is not None:
+        props["fielddefaults"] = parse_field_defaults_node(field_defaults_node)
+
     return Component(name, component_type, props, script)
 
 
@@ -204,11 +209,11 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
     props = {
         key: value
         for key, value in component.props.items()
-        if key not in {"attributes", "methods"}
+        if key not in {"attributes", "methods", "fielddefaults"}
     }
     doc.add(component.type, tomlkit.item(props))
 
-    for key in ["attributes", "methods"]:
+    for key in ["attributes", "methods", "fielddefaults"]:
         if key in component.props:
             doc.add(key, tomlkit.item(component.props[key]))
 
