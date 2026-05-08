@@ -1,5 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+IncludedApplication = str | dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -37,3 +39,4 @@ class ApplicationExport:
 
     application: Application
     components: list[Component]
+    included_applications: list[IncludedApplication] = field(default_factory=list)

@@ -99,7 +99,10 @@ class TestAppExport:
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
             "starting_component": "fm_start",
             "description": "Example application",
-            "included_applications": [],
+            "included_applications": [
+                "gorak_included",
+                {"name": "finance", "image": "finance.pkg"},
+            ],
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
         assert "[framesource]" in (
@@ -188,7 +191,10 @@ class TestAppExport:
         assert json.loads((output_dir / "sample_app" / "app.json").read_text()) == {
             "starting_component": "fm_start",
             "description": "Example application",
-            "included_applications": [],
+            "included_applications": [
+                "gorak_included",
+                {"name": "finance", "image": "finance.pkg"},
+            ],
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
@@ -407,7 +413,10 @@ class TestAppExport:
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
             "starting_component": "fm_start",
             "description": "Example application",
-            "included_applications": [],
+            "included_applications": [
+                "gorak_included",
+                {"name": "finance", "image": "finance.pkg"},
+            ],
         }
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (

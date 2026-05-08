@@ -12,6 +12,7 @@ from gorak.parser import (
     extract_methods,
     extract_props,
     join_segments,
+    parse_application_xml,
     parse_xml,
     toml_props,
 )
@@ -110,6 +111,57 @@ class TestParseXml:
             parse_xml(no_type)
 
         assert "<COMPONENT> node must have an xsi:type attribute" in str(ex.value)
+
+
+class TestParseApplicationXml:
+    """Tests for application-level metadata in full OpenROAD exports."""
+
+    def test_parses_included_applications_in_openroad_order(self) -> None:
+        xml = etree.fromstring("""
+            <OPENROAD>
+                <APPLICATION name="sample_app">
+                    <included_apps>
+                        <row>
+                            <sequence>1</sequence>
+                            <appname>source_include</appname>
+                        </row>
+                        <row>
+                            <sequence>2</sequence>
+                            <appname>image_include</appname>
+                            <imgfilename>image_include.pkg</imgfilename>
+                        </row>
+                    </included_apps>
+                </APPLICATION>
+            </OPENROAD>
+        """)
+
+        export = parse_application_xml(xml)
+
+        assert export.included_applications == [
+            "source_include",
+            {"name": "image_include", "image": "image_include.pkg"},
+        ]
+
+    def test_strips_force_included_core_plb(self) -> None:
+        xml = etree.fromstring("""
+            <OPENROAD>
+                <APPLICATION name="sample_app">
+                    <included_apps>
+                        <row>
+                            <appname>source_include</appname>
+                        </row>
+                        <row>
+                            <appname>core</appname>
+                            <imgfilename>core.plb</imgfilename>
+                        </row>
+                    </included_apps>
+                </APPLICATION>
+            </OPENROAD>
+        """)
+
+        export = parse_application_xml(xml)
+
+        assert export.included_applications == ["source_include"]
 
 
 class TestExtractProps:

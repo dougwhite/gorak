@@ -15,7 +15,7 @@ from .connection import (
     require_odbc_settings,
     require_remote_host,
 )
-from .domain import Application, ApplicationExport, ComponentInfo
+from .domain import Application, ApplicationExport, ComponentInfo, IncludedApplication
 from .parser import encode_w4gl, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
@@ -56,6 +56,7 @@ def encode_xml_file(xml_path: str) -> str:
 def application_metadata(
     application: Application,
     existing: dict[str, object] | None = None,
+    included_applications: list[IncludedApplication] | None = None,
 ) -> dict[str, object]:
     """Build app.json data from known metadata and preserved local-only fields."""
 
@@ -63,17 +64,28 @@ def application_metadata(
     return {
         "starting_component": application.start_component,
         "description": application.description,
-        "included_applications": existing.get("included_applications", []),
+        "included_applications": (
+            included_applications
+            if included_applications is not None
+            else existing.get("included_applications", [])
+        ),
     }
 
 
-def write_app_metadata(root: Path, application: Application) -> Path:
+def write_app_metadata(
+    root: Path,
+    application: Application,
+    included_applications: list[IncludedApplication] | None = None,
+) -> Path:
     """Write app.json while preserving local-only fields not yet exported."""
 
     path = root / application.name / "app.json"
     existing = read_json(path) if path.is_file() else {}
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_json(path, application_metadata(application, existing))
+    write_json(
+        path,
+        application_metadata(application, existing, included_applications),
+    )
     return path
 
 
@@ -96,7 +108,7 @@ def export_application(
         paths=paths,
         progress=progress,
     )
-    write_app_metadata(root, application)
+    write_app_metadata(root, application, exported.included_applications)
     return exported
 
 

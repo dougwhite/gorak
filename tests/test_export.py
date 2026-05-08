@@ -77,6 +77,24 @@ def test_application_metadata_preserves_existing_included_applications() -> None
     )["included_applications"] == ["core", "ui"]
 
 
+def test_application_metadata_uses_exported_included_applications() -> None:
+    assert application_metadata(
+        Application(
+            name="sample_app",
+            start_component="fm_start",
+            description="Example application",
+        ),
+        existing={"included_applications": ["old_include"]},
+        included_applications=[
+            "source_include",
+            {"name": "image_include", "image": "image_include.pkg"},
+        ],
+    )["included_applications"] == [
+        "source_include",
+        {"name": "image_include", "image": "image_include.pkg"},
+    ]
+
+
 def test_write_app_metadata_writes_app_json(tmp_path: Path) -> None:
     path = write_app_metadata(
         root=tmp_path,

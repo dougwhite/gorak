@@ -6,7 +6,7 @@ from typing import Any
 import tomlkit
 from lxml import etree
 
-from .domain import Application, ApplicationExport, Component
+from .domain import Application, ApplicationExport, Component, IncludedApplication
 
 IGNORED_PROPERTIES = {
     "script",
@@ -58,7 +58,37 @@ def parse_application_xml(tree: etree._ElementTree | etree._Element) -> Applicat
             description=(app_node.findtext("short_remark") or "").strip(),
         ),
         components=parse_components_xml(root),
+        included_applications=parse_included_applications(app_node),
     )
+
+
+def parse_included_applications(
+    app_node: etree._Element,
+) -> list[IncludedApplication]:
+    """Parse ordered application includes from full application XML metadata."""
+
+    included_apps = app_node.find("included_apps")
+    if included_apps is None:
+        return []
+
+    includes: list[IncludedApplication] = []
+    for row in included_apps.findall("row"):
+        app_name = (row.findtext("appname") or "").strip()
+        image = (row.findtext("imgfilename") or "").strip()
+        if not app_name or is_force_included_core(app_name, image):
+            continue
+        if image:
+            includes.append({"name": app_name, "image": image})
+        else:
+            includes.append(app_name)
+
+    return includes
+
+
+def is_force_included_core(app_name: str, image: str) -> bool:
+    """Return whether an include is OpenROAD's automatic core.plb dependency."""
+
+    return app_name.lower() == "core" or image.lower() == "core.plb"
 
 
 def xml_root(tree: etree._ElementTree | etree._Element) -> etree._Element:

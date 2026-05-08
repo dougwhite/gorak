@@ -87,6 +87,10 @@ class TestParseXmlAcceptance:
         assert export.application.name == "gorak_examples"
         assert export.application.start_component == ""
         assert export.application.description == ""
+        assert export.included_applications == [
+            "gorak_included",
+            {"name": "finance", "image": "finance.pkg"},
+        ]
         assert [component.name for component in export.components] == [
             "fm_example_frame",
             "p4_example_procedure",
