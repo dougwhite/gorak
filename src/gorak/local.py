@@ -6,8 +6,12 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-from .domain import Application, ComponentInfo
-from .sql_output import parse_app_list_output, parse_component_list_output
+from .domain import Application, ComponentInfo, IncludedApplication
+from .sql_output import (
+    parse_app_list_output,
+    parse_component_list_output,
+    parse_include_list_output,
+)
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
 RunCommand = Callable[[list[str], str | None], str]
@@ -169,6 +173,16 @@ def get_component_list(
     return parse_component_list_output(output)
 
 
+def get_include_list(
+    vnode: str,
+    database: str,
+    app: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[IncludedApplication]:
+    output = run_cmd(build_sql_command(vnode, database), include_list_query(app))
+    return parse_include_list_output(output)
+
+
 def component_list_query(app: str) -> str:
     app_name = app.replace("'", "''")
     return "\n".join(
@@ -180,6 +194,22 @@ def component_list_query(app: str) -> str:
             "where e.base_entity_id = 0",
             "and e.folder_id != 0",
             f"and lower(ea.entity_name) = lower('{app_name}')",
+            r"\p\g",
+            "",
+        ]
+    )
+
+
+def include_list_query(app: str) -> str:
+    app_name = app.replace("'", "''")
+    return "\n".join(
+        [
+            "select e.entity_name as application_name, i.incl_name, i.incl_filename, i.incl_sequence",
+            "from ii_incl_apps i",
+            "left join ii_entities e on i.app_id = e.entity_id",
+            "where i.incl_name != 'core'",
+            f"and lower(e.entity_name) = lower('{app_name}')",
+            "order by i.incl_sequence",
             r"\p\g",
             "",
         ]

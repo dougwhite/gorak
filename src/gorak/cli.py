@@ -16,13 +16,14 @@ from .connection import (
     resolve_openroad_connection,
     resolve_remote_host,
 )
-from .domain import Application, ComponentInfo
+from .domain import Application, ComponentInfo, IncludedApplication
 from .export import (
     encode_xml_file,
     export_application,
     export_component,
     read_applications,
     read_components,
+    read_includes,
 )
 from .project import (
     ProjectError,
@@ -103,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
     export_component.add_argument("app")
     export_component.add_argument("component")
     export_component.add_argument("--output")
+
+    includes_parser = subparsers.add_parser("includes")
+    includes_subparsers = includes_parser.add_subparsers(dest="includes_command")
+
+    includes_list = includes_subparsers.add_parser("list")
+    add_openroad_connection_args(includes_list)
+    includes_list.add_argument("app")
 
     return parser
 
@@ -350,6 +358,12 @@ def components_to_csv(components: list[ComponentInfo]) -> str:
     return output.getvalue().rstrip("\n")
 
 
+def includes_to_json(includes: list[IncludedApplication]) -> str:
+    """Format included application metadata as JSON."""
+
+    return json.dumps(includes, indent=2)
+
+
 def app_list_command(args: argparse.Namespace) -> str:
     """Reads OpenROAD applications and formats them for stdout."""
 
@@ -372,6 +386,13 @@ def component_list_command(args: argparse.Namespace) -> str:
         return components_to_csv(components)
 
     return components_to_json(components)
+
+
+def includes_list_command(args: argparse.Namespace) -> str:
+    """Reads included application metadata and formats it for stdout."""
+
+    connection = resolve_openroad_connection(args, load_context(Path.cwd()))
+    return includes_to_json(read_includes(connection, cast(str, args.app)))
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -411,6 +432,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "component" and parsed.component_command == "export":
             print(export_component_command(parsed))
+            return
+
+        if parsed.command == "includes" and parsed.includes_command == "list":
+            print(includes_list_command(parsed))
             return
     except ProjectError as ex:
         print(f"ERROR: {ex}", file=sys.stderr)

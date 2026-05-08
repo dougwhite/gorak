@@ -16,6 +16,8 @@ from gorak.local import (
     component_list_query,
     get_app_list,
     get_component_list,
+    get_include_list,
+    include_list_query,
     run_subprocess,
 )
 
@@ -33,6 +35,15 @@ COMPONENT_LIST_OUTPUT = """
 +--------------------------------+--------------------------------+--------------------------------+------------------------------------------------------------+
 |sample_app                      |p4_start                        |proc4glsource                   |Startup procedure                                           |
 +--------------------------------+--------------------------------+--------------------------------+------------------------------------------------------------+
+"""
+
+INCLUDE_LIST_OUTPUT = """
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+|application_name                |incl_name                       |incl_filename                                                   |incl_sequence|
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+|sample_app                      |source_include                  |                                                                |            1|
+|sample_app                      |image_include                   |image_include.pkg                                               |            2|
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
 """
 
 
@@ -244,6 +255,37 @@ def test_get_component_list_runs_sql_for_application() -> None:
 
 def test_component_list_query_escapes_application_name() -> None:
     assert "and lower(ea.entity_name) = lower('owner''s_app')" in component_list_query(
+        "owner's_app"
+    )
+
+
+def test_get_include_list_runs_sql_for_application() -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command: list[str], input_text: str | None = None) -> str:
+        calls.append((command, input_text))
+        return INCLUDE_LIST_OUTPUT
+
+    result = get_include_list(
+        vnode="myvnode",
+        database="exampledb",
+        app="sample_app",
+        run_cmd=fake_run,
+    )
+
+    assert result == [
+        "source_include",
+        {"name": "image_include", "image": "image_include.pkg"},
+    ]
+    command, input_text = calls[0]
+    assert command == ["sql", "myvnode::exampledb"]
+    assert input_text is not None
+    assert "from ii_incl_apps i" in input_text
+    assert "and lower(e.entity_name) = lower('sample_app')" in input_text
+
+
+def test_include_list_query_escapes_application_name() -> None:
+    assert "and lower(e.entity_name) = lower('owner''s_app')" in include_list_query(
         "owner's_app"
     )
 

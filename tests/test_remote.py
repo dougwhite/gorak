@@ -17,6 +17,7 @@ from gorak.remote import (
     download_file,
     get_app_list,
     get_component_list,
+    get_include_list,
     install_remote_helpers,
     run_subprocess,
     windows_path_to_scp_path,
@@ -75,6 +76,15 @@ Executing . . .
 (3 rows)
 
 Your SQL statement(s) have been committed.
+"""
+
+INCLUDE_LIST_OUTPUT = """
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+|application_name                |incl_name                       |incl_filename                                                   |incl_sequence|
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+|sample_app                      |source_include                  |                                                                |            1|
+|sample_app                      |image_include                   |image_include.pkg                                               |            2|
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
 """
 
 
@@ -433,6 +443,38 @@ class TestGetComponentList:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-component-list.bat vnode db sample_app",
+            ]
+        ]
+
+
+class TestGetIncludeList:
+    """Tests for the get_include_list() function."""
+
+    def test_runs_remote_get_include_list_command(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return INCLUDE_LIST_OUTPUT
+
+        result = get_include_list(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            app="sample_app",
+            run_cmd=fake_run,
+        )
+
+        assert result == [
+            "source_include",
+            {"name": "image_include", "image": "image_include.pkg"},
+        ]
+        assert calls == [
+            [
+                "ssh",
+                "-T",
+                "test@WINDOWS-PC",
+                r"c:\Development\gorak\get-include-list.bat vnode db sample_app",
             ]
         ]
 

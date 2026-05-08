@@ -20,6 +20,7 @@ from gorak.export import (
     read_application,
     read_applications,
     read_components,
+    read_includes,
     write_app_metadata,
 )
 from gorak.project import GorakContext, GorakProject, ProjectError
@@ -599,3 +600,27 @@ def test_read_components_routes_to_odbc_sql_backend(
         "sample_app",
     ) == [ComponentInfo("sample_app", "fm_start", "framesource", "Start frame")]
     assert calls == [(settings, "sample_app")]
+
+
+def test_read_includes_routes_to_local_backend(monkeypatch: MonkeyPatch) -> None:
+    calls: list[object] = []
+
+    def fake_local_get_include_list(
+        vnode: str,
+        database: str,
+        app: str,
+    ) -> list[object]:
+        calls.append((vnode, database, app))
+        return ["source_include"]
+
+    monkeypatch.setattr(
+        export_module,
+        "local_get_include_list",
+        fake_local_get_include_list,
+    )
+
+    assert read_includes(
+        OpenRoadConnection("local", "myvnode", "exampledb", None),
+        "sample_app",
+    ) == ["source_include"]
+    assert calls == [("myvnode", "exampledb", "sample_app")]

@@ -6,6 +6,7 @@ from gorak.database import (
     build_odbc_connection_string,
     get_app_list,
     get_component_list,
+    get_include_list,
 )
 from gorak.domain import Application, ComponentInfo
 
@@ -33,6 +34,21 @@ class FakeConnection:
                     "start_component": "fm_start   ",
                     "short_remark": "Example application   ",
                 }
+            ]
+        if "ii_incl_apps" in str(statement):
+            return [
+                {
+                    "application_name": "sample_app",
+                    "incl_name": "source_include",
+                    "incl_filename": "",
+                    "incl_sequence": 1,
+                },
+                {
+                    "application_name": "sample_app",
+                    "incl_name": "image_include",
+                    "incl_filename": "image_include.pkg",
+                    "incl_sequence": 2,
+                },
             ]
         return [
             {
@@ -105,4 +121,18 @@ def test_get_component_list_queries_one_application() -> None:
     assert calls[0] == settings()
     statement, parameters = cast(tuple[object, dict[str, object] | None], calls[1])
     assert "from ii_entities e" in str(statement)
+    assert parameters == {"app_name": "sample_app"}
+
+
+def test_get_include_list_queries_one_application() -> None:
+    calls: list[object] = []
+    factory = next(fake_engine_factory(calls))
+
+    assert get_include_list(settings(), "sample_app", engine_factory=factory) == [
+        "source_include",
+        {"name": "image_include", "image": "image_include.pkg"},
+    ]
+    assert calls[0] == settings()
+    statement, parameters = cast(tuple[object, dict[str, object] | None], calls[1])
+    assert "from ii_incl_apps i" in str(statement)
     assert parameters == {"app_name": "sample_app"}

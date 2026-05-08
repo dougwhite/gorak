@@ -7,7 +7,7 @@ from typing import Any
 import pyodbc
 from sqlalchemy import create_engine, text
 
-from .domain import Application, ComponentInfo
+from .domain import Application, ComponentInfo, IncludedApplication
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,15 @@ left join ii_applications a on ea.base_entity_id = a.entity_id
 where e.base_entity_id = 0
 and e.folder_id != 0
 and lower(ea.entity_name) = lower(:app_name)
+"""
+
+INCLUDE_LIST_SQL = """
+select e.entity_name as application_name, i.incl_name, i.incl_filename, i.incl_sequence
+from ii_incl_apps i
+left join ii_entities e on i.app_id = e.entity_id
+where i.incl_name != 'core'
+and lower(e.entity_name) = lower(:app_name)
+order by i.incl_sequence
 """
 
 
@@ -89,6 +98,19 @@ def get_component_list(
         return components_from_rows(row_mappings(rows))
 
 
+def get_include_list(
+    settings: OdbcSettings,
+    app: str,
+    engine_factory: EngineFactory = create_odbc_engine,
+) -> list[IncludedApplication]:
+    """Read ordered included applications for one application through ODBC SQL."""
+
+    engine = engine_factory(settings)
+    with engine.connect() as connection:
+        rows = connection.execute(text(INCLUDE_LIST_SQL), {"app_name": app})
+        return includes_from_rows(row_mappings(rows))
+
+
 def applications_from_rows(rows: Iterable[Mapping[str, object]]) -> list[Application]:
     return [
         Application(
@@ -110,6 +132,21 @@ def components_from_rows(rows: Iterable[Mapping[str, object]]) -> list[Component
         )
         for row in rows
     ]
+
+
+def includes_from_rows(rows: Iterable[Mapping[str, object]]) -> list[IncludedApplication]:
+    includes: list[IncludedApplication] = []
+    for row in rows:
+        name = clean_text(row["incl_name"])
+        image = clean_text(row["incl_filename"])
+        if not name or name.lower() == "core" or image.lower() == "core.plb":
+            continue
+        if image:
+            includes.append({"name": name, "image": image})
+        else:
+            includes.append(name)
+
+    return includes
 
 
 def row_mappings(rows: Iterable[Any]) -> list[Mapping[str, object]]:

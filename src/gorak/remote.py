@@ -5,8 +5,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from .domain import Application, ComponentInfo
-from .sql_output import parse_app_list_output, parse_component_list_output
+from .domain import Application, ComponentInfo, IncludedApplication
+from .sql_output import (
+    parse_app_list_output,
+    parse_component_list_output,
+    parse_include_list_output,
+)
 
 
 @dataclass(frozen=True)
@@ -203,3 +207,21 @@ def get_component_list(
     )
 
     return parse_component_list_output(run_cmd(command))
+
+
+def get_include_list(
+    remote: RemoteHost,
+    vnode: str,
+    database: str,
+    app: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[IncludedApplication]:
+    """Read ordered included application metadata from a remote source database."""
+
+    command = build_remote_command(
+        remote=remote,
+        script="get-include-list.bat",
+        args=[vnode, database, app],
+    )
+
+    return parse_include_list_output(run_cmd(command))

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pytest import CaptureFixture, MonkeyPatch
@@ -708,6 +709,42 @@ class TestAppList:
 
         assert calls == [("local_get_app_list", "project-vnode", "project-db")]
         assert json.loads(capsys.readouterr().out) == []
+
+
+class TestIncludesList:
+    """Tests for the includes list CLI command."""
+
+    def test_prints_included_applications(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        write_local_project(project_root)
+        monkeypatch.chdir(project_root)
+
+        def fake_read_includes(
+            connection: object,
+            app: str,
+        ) -> list[object]:
+            calls.append((connection, app))
+            return [
+                "source_include",
+                {"name": "image_include", "image": "image_include.pkg"},
+            ]
+
+        monkeypatch.setattr(cli, "read_includes", fake_read_includes)
+
+        cli.main(["includes", "list", "sample_app"])
+
+        _, app = cast(tuple[object, str], calls[0])
+        assert app == "sample_app"
+        assert json.loads(capsys.readouterr().out) == [
+            "source_include",
+            {"name": "image_include", "image": "image_include.pkg"},
+        ]
 
     def test_can_read_application_list_through_odbc_sql_backend(
         self,

@@ -24,14 +24,17 @@ from .remote import (
     download_file,
     get_app_list,
     get_component_list,
+    get_include_list,
 )
 
 local_backup_application = local.backup_application
 local_backup_component = local.backup_component
 local_get_app_list = local.get_app_list
 local_get_component_list = local.get_component_list
+local_get_include_list = local.get_include_list
 odbc_get_app_list = database_module.get_app_list
 odbc_get_component_list = database_module.get_component_list
+odbc_get_include_list = database_module.get_include_list
 
 
 @dataclass(frozen=True)
@@ -272,6 +275,28 @@ def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentI
         )
 
     return get_component_list(
+        remote=require_remote_host(connection),
+        vnode=connection.vnode,
+        database=connection.database,
+        app=app,
+    )
+
+
+def read_includes(
+    connection: OpenRoadConnection,
+    app: str,
+) -> list[IncludedApplication]:
+    sql_backend = connection_sql_backend(connection)
+    if sql_backend == "odbc":
+        return odbc_get_include_list(require_odbc_settings(connection), app)
+    if sql_backend == "local":
+        return local_get_include_list(
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+        )
+
+    return get_include_list(
         remote=require_remote_host(connection),
         vnode=connection.vnode,
         database=connection.database,

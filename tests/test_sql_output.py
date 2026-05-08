@@ -2,6 +2,7 @@ from gorak.domain import Application, ComponentInfo
 from gorak.sql_output import (
     parse_app_list_output,
     parse_component_list_output,
+    parse_include_list_output,
     table_rows,
 )
 
@@ -52,6 +53,16 @@ Executing . . .
 (3 rows)
 
 Your SQL statement(s) have been committed.
+"""
+
+INCLUDE_LIST_OUTPUT = """
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+|application_name                |incl_name                       |incl_filename                                                   |incl_sequence|
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+|sample_app                      |source_include                  |                                                                |            1|
+|sample_app                      |image_include                   |image_include.pkg                                               |            2|
+|sample_app                      |core                            |core.plb                                                        |            3|
++--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
 """
 
 
@@ -105,4 +116,11 @@ def test_parse_component_list_output() -> None:
             type="framesource",
             description="Main order entry screen",
         ),
+    ]
+
+
+def test_parse_include_list_output() -> None:
+    assert parse_include_list_output(INCLUDE_LIST_OUTPUT) == [
+        "source_include",
+        {"name": "image_include", "image": "image_include.pkg"},
     ]

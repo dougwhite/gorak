@@ -1,6 +1,6 @@
 """Parse Ingres terminal monitor table output used by the current backends."""
 
-from .domain import Application, ComponentInfo
+from .domain import Application, ComponentInfo, IncludedApplication
 
 
 def table_rows(output: str, expected_cells: int, header: str) -> list[list[str]]:
@@ -44,3 +44,20 @@ def parse_component_list_output(output: str) -> list[ComponentInfo]:
         )
         for cells in table_rows(output, expected_cells=4, header="application_name")
     ]
+
+
+def parse_include_list_output(output: str) -> list[IncludedApplication]:
+    """Parse Ingres terminal monitor output into ordered include metadata."""
+
+    includes: list[IncludedApplication] = []
+    for cells in table_rows(output, expected_cells=4, header="application_name"):
+        name = cells[1]
+        image = cells[2]
+        if not name or name.lower() == "core" or image.lower() == "core.plb":
+            continue
+        if image:
+            includes.append({"name": name, "image": image})
+        else:
+            includes.append(name)
+
+    return includes
