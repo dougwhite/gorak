@@ -2,7 +2,12 @@ from pathlib import Path
 
 from lxml import etree
 
-from gorak.parser import encode_w4gl, parse_xml
+from gorak.parser import (
+    encode_w4gl,
+    parse_application_xml,
+    parse_components_xml,
+    parse_xml,
+)
 
 # Simple example frame export from OpenROAD for verification purposes
 EXAMPLE_FRAMESOURCE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
@@ -10,6 +15,7 @@ EXAMPLE_USERCLASS_PATH = Path(__file__).parent / "fixtures" / "uc_example_usercl
 EXAMPLE_USERCLASS_W4GL_PATH = (
     Path(__file__).parent / "fixtures" / "uc_example_userclass.w4gl"
 )
+GORAK_EXAMPLES_PATH = Path(__file__).parent / "fixtures" / "gorak_examples.xml"
 
 
 class TestParseXmlAcceptance:
@@ -70,3 +76,31 @@ class TestParseXmlAcceptance:
         component = parse_xml(xml)
 
         assert encode_w4gl(component) == EXAMPLE_USERCLASS_W4GL_PATH.read_text()
+
+    def test_parses_all_components_from_full_application_export(self) -> None:
+        xml = etree.parse(GORAK_EXAMPLES_PATH)
+        components = parse_components_xml(xml)
+
+        assert [component.name for component in components] == [
+            "fm_example_frame",
+            "p4_example_procedure",
+            "uc_example_userclass",
+        ]
+        assert [component.type for component in components] == [
+            "framesource",
+            "proc4glsource",
+            "classsource",
+        ]
+
+    def test_parses_application_metadata_from_full_application_export(self) -> None:
+        xml = etree.parse(GORAK_EXAMPLES_PATH)
+        export = parse_application_xml(xml)
+
+        assert export.application.name == "gorak_examples"
+        assert export.application.start_component == ""
+        assert export.application.description == ""
+        assert [component.name for component in export.components] == [
+            "fm_example_frame",
+            "p4_example_procedure",
+            "uc_example_userclass",
+        ]

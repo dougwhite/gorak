@@ -7,7 +7,9 @@ from pytest import MonkeyPatch
 from gorak.domain import Application, ComponentInfo
 from gorak.local import (
     LocalCommandError,
+    backup_application,
     backup_component,
+    build_backup_application_command,
     build_backup_component_command,
     build_database_target,
     build_sql_command,
@@ -63,6 +65,29 @@ def test_build_backup_component_command() -> None:
     ]
 
 
+def test_build_backup_application_command() -> None:
+    command = build_backup_application_command(
+        vnode="myvnode",
+        database="exampledb",
+        app="sample_app",
+        output_path=Path("sample_app/sample_app.xml"),
+        log_path=Path("sample_app/sample_app.log"),
+    )
+
+    assert command == [
+        "w4gldev",
+        "backupapp",
+        "out",
+        "myvnode::exampledb",
+        "sample_app",
+        "sample_app/sample_app.xml",
+        "-nowindows",
+        "-xml",
+        "-TALL,logonly",
+        "-Lsample_app/sample_app.log",
+    ]
+
+
 def test_build_sql_command() -> None:
     assert build_sql_command("myvnode", "exampledb") == ["sql", "myvnode::exampledb"]
 
@@ -108,6 +133,59 @@ def test_backup_component_errors_when_export_file_is_missing(tmp_path: Path) -> 
             app="sample_app",
             component="p4_start",
             output_path=tmp_path / "sample_app" / "p4_start.xml",
+            run_cmd=fake_run,
+        )
+
+    assert "Export did not create expected file" in str(ex.value)
+
+
+def test_backup_application_writes_to_requested_xml_path(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    output_path = tmp_path / "sample_app" / "sample_app.xml"
+
+    def fake_run(command: list[str], input_text: str | None = None) -> str:
+        calls.append(command)
+        output_path.write_text("<xml />")
+        return ""
+
+    result = backup_application(
+        vnode="myvnode",
+        database="exampledb",
+        app="sample_app",
+        output_path=output_path,
+        run_cmd=fake_run,
+    )
+
+    assert result == str(output_path)
+    assert output_path.read_text() == "<xml />"
+    assert calls[0] == [
+        "w4gldev",
+        "backupapp",
+        "out",
+        "myvnode::exampledb",
+        "sample_app",
+        str(output_path),
+        "-nowindows",
+        "-xml",
+        "-TALL,logonly",
+        calls[0][-1],
+    ]
+    assert calls[0][-1].startswith("-L")
+    assert "-cp4_start" not in calls[0]
+
+
+def test_backup_application_errors_when_export_file_is_missing(
+    tmp_path: Path,
+) -> None:
+    def fake_run(command: list[str], input_text: str | None = None) -> str:
+        return ""
+
+    with pytest.raises(LocalCommandError) as ex:
+        backup_application(
+            vnode="myvnode",
+            database="exampledb",
+            app="sample_app",
+            output_path=tmp_path / "sample_app" / "sample_app.xml",
             run_cmd=fake_run,
         )
 

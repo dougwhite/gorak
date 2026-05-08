@@ -200,7 +200,7 @@ Inside a Gorak project this writes `application/app.json`,
 `app.json` currently contains the starting component and description from the
 source database. The application name is implied by the folder name. Existing
 `included_applications` values are preserved, otherwise they default to an empty
-list until included-application discovery is implemented.
+list until included-application handling is revisited.
 
 Outside a project, pass an output directory:
 ```

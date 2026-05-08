@@ -34,6 +34,16 @@ Would export the component to:
 C:\Development\gorak\repos\[vnode]\[database]\[application]\[component].xml
 ```
 
+To export a full application:
+```
+ssh -T [user]@[hostname-or-ip] 'c:\Development\gorak\backup-application.bat [vnode]::[database] [application]'
+```
+
+Would export the application to:
+```
+C:\Development\gorak\repos\[vnode]\[database]\[application]\[application].xml
+```
+
 To list applications in an OpenROAD source database:
 ```
 ssh -T [user]@[hostname-or-ip] 'c:\Development\gorak\get-app-list.bat [vnode] [database]'

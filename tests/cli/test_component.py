@@ -72,7 +72,7 @@ class TestComponentExport:
             gorak_root=r"C:\Development\gorak",
         )
         xml_path = project_root / ".openroad" / "app" / "component.xml"
-        w4gl_path = project_root / "app" / "component.w4gl"
+        w4gl_path = project_root / "app" / "fm_example_frame.w4gl"
         assert calls == [
             ("backup", remote, "project-vnode", "project-db", "app", "component"),
             (
@@ -95,7 +95,7 @@ class TestComponentExport:
     ) -> None:
         project_root = tmp_path / "my_project"
         xml_path = project_root / ".openroad" / "app" / "component.xml"
-        w4gl_path = project_root / "app" / "component.w4gl"
+        w4gl_path = project_root / "app" / "fm_example_frame.w4gl"
         xml_path.parent.mkdir(parents=True)
         w4gl_path.parent.mkdir(parents=True)
         xml_path.write_text("old xml")
@@ -174,6 +174,7 @@ class TestComponentExport:
         download_paths: list[str] = []
         monkeypatch.chdir(tmp_path)
         output_path = tmp_path / "component.w4gl"
+        canonical_output_path = tmp_path / "fm_example_frame.w4gl"
 
         def fake_backup_component(
             remote: RemoteHost,
@@ -232,9 +233,10 @@ class TestComponentExport:
             r"C:\Development\gorak\repos\vnode\db\app\component.xml",
             download_paths[0],
         )
-        assert output_path.is_file()
-        assert "[framesource]" in output_path.read_text()
-        assert capsys.readouterr().out == f"{output_path}\n"
+        assert not output_path.exists()
+        assert canonical_output_path.is_file()
+        assert "[framesource]" in canonical_output_path.read_text()
+        assert capsys.readouterr().out == f"{canonical_output_path}\n"
 
     def test_rejects_output_inside_project(
         self,
@@ -327,7 +329,7 @@ class TestComponentExport:
         cli.main(["component", "export", "app", "component"])
 
         xml_path = project_root / ".openroad" / "app" / "component.xml"
-        w4gl_path = project_root / "app" / "component.w4gl"
+        w4gl_path = project_root / "app" / "fm_example_frame.w4gl"
         assert calls == [
             (
                 "local_backup",

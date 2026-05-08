@@ -7,9 +7,12 @@ from gorak import export as export_module
 from gorak.connection import OpenRoadConnection
 from gorak.domain import Application, ComponentInfo
 from gorak.export import (
+    application_export_paths,
     application_metadata,
     component_export_paths,
     encode_xml_file,
+    export_application,
+    export_application_to_paths,
     export_component,
     export_component_to_paths,
     project_component_export_paths,
@@ -22,6 +25,7 @@ from gorak.project import GorakContext, GorakProject, ProjectError
 from gorak.remote import RemoteHost
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
+FULL_APP_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "gorak_examples.xml"
 
 
 def test_component_export_paths_use_openroad_cache_and_w4gl_source() -> None:
@@ -30,6 +34,12 @@ def test_component_export_paths_use_openroad_cache_and_w4gl_source() -> None:
             xml_path=Path("repo/.openroad/sample_app/p4_start.xml"),
             w4gl_path=Path("repo/sample_app/p4_start.w4gl"),
         )
+    )
+
+
+def test_application_export_paths_use_single_openroad_cache_file() -> None:
+    assert application_export_paths(Path("repo"), "sample_app").xml_path == Path(
+        "repo/.openroad/sample_app/sample_app.xml"
     )
 
 
@@ -97,6 +107,17 @@ def test_export_component_requires_output_outside_project() -> None:
         )
 
 
+def test_export_application_requires_output_outside_project() -> None:
+    with pytest.raises(ProjectError, match="--output is required outside"):
+        export_application(
+            connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+            context=GorakContext(project=None, env={}),
+            app="sample_app",
+            output_path=None,
+            progress=None,
+        )
+
+
 def test_export_component_rejects_output_inside_project(tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="--output is only supported outside"):
         export_component(
@@ -108,6 +129,20 @@ def test_export_component_rejects_output_inside_project(tmp_path: Path) -> None:
             app="sample_app",
             component="p4_start",
             output_path="p4_start.w4gl",
+        )
+
+
+def test_export_application_rejects_output_inside_project(tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match="--output is only supported outside"):
+        export_application(
+            connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+            context=GorakContext(
+                project=GorakProject(root=tmp_path, name="repo"),
+                env={},
+            ),
+            app="sample_app",
+            output_path=str(tmp_path / "backup"),
+            progress=None,
         )
 
 
@@ -144,16 +179,101 @@ def test_export_component_to_paths_uses_local_backend(
         fake_local_backup_component,
     )
 
-    export_component_to_paths(
+    result = export_component_to_paths(
         connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
         app="sample_app",
         component="p4_start",
         paths=paths,
     )
 
+    assert result == tmp_path / "sample_app" / "fm_example_frame.w4gl"
     assert calls == [("myvnode", "exampledb", "sample_app", "p4_start", paths.xml_path)]
     assert paths.xml_path.read_text() == FIXTURE_PATH.read_text()
-    assert "[framesource]" in paths.w4gl_path.read_text()
+    assert "[framesource]" in result.read_text()
+
+
+def test_export_component_to_paths_uses_xml_component_name_for_w4gl_filename(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    paths = component_export_paths(tmp_path, "sample_app", "g_log")
+    xml = (
+        '<?xml version="1.0"?>'
+        '<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+        '<COMPONENT name="G_LOG" xsi:type="proc4glsource">'
+        "<script><![CDATA[main() = {}]]></script>"
+        "</COMPONENT>"
+        "</OPENROAD>"
+    )
+
+    def fake_local_backup_component(
+        vnode: str,
+        database: str,
+        app: str,
+        component: str,
+        output_path: Path,
+    ) -> str:
+        output_path.write_text(xml)
+        return str(output_path)
+
+    monkeypatch.setattr(
+        export_module,
+        "local_backup_component",
+        fake_local_backup_component,
+    )
+
+    result = export_component_to_paths(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        app="sample_app",
+        component="g_log",
+        paths=paths,
+    )
+
+    assert result == tmp_path / "sample_app" / "G_LOG.w4gl"
+    assert result.is_file()
+    assert not paths.w4gl_path.exists()
+
+
+def test_export_application_to_paths_uses_local_backend(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    paths = application_export_paths(tmp_path, "sample_app")
+
+    def fake_local_backup_application(
+        vnode: str,
+        database: str,
+        app: str,
+        output_path: Path,
+    ) -> str:
+        calls.append((vnode, database, app, output_path))
+        output_path.write_text(FULL_APP_FIXTURE_PATH.read_text())
+        return str(output_path)
+
+    monkeypatch.setattr(
+        export_module,
+        "local_backup_application",
+        fake_local_backup_application,
+    )
+
+    exported = export_application_to_paths(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        app="sample_app",
+        paths=paths,
+        progress=None,
+    )
+
+    assert calls == [("myvnode", "exampledb", "sample_app", paths.xml_path)]
+    assert paths.xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
+    assert [component.name for component in exported.components] == [
+        "fm_example_frame",
+        "p4_example_procedure",
+        "uc_example_userclass",
+    ]
+    assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
+    assert (tmp_path / "sample_app" / "p4_example_procedure.w4gl").is_file()
+    assert (tmp_path / "sample_app" / "uc_example_userclass.w4gl").is_file()
 
 
 def test_export_component_to_paths_uses_remote_backend(
@@ -186,7 +306,7 @@ def test_export_component_to_paths_uses_remote_backend(
     monkeypatch.setattr(export_module, "backup_component", fake_backup_component)
     monkeypatch.setattr(export_module, "download_file", fake_download_file)
 
-    export_component_to_paths(
+    result = export_component_to_paths(
         connection=OpenRoadConnection("remote", "myvnode", "exampledb", remote),
         app="sample_app",
         component="p4_start",
@@ -202,7 +322,56 @@ def test_export_component_to_paths_uses_remote_backend(
             str(paths.xml_path),
         ),
     ]
-    assert "[framesource]" in paths.w4gl_path.read_text()
+    assert result == tmp_path / "sample_app" / "fm_example_frame.w4gl"
+    assert "[framesource]" in result.read_text()
+
+
+def test_export_application_to_paths_uses_remote_backend(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    remote = RemoteHost("test", "windows-pc", r"C:\Development\gorak")
+    paths = application_export_paths(tmp_path, "sample_app")
+
+    def fake_backup_application(
+        remote: RemoteHost,
+        vnode: str,
+        database: str,
+        app: str,
+    ) -> str:
+        calls.append(("backup", remote, vnode, database, app))
+        return r"C:\Development\gorak\sample_app.xml"
+
+    def fake_download_file(
+        remote: RemoteHost,
+        remote_path: str,
+        local_path: str,
+    ) -> str:
+        calls.append(("download", remote, remote_path, local_path))
+        Path(local_path).write_text(FULL_APP_FIXTURE_PATH.read_text())
+        return local_path
+
+    monkeypatch.setattr(export_module, "backup_application", fake_backup_application)
+    monkeypatch.setattr(export_module, "download_file", fake_download_file)
+
+    export_application_to_paths(
+        connection=OpenRoadConnection("remote", "myvnode", "exampledb", remote),
+        app="sample_app",
+        paths=paths,
+        progress=None,
+    )
+
+    assert calls == [
+        ("backup", remote, "myvnode", "exampledb", "sample_app"),
+        (
+            "download",
+            remote,
+            r"C:\Development\gorak\sample_app.xml",
+            str(paths.xml_path),
+        ),
+    ]
+    assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
 
 
 def test_export_component_uses_project_paths(
@@ -217,8 +386,9 @@ def test_export_component_uses_project_paths(
         app: str,
         component: str,
         paths: export_module.ComponentExportPaths,
-    ) -> None:
+    ) -> Path:
         calls.append((connection, app, component, paths))
+        return paths.w4gl_path
 
     monkeypatch.setattr(
         export_module,

@@ -141,6 +141,30 @@ def backup_component(
     )
 
     output = run_cmd(command).strip()
+    return last_output_line(output)
+
+
+def backup_application(
+    remote: RemoteHost,
+    vnode: str,
+    database: str,
+    app: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> str:
+    """Export a full application on the remote host and return the remote XML path."""
+
+    command = build_remote_command(
+        remote=remote,
+        script="backup-application.bat",
+        args=[f"{vnode}::{database}", app],
+    )
+
+    return last_output_line(run_cmd(command).strip())
+
+
+def last_output_line(output: str) -> str:
+    """Return the last line from command output."""
+
     return output.splitlines()[-1]
 
 

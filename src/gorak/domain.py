@@ -29,3 +29,11 @@ class Component:
     type: str
     props: dict[str, Any]
     script: str | None = None
+
+
+@dataclass(frozen=True)
+class ApplicationExport:
+    """OpenROAD full application XML export."""
+
+    application: Application
+    components: list[Component]

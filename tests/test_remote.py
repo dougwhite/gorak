@@ -8,6 +8,7 @@ from gorak.domain import Application, ComponentInfo
 from gorak.remote import (
     RemoteCommandError,
     RemoteHost,
+    backup_application,
     backup_component,
     build_download_command,
     build_make_remote_dir_command,
@@ -321,6 +322,53 @@ class TestBackupComponent:
         )
 
         assert result == r"C:\Development\gorak\repos\vnode\db\app\component.xml"
+
+
+class TestBackupApplication:
+    """Tests for the backup_application() function."""
+
+    def test_backup_application_runs_remote_command(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return r"C:\Development\gorak\repos\vnode\db\app\app.xml"
+
+        result = backup_application(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            app="app",
+            run_cmd=fake_run,
+        )
+
+        assert result == r"C:\Development\gorak\repos\vnode\db\app\app.xml"
+        assert calls == [
+            [
+                "ssh",
+                "-T",
+                "test@WINDOWS-PC",
+                r"c:\Development\gorak\backup-application.bat vnode::db app",
+            ]
+        ]
+
+    def test_returns_only_the_last_output_line(self) -> None:
+        def fake_run(command: list[str]) -> str:
+            return (
+                "** WARNING: connection is not using a post-quantum key exchange algorithm.\n"
+                r"C:\Development\gorak\repos\vnode\db\app\app.xml"
+                "\n"
+            )
+
+        result = backup_application(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            app="app",
+            run_cmd=fake_run,
+        )
+
+        assert result == r"C:\Development\gorak\repos\vnode\db\app\app.xml"
 
 
 class TestGetAppList:

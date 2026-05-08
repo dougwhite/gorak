@@ -18,14 +18,11 @@ from .connection import (
 )
 from .domain import Application, ComponentInfo
 from .export import (
-    component_export_paths,
     encode_xml_file,
+    export_application,
     export_component,
-    export_component_to_paths,
-    read_application,
     read_applications,
     read_components,
-    write_app_metadata,
 )
 from .project import (
     ProjectError,
@@ -218,34 +215,16 @@ def app_export_command(args: argparse.Namespace) -> str:
     """Exports all components in one OpenROAD application."""
 
     context = load_context(Path.cwd())
-    output_path = cast(str | None, args.output)
-    if context.project is None and output_path is None:
-        raise ProjectError("--output is required outside a gorak project")
-    if context.project is not None and output_path is not None:
-        raise ProjectError("--output is only supported outside a gorak project")
-
     connection = resolve_openroad_connection(args, context)
     app = cast(str, args.app)
-    root = (
-        context.project.root
-        if context.project is not None
-        else Path(cast(str, output_path))
-    )
     print(f"Exporting application {app} from {connection_source(connection)}")
-    print("Retrieving application metadata")
-    application = read_application(connection, app)
-    write_app_metadata(root, application)
-    app = application.name
-    print("Retrieving component list")
-    components = read_components(connection, app)
-    for component in components:
-        print(f"Exporting component {app}::{component.name}")
-        export_component_to_paths(
-            connection=connection,
-            app=app,
-            component=component.name,
-            paths=component_export_paths(root, app, component.name),
-        )
+    export_application(
+        connection=connection,
+        context=context,
+        app=app,
+        output_path=cast(str | None, args.output),
+        progress=print,
+    )
 
     return "Export complete"
 

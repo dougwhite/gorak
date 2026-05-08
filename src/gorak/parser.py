@@ -4,7 +4,7 @@ from typing import Any
 import tomlkit
 from lxml import etree
 
-from .domain import Component
+from .domain import Application, ApplicationExport, Component
 
 IGNORED_PROPERTIES = {
     "script",
@@ -26,6 +26,41 @@ def parse_xml(tree: etree._ElementTree | etree._Element) -> Component:
     node = tree.find(".//COMPONENT")
     if node is None:
         raise ValueError("Missing <COMPONENT> node")
+
+    return parse_component_node(node)
+
+
+def parse_components_xml(tree: etree._ElementTree | etree._Element) -> list[Component]:
+    """Parse top-level components from an OpenROAD XML export."""
+
+    root = tree.getroot() if isinstance(tree, etree._ElementTree) else tree
+    return [parse_component_node(node) for node in root.findall("./COMPONENT")]
+
+
+def parse_application_xml(tree: etree._ElementTree | etree._Element) -> ApplicationExport:
+    """Parse simple application metadata and top-level components."""
+
+    root = tree.getroot() if isinstance(tree, etree._ElementTree) else tree
+    app_node = root.find("./APPLICATION")
+    if app_node is None:
+        raise ValueError("Missing <APPLICATION> node")
+
+    name = app_node.get("name")
+    if name is None:
+        raise ValueError("<APPLICATION> node must have a name attribute")
+
+    return ApplicationExport(
+        application=Application(
+            name=name,
+            start_component=(app_node.findtext("proc_start") or "").strip(),
+            description=(app_node.findtext("short_remark") or "").strip(),
+        ),
+        components=parse_components_xml(root),
+    )
+
+
+def parse_component_node(node: etree._Element) -> Component:
+    """Parse a single OpenROAD component node."""
 
     script_node = node.find("script")
     script = (script_node.text or "").strip() if script_node is not None else None

@@ -124,6 +124,7 @@ class TestRemoteInstallCommand:
         assert [resource.name for resource in cli.remote_script_resources()] == [
             "README.md",
             "applist.sql",
+            "backup-application.bat",
             "backup-component.bat",
             "get-app-list.bat",
             "get-component-list.bat",

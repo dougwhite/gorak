@@ -48,6 +48,27 @@ def build_backup_component_command(
     ]
 
 
+def build_backup_application_command(
+    vnode: str,
+    database: str,
+    app: str,
+    output_path: Path,
+    log_path: Path,
+) -> list[str]:
+    return [
+        "w4gldev",
+        "backupapp",
+        "out",
+        build_database_target(vnode, database),
+        app,
+        command_path(output_path),
+        "-nowindows",
+        "-xml",
+        "-TALL,logonly",
+        f"-L{command_path(log_path)}",
+    ]
+
+
 def build_sql_command(vnode: str, database: str) -> list[str]:
     return ["sql", build_database_target(vnode, database)]
 
@@ -87,6 +108,33 @@ def backup_component(
                 database=database,
                 app=app,
                 component=component,
+                output_path=output_path,
+                log_path=log_path,
+            ),
+            None,
+        )
+
+    if not output_path.is_file():
+        raise LocalCommandError(f"Export did not create expected file: {output_path}")
+
+    return str(output_path)
+
+
+def backup_application(
+    vnode: str,
+    database: str,
+    app: str,
+    output_path: Path,
+    run_cmd: RunCommand = run_subprocess,
+) -> str:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        log_path = Path(temp_dir) / f"gorak-export-{app}.log"
+        run_cmd(
+            build_backup_application_command(
+                vnode=vnode,
+                database=database,
+                app=app,
                 output_path=output_path,
                 log_path=log_path,
             ),
