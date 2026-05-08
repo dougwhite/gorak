@@ -12,6 +12,33 @@ from gorak.remote import RemoteHost
 FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "fm_example_frame.xml"
 
 
+def write_project(root: Path, env: str) -> None:
+    root.mkdir(exist_ok=True)
+    (root / "gorak.json").write_text('{"name": "my_project"}\n')
+    (root / ".env").write_text(env)
+
+
+def write_local_project(root: Path) -> None:
+    write_project(
+        root,
+        "GORAK_BACKEND=local\n"
+        "GORAK_VNODE=project-vnode\n"
+        "GORAK_DATABASE=project-db\n",
+    )
+
+
+def write_remote_project(root: Path) -> None:
+    write_project(
+        root,
+        "GORAK_BACKEND=remote\n"
+        "GORAK_REMOTE_USER=project-user\n"
+        "GORAK_REMOTE_HOST=project-host\n"
+        "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
+        "GORAK_VNODE=project-vnode\n"
+        "GORAK_DATABASE=project-db\n",
+    )
+
+
 class TestComponentExport:
     """Tests for the component export CLI command."""
 
@@ -23,16 +50,7 @@ class TestComponentExport:
     ) -> None:
         calls: list[object] = []
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=remote\n"
-            "GORAK_REMOTE_USER=project-user\n"
-            "GORAK_REMOTE_HOST=project-host\n"
-            "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_remote_project(project_root)
         monkeypatch.chdir(project_root)
 
         def fake_backup_component(
@@ -100,15 +118,7 @@ class TestComponentExport:
         w4gl_path.parent.mkdir(parents=True)
         xml_path.write_text("old xml")
         w4gl_path.write_text("old w4gl")
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=remote\n"
-            "GORAK_REMOTE_USER=project-user\n"
-            "GORAK_REMOTE_HOST=project-host\n"
-            "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_remote_project(project_root)
         monkeypatch.chdir(project_root)
         monkeypatch.setattr(
             export_module,
@@ -245,16 +255,7 @@ class TestComponentExport:
         capsys: CaptureFixture[str],
     ) -> None:
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=remote\n"
-            "GORAK_REMOTE_USER=project-user\n"
-            "GORAK_REMOTE_HOST=project-host\n"
-            "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_remote_project(project_root)
         monkeypatch.chdir(project_root)
 
         with pytest.raises(SystemExit) as ex:
@@ -300,13 +301,7 @@ class TestComponentExport:
     ) -> None:
         calls: list[object] = []
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=local\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_local_project(project_root)
         monkeypatch.chdir(project_root)
 
         def fake_local_backup_component(

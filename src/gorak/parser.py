@@ -33,14 +33,14 @@ def parse_xml(tree: etree._ElementTree | etree._Element) -> Component:
 def parse_components_xml(tree: etree._ElementTree | etree._Element) -> list[Component]:
     """Parse top-level components from an OpenROAD XML export."""
 
-    root = tree.getroot() if isinstance(tree, etree._ElementTree) else tree
+    root = xml_root(tree)
     return [parse_component_node(node) for node in root.findall("./COMPONENT")]
 
 
 def parse_application_xml(tree: etree._ElementTree | etree._Element) -> ApplicationExport:
     """Parse simple application metadata and top-level components."""
 
-    root = tree.getroot() if isinstance(tree, etree._ElementTree) else tree
+    root = xml_root(tree)
     app_node = root.find("./APPLICATION")
     if app_node is None:
         raise ValueError("Missing <APPLICATION> node")
@@ -57,6 +57,13 @@ def parse_application_xml(tree: etree._ElementTree | etree._Element) -> Applicat
         ),
         components=parse_components_xml(root),
     )
+
+
+def xml_root(tree: etree._ElementTree | etree._Element) -> etree._Element:
+    if isinstance(tree, etree._ElementTree):
+        return tree.getroot()
+
+    return tree
 
 
 def parse_component_node(node: etree._Element) -> Component:

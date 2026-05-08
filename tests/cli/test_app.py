@@ -13,6 +13,33 @@ FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "fm_example_frame.xml"
 FULL_APP_FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "gorak_examples.xml"
 
 
+def write_project(root: Path, env: str) -> None:
+    root.mkdir()
+    (root / "gorak.json").write_text('{"name": "my_project"}\n')
+    (root / ".env").write_text(env)
+
+
+def write_local_project(root: Path) -> None:
+    write_project(
+        root,
+        "GORAK_BACKEND=local\n"
+        "GORAK_VNODE=project-vnode\n"
+        "GORAK_DATABASE=project-db\n",
+    )
+
+
+def write_remote_project(root: Path) -> None:
+    write_project(
+        root,
+        "GORAK_BACKEND=remote\n"
+        "GORAK_REMOTE_USER=project-user\n"
+        "GORAK_REMOTE_HOST=project-host\n"
+        "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
+        "GORAK_VNODE=project-vnode\n"
+        "GORAK_DATABASE=project-db\n",
+    )
+
+
 class TestAppExport:
     """Tests for the app export CLI command."""
 
@@ -24,13 +51,7 @@ class TestAppExport:
     ) -> None:
         calls: list[object] = []
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=local\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_local_project(project_root)
         monkeypatch.chdir(project_root)
 
         def fake_local_get_app_list(
@@ -188,13 +209,7 @@ class TestAppExport:
     ) -> None:
         calls: list[object] = []
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=local\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_local_project(project_root)
         monkeypatch.chdir(project_root)
 
         def fake_local_get_app_list(
@@ -282,13 +297,7 @@ class TestAppExport:
         capsys: CaptureFixture[str],
     ) -> None:
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=local\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_local_project(project_root)
         monkeypatch.chdir(project_root)
         monkeypatch.setattr(
             export_module,
@@ -336,16 +345,7 @@ class TestAppExport:
     ) -> None:
         calls: list[object] = []
         project_root = tmp_path / "my_project"
-        project_root.mkdir()
-        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
-        (project_root / ".env").write_text(
-            "GORAK_BACKEND=remote\n"
-            "GORAK_REMOTE_USER=project-user\n"
-            "GORAK_REMOTE_HOST=project-host\n"
-            "GORAK_REMOTE_ROOT=C:\\Development\\gorak\n"
-            "GORAK_VNODE=project-vnode\n"
-            "GORAK_DATABASE=project-db\n"
-        )
+        write_remote_project(project_root)
         monkeypatch.chdir(project_root)
 
         def fake_get_app_list(

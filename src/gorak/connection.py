@@ -6,6 +6,13 @@ from .project import GorakContext, ProjectError
 from .remote import RemoteHost
 
 Backend = Literal["local", "remote"]
+CONNECTION_HINTS = {
+    "user": "--user/GORAK_REMOTE_USER",
+    "host": "--host/GORAK_REMOTE_HOST",
+    "gorak_root": "--gorak-root/GORAK_REMOTE_ROOT",
+    "vnode": "--vnode/GORAK_VNODE",
+    "database": "--database/GORAK_DATABASE",
+}
 
 
 @dataclass(frozen=True)
@@ -106,14 +113,7 @@ def env_value(
 
 
 def connection_hint(key: str) -> str:
-    hints = {
-        "user": "--user/GORAK_REMOTE_USER",
-        "host": "--host/GORAK_REMOTE_HOST",
-        "gorak_root": "--gorak-root/GORAK_REMOTE_ROOT",
-        "vnode": "--vnode/GORAK_VNODE",
-        "database": "--database/GORAK_DATABASE",
-    }
-    return hints[key]
+    return CONNECTION_HINTS[key]
 
 
 def require_remote_host(connection: OpenRoadConnection) -> RemoteHost:
