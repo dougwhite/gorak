@@ -1,0 +1,1843 @@
+{
+    "field_types": {
+        "barfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "barfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "3",
+                        "defaultstring": "0",
+                        "bgcolor": "84",
+                        "fgcolor": "70",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "740",
+                        "height": "521",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "fgpattern": "-1",
+                        "growfrom": "6"
+                    }
+                }
+            ]
+        },
+        "boxtrim": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "boxtrim",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "varchar(100)",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "490",
+                        "height": "177",
+                        "designbias": "4",
+                        "trimbias": "16",
+                        "updatebias": "256",
+                        "querybias": "256",
+                        "readbias": "256",
+                        "user1bias": "256",
+                        "user2bias": "256",
+                        "user3bias": "256",
+                        "gravity": "17",
+                        "requirerealfield": "1",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "3",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "ismultiline": "1",
+                        "charsperline": "7",
+                        "lines": "1",
+                        "stringvalue": "Box trim"
+                    }
+                }
+            ]
+        },
+        "buttonfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "buttonfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "979",
+                        "height": "302",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "requirerealfield": "1",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "textlabel": "Button"
+                    }
+                }
+            ]
+        },
+        "controlbutton": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "controlbutton",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "1",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "135",
+                        "height": "135",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinestyle": "1",
+                        "outlinewidth": "7",
+                        "optionmenu": "",
+                        "popupalignment": "0"
+                    }
+                }
+            ]
+        },
+        "ellipseshape": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "ellipseshape",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "823",
+                        "height": "281",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "256",
+                        "querybias": "256",
+                        "readbias": "256",
+                        "user1bias": "256",
+                        "user2bias": "256",
+                        "user3bias": "256",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2"
+                    }
+                }
+            ]
+        },
+        "entryfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "entryfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "varchar(100)",
+                        "defaultvalue": "1",
+                        "bgcolor": "84",
+                        "fgcolor": "86",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "896",
+                        "height": "313",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "3",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "ismultiline": "1",
+                        "hasscrollbar": "1",
+                        "charsperline": "11",
+                        "lines": "2"
+                    }
+                }
+            ]
+        },
+        "extobjfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "extobjfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "521",
+                        "height": "521",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "4",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4"
+                    }
+                }
+            ]
+        },
+        "flexibleform": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "flexibleform",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "615",
+                        "height": "438",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "outlinewidth": "0",
+                        "ismovebounded": "0",
+                        "childfields": ""
+                    }
+                }
+            ]
+        },
+        "freetrim": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "freetrim",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "varchar(100)",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "458",
+                        "height": "177",
+                        "designbias": "4",
+                        "trimbias": "16",
+                        "updatebias": "256",
+                        "querybias": "256",
+                        "readbias": "256",
+                        "user1bias": "256",
+                        "user2bias": "256",
+                        "user3bias": "256",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "3",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "ismultiline": "1",
+                        "charsperline": "7",
+                        "lines": "1",
+                        "stringvalue": "Free trim"
+                    }
+                }
+            ]
+        },
+        "imagefield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "imagefield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "bitmapobject",
+                        "isnullable": "1",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "552",
+                        "height": "385",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "displaypolicy": "1"
+                    }
+                }
+            ]
+        },
+        "imagetrim": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "imagetrim",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "bitmapobject",
+                        "isnullable": "1",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "1",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "240",
+                        "height": "240",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "image": ""
+                    }
+                }
+            ]
+        },
+        "listfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "listfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "defaultvalue": "3",
+                        "defaultstring": "1",
+                        "bgcolor": "84",
+                        "fgcolor": "86",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "969",
+                        "height": "563",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "valuelist": "",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "visiblerows": "4"
+                    }
+                }
+            ]
+        },
+        "listviewfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "listviewfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "bgcolor": "84",
+                        "fgcolor": "86",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "521",
+                        "height": "521",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "valuelist": "",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "colattributes": "",
+                        "style": "4",
+                        "largeimageheight": "32",
+                        "largeimagewidth": "32",
+                        "smallimageheight": "16",
+                        "smallimagewidth": "16"
+                    }
+                }
+            ]
+        },
+        "matrixfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "2"
+            },
+            "childfields": [
+                {
+                    "type": "matrixfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "677",
+                        "height": "438",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "outlinewidth": "0",
+                        "childfields": "",
+                        "collapsepolicy": "3",
+                        "columns": "2",
+                        "rows": "2",
+                        "childbottommargin": "20",
+                        "childleftmargin": "20",
+                        "childrightmargin": "20",
+                        "childtopmargin": "20",
+                        "separatorwidth": "0"
+                    }
+                },
+                {
+                    "type": "matrixfield",
+                    "attributes": {
+                        "row": "2",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "646",
+                        "width": "687",
+                        "height": "448",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "fieldstyle": "2",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "outlinewidth": "0",
+                        "childfields": "",
+                        "collapsepolicy": "3",
+                        "columns": "2",
+                        "rows": "2",
+                        "childbottommargin": "20",
+                        "childleftmargin": "20",
+                        "childrightmargin": "20",
+                        "childtopmargin": "20",
+                        "separatorstyle": "3",
+                        "separatorwidth": "1"
+                    }
+                }
+            ]
+        },
+        "optionfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "optionfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "defaultvalue": "3",
+                        "defaultstring": "1",
+                        "bgcolor": "84",
+                        "fgcolor": "86",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "1000",
+                        "height": "208",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "valuelist": "",
+                        "curenumindex": "1",
+                        "typeface": "0",
+                        "typesize": "8"
+                    }
+                }
+            ]
+        },
+        "palettefield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "palettefield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "defaultvalue": "3",
+                        "defaultstring": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "500",
+                        "height": "750",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "valuelist": "",
+                        "columns": "2"
+                    }
+                }
+            ]
+        },
+        "popupbutton": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "popupbutton",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "1042",
+                        "height": "281",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "requirerealfield": "1",
+                        "bgpattern": "1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "outlinewidth": "0",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "textlabel": "Popup Button",
+                        "optionmenu": ""
+                    }
+                }
+            ]
+        },
+        "radiofield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "radiofield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "defaultvalue": "3",
+                        "defaultstring": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "937",
+                        "height": "698",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "valuelist": "",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "columns": "1"
+                    }
+                }
+            ]
+        },
+        "rectangleshape": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "2"
+            },
+            "childfields": [
+                {
+                    "type": "rectangleshape",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "1",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "812",
+                        "height": "240",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "256",
+                        "querybias": "256",
+                        "readbias": "256",
+                        "user1bias": "256",
+                        "user2bias": "256",
+                        "user3bias": "256",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2"
+                    }
+                },
+                {
+                    "type": "rectangleshape",
+                    "attributes": {
+                        "row": "2",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "1",
+                        "bgcolor": "2",
+                        "fgcolor": "1",
+                        "xleft": "271",
+                        "ytop": "427",
+                        "width": "833",
+                        "height": "271",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "256",
+                        "querybias": "256",
+                        "readbias": "256",
+                        "user1bias": "256",
+                        "user2bias": "256",
+                        "user3bias": "256",
+                        "gravity": "17",
+                        "fieldstyle": "2",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "linewidth": "0"
+                    }
+                }
+            ]
+        },
+        "scrollbarfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "scrollbarfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "3",
+                        "defaultstring": "0",
+                        "bgcolor": "25",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "1302",
+                        "height": "167",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "elevatorsize": "20",
+                        "orientation": "2"
+                    }
+                }
+            ]
+        },
+        "segmentshape": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "segmentshape",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "2",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "844",
+                        "height": "292",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "256",
+                        "querybias": "256",
+                        "readbias": "256",
+                        "user1bias": "256",
+                        "user2bias": "256",
+                        "user3bias": "256",
+                        "gravity": "17",
+                        "bgpattern": "2",
+                        "bgdisplaypolicy": "2",
+                        "point1x": "271",
+                        "point1y": "52",
+                        "point2x": "1094",
+                        "point2y": "323"
+                    }
+                }
+            ]
+        },
+        "sliderfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "sliderfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "i4",
+                        "defaultvalue": "3",
+                        "defaultstring": "0",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "1156",
+                        "height": "292",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "outlinewidth": "0",
+                        "orientation": "2",
+                        "typeface": "0",
+                        "typesize": "8"
+                    }
+                }
+            ]
+        },
+        "stackfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "2"
+            },
+            "childfields": [
+                {
+                    "type": "stackfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "281",
+                        "ytop": "52",
+                        "width": "333",
+                        "height": "531",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinewidth": "0",
+                        "childfields": "",
+                        "separatorcolor": "72",
+                        "separatorstyle": "-1",
+                        "separatorwidth": "0"
+                    }
+                },
+                {
+                    "type": "stackfield",
+                    "attributes": {
+                        "row": "2",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "698",
+                        "width": "333",
+                        "height": "552",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "fieldstyle": "2",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "72",
+                        "outlinewidth": "1",
+                        "childfields": "",
+                        "separatorcolor": "72",
+                        "separatorstyle": "-1"
+                    }
+                }
+            ]
+        },
+        "subform": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "subform",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "958",
+                        "height": "365",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "87",
+                        "outlinestyle": "4",
+                        "outlinewidth": "0",
+                        "isresizebounded": "1"
+                    }
+                }
+            ]
+        },
+        "tabfolder": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "tabfolder",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "979",
+                        "height": "781",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "isresizebounded": "1",
+                        "tabbar": "",
+                        "tabpagearray": ""
+                    }
+                }
+            ]
+        },
+        "tablefield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "2"
+            },
+            "childfields": [
+                {
+                    "type": "tablefield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "isarray": "1",
+                        "isnullable": "1",
+                        "script": "/*----------------------------------------------*/\n/* tablefield initialize */\n\ninitialize =\ndeclare\n#   include _tfInitDecl\nenddeclare\n{\n#   include _tfInit\n}",
+                        "bgcolor": "70",
+                        "fgcolor": "1",
+                        "xleft": "292",
+                        "ytop": "52",
+                        "width": "823",
+                        "height": "885",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "colseparatorwidth": "0",
+                        "rowseparatorwidth": "0",
+                        "columnsdisplayed": "1",
+                        "hasheaderbuttons": "1",
+                        "numvisiblerows": "4",
+                        "updateops": "2",
+                        "queryops": "2",
+                        "tablebody": "",
+                        "tableheader": ""
+                    }
+                },
+                {
+                    "type": "tablefield",
+                    "attributes": {
+                        "row": "2",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "isarray": "1",
+                        "isnullable": "1",
+                        "script": "/*----------------------------------------------*/\n/* tablefield initialize */\n\ninitialize =\ndeclare\n#   include _tfInitDecl\nenddeclare\n{\n#   include _tfInit\n}",
+                        "bgcolor": "70",
+                        "fgcolor": "1",
+                        "xleft": "271",
+                        "ytop": "1094",
+                        "width": "906",
+                        "height": "1135",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "fieldstyle": "2",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "1",
+                        "outlinewidth": "0",
+                        "colseparatorwidth": "0",
+                        "rowseparatorcolor": "86",
+                        "columnsdisplayed": "1",
+                        "controlbutton": "",
+                        "numvisiblerows": "4",
+                        "updateops": "2",
+                        "queryops": "2",
+                        "tablebody": "",
+                        "tableheader": "",
+                        "titletrim": ""
+                    }
+                }
+            ]
+        },
+        "togglefield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "togglefield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "defaultvalue": "3",
+                        "defaultstring": "0",
+                        "bgcolor": "70",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "823",
+                        "height": "177",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "2",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "textlabel": "Toggle Item",
+                        "isautosized": "1"
+                    }
+                }
+            ]
+        },
+        "treeviewfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "treeviewfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "datatype": "integer",
+                        "defaultvalue": "1",
+                        "bgcolor": "2",
+                        "fgcolor": "1",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "1062",
+                        "height": "1063",
+                        "designbias": "4",
+                        "trimbias": "256",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "bgpattern": "1",
+                        "bgdisplaypolicy": "2",
+                        "focusbehavior": "4",
+                        "outlinecolor": "1",
+                        "outlinestyle": "4",
+                        "typeface": "0",
+                        "typesize": "8",
+                        "hashorizontalscrollbar": "1"
+                    }
+                }
+            ]
+        },
+        "viewportfield": {
+            "type": "matrixfield",
+            "properties": {
+                "bgcolor": "2",
+                "fgcolor": "1",
+                "width": "10416",
+                "height": "10417",
+                "designbias": "2",
+                "trimbias": "8",
+                "updatebias": "16",
+                "querybias": "16",
+                "readbias": "32",
+                "user1bias": "16",
+                "user2bias": "16",
+                "user3bias": "16",
+                "fieldstyle": "0",
+                "bgpattern": "1",
+                "focusbehavior": "1",
+                "outlinecolor": "1",
+                "columns": "1",
+                "rows": "1"
+            },
+            "childfields": [
+                {
+                    "type": "viewportfield",
+                    "attributes": {
+                        "row": "1",
+                        "column": "1"
+                    },
+                    "properties": {
+                        "bgcolor": "84",
+                        "fgcolor": "72",
+                        "xleft": "271",
+                        "ytop": "52",
+                        "width": "1010",
+                        "height": "708",
+                        "designbias": "4",
+                        "trimbias": "8",
+                        "updatebias": "16",
+                        "querybias": "16",
+                        "readbias": "32",
+                        "user1bias": "16",
+                        "user2bias": "16",
+                        "user3bias": "16",
+                        "gravity": "17",
+                        "bgpattern": "-1",
+                        "focusbehavior": "1",
+                        "outlinecolor": "87",
+                        "outlinestyle": "4",
+                        "viewfield": ""
+                    }
+                }
+            ]
+        }
+    }
+}

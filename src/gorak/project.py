@@ -6,6 +6,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,6 +15,7 @@ from dotenv import dotenv_values, set_key, unset_key
 PROJECT_MANIFEST = "gorak.json"
 DEFAULT_VERSION = "0.1.0"
 DEFAULT_STARTING_COMPONENT = "p4_init"
+TEMPLATE_PACKAGE = "gorak.templates"
 RunCommand = Callable[[list[str], Path], None]
 
 ENV_EXAMPLE = """GORAK_BACKEND=local
@@ -172,8 +174,15 @@ def write_project_skeleton(root: Path, name: str) -> None:
         },
     )
     (app_dir / f"{DEFAULT_STARTING_COMPONENT}.w4gl").write_text(DEFAULT_P4_INIT)
+    (root / "field_defaults.json").write_text(default_field_defaults_json())
     (root / ".env.example").write_text(ENV_EXAMPLE)
     (root / ".gitignore").write_text(".env\n.openroad/\n")
+
+
+def default_field_defaults_json() -> str:
+    """Read the packaged standard OpenROAD field defaults."""
+
+    return files(TEMPLATE_PACKAGE).joinpath("field_defaults.json").read_text()
 
 
 def read_json(path: Path) -> dict[str, Any]:

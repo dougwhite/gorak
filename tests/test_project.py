@@ -50,6 +50,9 @@ def test_create_project_creates_default_project_skeleton(
     assert (project.root / ".env.example").read_text() == (
         FIXTURE_ROOT / ".env.example"
     ).read_text()
+    assert (project.root / "field_defaults.json").read_text() == (
+        FIXTURE_ROOT / "field_defaults.json"
+    ).read_text()
     assert (project.root / ".gitignore").read_text() == ".env\n.openroad/\n"
     assert calls == [(["git", "init"], project.root)]
     assert capsys.readouterr().err == ""
