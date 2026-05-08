@@ -72,16 +72,7 @@ def export_application(
     output_path: str | None,
     progress: Callable[[str], None] | None,
 ) -> ApplicationExport:
-    if context.project is None and output_path is None:
-        raise ProjectError("--output is required outside a gorak project")
-    if context.project is not None and output_path is not None:
-        raise ProjectError("--output is only supported outside a gorak project")
-
-    root = (
-        context.project.root
-        if context.project is not None
-        else Path(str(output_path))
-    )
+    root = export_root(context, output_path)
     progress_message(progress, "Retrieving application metadata")
     application = read_application(connection, app)
     paths = application_export_paths(root, application.name)
@@ -102,10 +93,7 @@ def export_component(
     component: str,
     output_path: str | None,
 ) -> Path:
-    if context.project is None and output_path is None:
-        raise ProjectError("--output is required outside a gorak project")
-    if context.project is not None and output_path is not None:
-        raise ProjectError("--output is only supported outside a gorak project")
+    validate_output_mode(context, output_path)
 
     if context.project is None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -128,26 +116,7 @@ def export_application_to_paths(
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.source_dir.mkdir(parents=True, exist_ok=True)
     progress_message(progress, "Exporting full application XML")
-    if connection.backend == "local":
-        local_backup_application(
-            vnode=connection.vnode,
-            database=connection.database,
-            app=app,
-            output_path=paths.xml_path,
-        )
-    else:
-        remote = require_remote_host(connection)
-        remote_xml_path = backup_application(
-            remote=remote,
-            vnode=connection.vnode,
-            database=connection.database,
-            app=app,
-        )
-        download_file(
-            remote=remote,
-            remote_path=remote_xml_path,
-            local_path=str(paths.xml_path),
-        )
+    backup_application_xml(connection, app, paths.xml_path)
 
     exported = parse_application_xml(etree.parse(str(paths.xml_path)))
     for component in exported.components:
@@ -165,34 +134,65 @@ def export_component_to_paths(
 ) -> Path:
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.w4gl_path.parent.mkdir(parents=True, exist_ok=True)
-    if connection.backend == "local":
-        local_backup_component(
-            vnode=connection.vnode,
-            database=connection.database,
-            app=app,
-            component=component,
-            output_path=paths.xml_path,
-        )
-    else:
-        remote = require_remote_host(connection)
-        remote_xml_path = backup_component(
-            remote=remote,
-            vnode=connection.vnode,
-            database=connection.database,
-            app=app,
-            component=component,
-        )
-        download_file(
-            remote=remote,
-            remote_path=remote_xml_path,
-            local_path=str(paths.xml_path),
-        )
+    backup_component_xml(connection, app, component, paths.xml_path)
+
     parsed_component = parse_xml(etree.parse(str(paths.xml_path)))
     return write_component_w4gl(
         paths.w4gl_path.parent,
         parsed_component.name,
         encode_w4gl(parsed_component),
     )
+
+
+def backup_application_xml(
+    connection: OpenRoadConnection,
+    app: str,
+    xml_path: Path,
+) -> None:
+    if connection.backend == "local":
+        local_backup_application(
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+            output_path=xml_path,
+        )
+        return
+
+    remote = require_remote_host(connection)
+    remote_xml_path = backup_application(
+        remote=remote,
+        vnode=connection.vnode,
+        database=connection.database,
+        app=app,
+    )
+    download_file(remote=remote, remote_path=remote_xml_path, local_path=str(xml_path))
+
+
+def backup_component_xml(
+    connection: OpenRoadConnection,
+    app: str,
+    component: str,
+    xml_path: Path,
+) -> None:
+    if connection.backend == "local":
+        local_backup_component(
+            vnode=connection.vnode,
+            database=connection.database,
+            app=app,
+            component=component,
+            output_path=xml_path,
+        )
+        return
+
+    remote = require_remote_host(connection)
+    remote_xml_path = backup_component(
+        remote=remote,
+        vnode=connection.vnode,
+        database=connection.database,
+        app=app,
+        component=component,
+    )
+    download_file(remote=remote, remote_path=remote_xml_path, local_path=str(xml_path))
 
 
 def read_applications(connection: OpenRoadConnection) -> list[Application]:
@@ -244,6 +244,21 @@ def project_component_export_paths(
         raise ProjectError("Component export requires a gorak project")
 
     return component_export_paths(context.project.root, app, component)
+
+
+def export_root(context: GorakContext, output_path: str | None) -> Path:
+    validate_output_mode(context, output_path)
+    if context.project is not None:
+        return context.project.root
+
+    return Path(str(output_path))
+
+
+def validate_output_mode(context: GorakContext, output_path: str | None) -> None:
+    if context.project is None and output_path is None:
+        raise ProjectError("--output is required outside a gorak project")
+    if context.project is not None and output_path is not None:
+        raise ProjectError("--output is only supported outside a gorak project")
 
 
 def application_export_paths(root: Path, app: str) -> ApplicationExportPaths:
