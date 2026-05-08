@@ -196,6 +196,8 @@ def test_export_component_to_paths_uses_xml_component_name_for_w4gl_filename(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
+    # Real OpenROAD exports may preserve mixed-case names even when the CLI
+    # request used a lower-case component name.
     paths = component_export_paths(tmp_path, "sample_app", "g_log")
     xml = (
         '<?xml version="1.0"?>'

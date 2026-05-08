@@ -9,7 +9,6 @@ from gorak.parser import (
     parse_xml,
 )
 
-# Simple example frame export from OpenROAD for verification purposes
 EXAMPLE_FRAMESOURCE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
 EXAMPLE_USERCLASS_PATH = Path(__file__).parent / "fixtures" / "uc_example_userclass.xml"
 EXAMPLE_USERCLASS_W4GL_PATH = (
@@ -19,28 +18,17 @@ GORAK_EXAMPLES_PATH = Path(__file__).parent / "fixtures" / "gorak_examples.xml"
 
 
 class TestParseXmlAcceptance:
-    """Acceptance tests to check that `parse_xml()` correctly handles
-    our example OpenROAD xml exports."""
+    """Fixture-level checks against real-ish OpenROAD XML exports."""
 
     def test_handles_framesource_export(self) -> None:
-        """Ensures `parse_xml()` can correctly parse our framesource example"""
-
-        # Import the xml
         xml = etree.parse(EXAMPLE_FRAMESOURCE_PATH)
         component = parse_xml(xml)
 
-        # Check the finalk component name/type matches what we think it should
         assert component.name == "fm_example_frame"
         assert component.type == "framesource"
-
-        # Check our props look good
         assert component.props["datatype"] == "integer"
         assert component.props["templatename"] == "standard"
-
-        # Check we correctly ignored the problematic probs
         assert "topform" not in component.props
-
-        # Check the script worked correctly
         assert component.script is not None
         assert "initialize()=" in component.script
         assert "CurFrame.Trace(text = " in component.script

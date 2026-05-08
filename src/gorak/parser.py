@@ -1,3 +1,5 @@
+"""Parse a small, intentionally conservative subset of OpenROAD XML exports."""
+
 from collections.abc import Sequence
 from typing import Any
 

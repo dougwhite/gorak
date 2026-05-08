@@ -1,3 +1,5 @@
+"""Parse Ingres terminal monitor table output used by the current backends."""
+
 from .domain import Application, ComponentInfo
 
 

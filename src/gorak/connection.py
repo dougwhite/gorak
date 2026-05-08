@@ -1,3 +1,5 @@
+"""Resolve OpenROAD backend settings from CLI arguments and Gorak context."""
+
 import argparse
 from dataclasses import dataclass
 from typing import Literal, cast

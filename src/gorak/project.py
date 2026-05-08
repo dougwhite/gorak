@@ -1,3 +1,5 @@
+"""Gorak project discovery, scaffolding, and local configuration."""
+
 import json
 import os
 import subprocess

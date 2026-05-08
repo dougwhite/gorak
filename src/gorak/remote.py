@@ -1,3 +1,5 @@
+"""SSH/SCP wrappers for running Gorak helper scripts on a Windows host."""
+
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass

@@ -1,3 +1,5 @@
+"""Coordinate OpenROAD XML export and .w4gl source file writing."""
+
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -58,6 +60,8 @@ def application_metadata(
 
 
 def write_app_metadata(root: Path, application: Application) -> Path:
+    """Write app.json while preserving local-only fields not yet exported."""
+
     path = root / application.name / "app.json"
     existing = read_json(path) if path.is_file() else {}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +76,8 @@ def export_application(
     output_path: str | None,
     progress: Callable[[str], None] | None,
 ) -> ApplicationExport:
+    """Export one OpenROAD application into a Gorak project or output directory."""
+
     root = export_root(context, output_path)
     progress_message(progress, "Retrieving application metadata")
     application = read_application(connection, app)
@@ -93,6 +99,8 @@ def export_component(
     component: str,
     output_path: str | None,
 ) -> Path:
+    """Export one component and return the .w4gl path named by the XML component."""
+
     validate_output_mode(context, output_path)
 
     if context.project is None:
@@ -113,6 +121,8 @@ def export_application_to_paths(
     paths: ApplicationExportPaths,
     progress: Callable[[str], None] | None,
 ) -> ApplicationExport:
+    """Export one full application XML and encode all top-level components."""
+
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.source_dir.mkdir(parents=True, exist_ok=True)
     progress_message(progress, "Exporting full application XML")
@@ -132,6 +142,8 @@ def export_component_to_paths(
     component: str,
     paths: ComponentExportPaths,
 ) -> Path:
+    """Export one component XML and encode the component named inside that XML."""
+
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.w4gl_path.parent.mkdir(parents=True, exist_ok=True)
     backup_component_xml(connection, app, component, paths.xml_path)
@@ -149,6 +161,8 @@ def backup_application_xml(
     app: str,
     xml_path: Path,
 ) -> None:
+    """Run the correct backend-specific full application XML export."""
+
     if connection.backend == "local":
         local_backup_application(
             vnode=connection.vnode,
@@ -174,6 +188,8 @@ def backup_component_xml(
     component: str,
     xml_path: Path,
 ) -> None:
+    """Run the correct backend-specific single component XML export."""
+
     if connection.backend == "local":
         local_backup_component(
             vnode=connection.vnode,
@@ -207,6 +223,8 @@ def read_applications(connection: OpenRoadConnection) -> list[Application]:
 
 
 def read_application(connection: OpenRoadConnection, app: str) -> Application:
+    """Find application metadata, allowing case-insensitive CLI input."""
+
     applications = read_applications(connection)
     for application in applications:
         if application.name == app:
@@ -247,6 +265,8 @@ def project_component_export_paths(
 
 
 def export_root(context: GorakContext, output_path: str | None) -> Path:
+    """Return the output root after enforcing project/output mode rules."""
+
     validate_output_mode(context, output_path)
     if context.project is not None:
         return context.project.root
@@ -283,6 +303,8 @@ def progress_message(progress: Callable[[str], None] | None, message: str) -> No
 
 
 def write_component_w4gl(source_dir: Path, component_name: str, content: str) -> Path:
+    """Write a component using the OpenROAD XML name as the source filename."""
+
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.w4gl"
     path.write_text(content)
