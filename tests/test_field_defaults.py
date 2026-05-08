@@ -1,8 +1,14 @@
 from pathlib import Path
+from typing import Any
 
 from lxml import etree
 
-from gorak.field_defaults import parse_field_defaults_node
+from gorak.field_defaults import (
+    diff_defaults,
+    effective_defaults,
+    merge_defaults,
+    parse_field_defaults_node,
+)
 
 GORAK_EXAMPLES_PATH = Path(__file__).parent / "fixtures" / "gorak_examples.xml"
 
@@ -62,3 +68,83 @@ def test_parse_field_defaults_preserves_matrix_and_child_properties() -> None:
             },
         }
     ]
+
+
+def test_merge_defaults_applies_nested_overrides_without_mutating_parent() -> None:
+    parent: dict[str, Any] = {
+        "field_types": {
+            "entryfield": {
+                "properties": {"bgcolor": "84", "fgcolor": "86"},
+                "childfields": [{"properties": {"width": "896"}}],
+            }
+        }
+    }
+    override: dict[str, Any] = {
+        "field_types": {
+            "entryfield": {
+                "properties": {"bgcolor": "70"},
+            }
+        }
+    }
+
+    merged = merge_defaults(parent, override)
+
+    assert merged == {
+        "field_types": {
+            "entryfield": {
+                "properties": {"bgcolor": "70", "fgcolor": "86"},
+                "childfields": [{"properties": {"width": "896"}}],
+            }
+        }
+    }
+    assert parent["field_types"]["entryfield"]["properties"]["bgcolor"] == "84"
+
+
+def test_diff_defaults_returns_only_values_that_differ_from_parent() -> None:
+    parent: dict[str, Any] = {
+        "field_types": {
+            "entryfield": {
+                "properties": {"bgcolor": "84", "fgcolor": "86"},
+                "childfields": [{"properties": {"width": "896"}}],
+            }
+        }
+    }
+    child: dict[str, Any] = {
+        "field_types": {
+            "entryfield": {
+                "properties": {"bgcolor": "70", "fgcolor": "86"},
+                "childfields": [{"properties": {"width": "896"}}],
+            },
+            "buttonfield": {"properties": {"textlabel": "Button"}},
+        }
+    }
+
+    assert diff_defaults(parent, child) == {
+        "field_types": {
+            "entryfield": {"properties": {"bgcolor": "70"}},
+            "buttonfield": {"properties": {"textlabel": "Button"}},
+        }
+    }
+
+
+def test_effective_defaults_merges_repo_app_and_frame_overrides() -> None:
+    repo: dict[str, Any] = {
+        "field_types": {"entryfield": {"properties": {"bgcolor": "84"}}}
+    }
+    app: dict[str, Any] = {
+        "field_types": {"entryfield": {"properties": {"fgcolor": "86"}}}
+    }
+    frame: dict[str, Any] = {
+        "field_types": {"entryfield": {"properties": {"bgcolor": "70"}}}
+    }
+
+    assert effective_defaults(repo, app, frame) == {
+        "field_types": {
+            "entryfield": {
+                "properties": {
+                    "bgcolor": "70",
+                    "fgcolor": "86",
+                }
+            }
+        }
+    }
