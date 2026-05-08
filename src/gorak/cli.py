@@ -25,6 +25,7 @@ from .export import (
     read_components,
     read_includes,
 )
+from .field_defaults import flatten_app_defaults
 from .project import (
     ProjectError,
     configure_project,
@@ -111,6 +112,10 @@ def build_parser() -> argparse.ArgumentParser:
     includes_list = includes_subparsers.add_parser("list")
     add_openroad_connection_args(includes_list)
     includes_list.add_argument("app")
+
+    defaults_parser = subparsers.add_parser("defaults")
+    defaults_subparsers = defaults_parser.add_subparsers(dest="defaults_command")
+    defaults_subparsers.add_parser("flatten")
 
     return parser
 
@@ -395,6 +400,19 @@ def includes_list_command(args: argparse.Namespace) -> str:
     return includes_to_json(read_includes(connection, cast(str, args.app)))
 
 
+def defaults_flatten_command(args: argparse.Namespace) -> str:
+    """Flatten shared app-level field defaults into the project defaults."""
+
+    project = load_project(Path.cwd())
+    result = flatten_app_defaults(project.root)
+    value_label = "value" if result.promoted_values == 1 else "values"
+    app_label = "application" if result.app_count == 1 else "applications"
+    return (
+        f"Flattened {result.promoted_values} field default {value_label} "
+        f"across {result.app_count} {app_label}"
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
 
@@ -436,6 +454,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "includes" and parsed.includes_command == "list":
             print(includes_list_command(parsed))
+            return
+
+        if parsed.command == "defaults" and parsed.defaults_command == "flatten":
+            print(defaults_flatten_command(parsed))
             return
     except ProjectError as ex:
         print(f"ERROR: {ex}", file=sys.stderr)

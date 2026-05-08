@@ -4,10 +4,13 @@ from typing import Any
 from lxml import etree
 
 from gorak.field_defaults import (
+    common_defaults,
     diff_defaults,
     effective_defaults,
+    flatten_app_defaults,
     merge_defaults,
     parse_field_defaults_node,
+    remove_defaults,
 )
 
 GORAK_EXAMPLES_PATH = Path(__file__).parent / "fixtures" / "gorak_examples.xml"
@@ -148,3 +151,80 @@ def test_effective_defaults_merges_repo_app_and_frame_overrides() -> None:
             }
         }
     }
+
+
+def test_common_defaults_returns_values_shared_by_every_child() -> None:
+    assert common_defaults(
+        [
+            {
+                "field_types": {
+                    "entryfield": {
+                        "properties": {"bgcolor": "70", "fgcolor": "86"}
+                    }
+                }
+            },
+            {
+                "field_types": {
+                    "entryfield": {
+                        "properties": {"bgcolor": "70", "fgcolor": "72"}
+                    }
+                }
+            },
+        ]
+    ) == {
+        "field_types": {"entryfield": {"properties": {"bgcolor": "70"}}}
+    }
+
+
+def test_remove_defaults_removes_matching_nested_values() -> None:
+    assert remove_defaults(
+        {
+            "field_types": {
+                "entryfield": {
+                    "properties": {"bgcolor": "70", "fgcolor": "86"}
+                }
+            }
+        },
+        {"field_types": {"entryfield": {"properties": {"bgcolor": "70"}}}},
+    ) == {"field_types": {"entryfield": {"properties": {"fgcolor": "86"}}}}
+
+
+def test_flatten_app_defaults_moves_shared_values_to_repo(tmp_path: Path) -> None:
+    (tmp_path / "field_defaults.json").write_text('{"field_types": {}}\n')
+    for app_name in ["orders", "billing"]:
+        app_dir = tmp_path / app_name
+        app_dir.mkdir()
+        (app_dir / "app.json").write_text("{}\n")
+        (app_dir / "field_defaults.json").write_text(
+            """
+{
+    "field_types": {
+        "entryfield": {
+            "properties": {
+                "bgcolor": "70",
+                "fgcolor": "86"
+            }
+        }
+    }
+}
+""".strip()
+            + "\n"
+        )
+
+    result = flatten_app_defaults(tmp_path)
+
+    assert result.promoted_values == 2
+    assert (tmp_path / "field_defaults.json").read_text() == (
+        "{\n"
+        '    "field_types": {\n'
+        '        "entryfield": {\n'
+        '            "properties": {\n'
+        '                "bgcolor": "70",\n'
+        '                "fgcolor": "86"\n'
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    )
+    assert (tmp_path / "orders" / "field_defaults.json").read_text() == "{}\n"
+    assert (tmp_path / "billing" / "field_defaults.json").read_text() == "{}\n"
