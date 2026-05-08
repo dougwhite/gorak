@@ -129,7 +129,7 @@ def component_list_query(app: str) -> str:
             "left join ii_applications a on ea.base_entity_id = a.entity_id",
             "where e.base_entity_id = 0",
             "and e.folder_id != 0",
-            f"and ea.entity_name = '{app_name}'",
+            f"and lower(ea.entity_name) = lower('{app_name}')",
             r"\p\g",
             "",
         ]

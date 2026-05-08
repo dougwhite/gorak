@@ -161,11 +161,13 @@ def test_get_component_list_runs_sql_for_application() -> None:
     command, input_text = calls[0]
     assert command == ["sql", "myvnode::exampledb"]
     assert input_text is not None
-    assert "and ea.entity_name = 'sample_app'" in input_text
+    assert "and lower(ea.entity_name) = lower('sample_app')" in input_text
 
 
 def test_component_list_query_escapes_application_name() -> None:
-    assert "and ea.entity_name = 'owner''s_app'" in component_list_query("owner's_app")
+    assert "and lower(ea.entity_name) = lower('owner''s_app')" in component_list_query(
+        "owner's_app"
+    )
 
 
 def test_run_subprocess_passes_stdin_to_process(monkeypatch: MonkeyPatch) -> None:

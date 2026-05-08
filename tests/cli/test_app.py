@@ -236,6 +236,104 @@ class TestAppExport:
             "Export complete\n"
         )
 
+    def test_exports_application_using_canonical_name_from_metadata(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+        (project_root / "gorak.json").write_text('{"name": "my_project"}\n')
+        (project_root / ".env").write_text(
+            "GORAK_BACKEND=local\n"
+            "GORAK_VNODE=project-vnode\n"
+            "GORAK_DATABASE=project-db\n"
+        )
+        monkeypatch.chdir(project_root)
+
+        def fake_local_get_app_list(
+            vnode: str,
+            database: str,
+        ) -> list[Application]:
+            calls.append(("app", vnode, database))
+            return [
+                Application(
+                    name="orders_mixedCase",
+                    start_component="fm_start",
+                    description="Example application",
+                )
+            ]
+
+        def fake_local_get_component_list(
+            vnode: str,
+            database: str,
+            app: str,
+        ) -> list[ComponentInfo]:
+            calls.append(("list", vnode, database, app))
+            return [
+                ComponentInfo(
+                    application_name="orders_mixedCase",
+                    name="first_component",
+                    type="framesource",
+                    description="",
+                )
+            ]
+
+        def fake_local_backup_component(
+            vnode: str,
+            database: str,
+            app: str,
+            component: str,
+            output_path: Path,
+        ) -> str:
+            calls.append(("backup", vnode, database, app, component, output_path))
+            output_path.write_text(FIXTURE_PATH.read_text())
+            return str(output_path)
+
+        monkeypatch.setattr(
+            export_module,
+            "local_get_app_list",
+            fake_local_get_app_list,
+        )
+        monkeypatch.setattr(
+            export_module,
+            "local_get_component_list",
+            fake_local_get_component_list,
+        )
+        monkeypatch.setattr(
+            export_module,
+            "local_backup_component",
+            fake_local_backup_component,
+        )
+
+        cli.main(["app", "export", "orders_mixedcase"])
+
+        xml_path = (
+            project_root / ".openroad" / "orders_mixedCase" / "first_component.xml"
+        )
+        assert calls == [
+            ("app", "project-vnode", "project-db"),
+            ("list", "project-vnode", "project-db", "orders_mixedCase"),
+            (
+                "backup",
+                "project-vnode",
+                "project-db",
+                "orders_mixedCase",
+                "first_component",
+                xml_path,
+            ),
+        ]
+        assert (project_root / "orders_mixedCase" / "first_component.w4gl").is_file()
+        assert capsys.readouterr().out == (
+            "Exporting application orders_mixedcase from local\n"
+            "Retrieving application metadata\n"
+            "Retrieving component list\n"
+            "Exporting component orders_mixedCase::first_component\n"
+            "Export complete\n"
+        )
+
     def test_requires_output_folder_outside_project(
         self,
         monkeypatch: MonkeyPatch,

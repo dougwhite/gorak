@@ -122,8 +122,13 @@ def read_applications(connection: OpenRoadConnection) -> list[Application]:
 
 
 def read_application(connection: OpenRoadConnection, app: str) -> Application:
-    for application in read_applications(connection):
+    applications = read_applications(connection)
+    for application in applications:
         if application.name == app:
+            return application
+
+    for application in applications:
+        if application.name.lower() == app.lower():
             return application
 
     raise ProjectError(f"Application not found: {app}")

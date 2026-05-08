@@ -235,6 +235,7 @@ def app_export_command(args: argparse.Namespace) -> str:
     print("Retrieving application metadata")
     application = read_application(connection, app)
     write_app_metadata(root, application)
+    app = application.name
     print("Retrieving component list")
     components = read_components(connection, app)
     for component in components:

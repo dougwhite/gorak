@@ -278,6 +278,23 @@ def test_read_application_returns_matching_application(
     ) == Application("sample_app", "fm_start", "Example application")
 
 
+def test_read_application_returns_case_insensitive_match(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        export_module,
+        "local_get_app_list",
+        lambda vnode, database: [
+            Application("orders_mixedCase", "fm_start", "Example application")
+        ],
+    )
+
+    assert read_application(
+        OpenRoadConnection("local", "myvnode", "exampledb", None),
+        "orders_mixedcase",
+    ) == Application("orders_mixedCase", "fm_start", "Example application")
+
+
 def test_read_application_errors_when_application_is_missing(
     monkeypatch: MonkeyPatch,
 ) -> None:

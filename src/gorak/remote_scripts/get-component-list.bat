@@ -40,7 +40,7 @@ set "SQL_FILE=%TEMP_DIR%\component-list-%RANDOM%.sql"
     echo left join ii_applications a on ea.base_entity_id = a.entity_id
     echo where e.base_entity_id = 0
     echo and e.folder_id != 0
-    echo and ea.entity_name = '%APPLICATION%'
+    echo and lower(ea.entity_name^) = lower('%APPLICATION%'^)
     echo \p\g
 ) > "%SQL_FILE%"
 
