@@ -26,7 +26,7 @@ from .export import (
 )
 from .project import (
     ProjectError,
-    configure_remote,
+    configure_project,
     create_project,
     load_context,
     load_project,
@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser.add_argument("name")
 
     config_parser = subparsers.add_parser("config")
+    add_config_args(config_parser, require_values=False)
     config_subparsers = config_parser.add_subparsers(dest="config_command")
 
     remote_config = config_subparsers.add_parser("remote")
@@ -120,6 +121,25 @@ def add_openroad_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--db-password")
 
 
+def add_config_args(parser: argparse.ArgumentParser, require_values: bool) -> None:
+    parser.add_argument("--backend", choices=["remote", "local"], required=require_values)
+    parser.add_argument(
+        "--sql-backend",
+        choices=["remote", "local", "odbc"],
+    )
+    parser.add_argument("--vnode", required=require_values)
+    parser.add_argument("--database", required=require_values)
+    parser.add_argument("--host")
+    parser.add_argument("--user")
+    parser.add_argument("--gorak-root")
+    parser.add_argument("--db-driver")
+    parser.add_argument("--db-host")
+    parser.add_argument("--db-listen-address")
+    parser.add_argument("--db-database")
+    parser.add_argument("--db-user")
+    parser.add_argument("--db-password")
+
+
 def add_remote_host_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--user")
     parser.add_argument("--host")
@@ -155,18 +175,70 @@ def encode_command(args: argparse.Namespace) -> str:
 
 
 def config_remote_command(args: argparse.Namespace) -> str:
-    """Configures remote OpenROAD access for the current project."""
+    """Configures OpenROAD access for the current project."""
 
+    validate_config_args(args)
     project = load_project(Path.cwd())
-    env_path = configure_remote(
+    env_path = configure_project(
         project=project,
-        host=cast(str, args.host),
-        user=cast(str, args.user),
-        gorak_root=cast(str, args.gorak_root),
+        backend="remote" if args.config_command == "remote" else cast(str, args.backend),
         vnode=cast(str, args.vnode),
         database=cast(str, args.database),
+        host=cast(str | None, args.host),
+        user=cast(str | None, args.user),
+        gorak_root=cast(str | None, args.gorak_root),
+        sql_backend=cast(str | None, args.sql_backend),
+        db_driver=cast(str | None, args.db_driver),
+        db_host=cast(str | None, args.db_host),
+        db_listen_address=cast(str | None, args.db_listen_address),
+        db_database=cast(str | None, args.db_database),
+        db_user=cast(str | None, args.db_user),
+        db_password=cast(str | None, args.db_password),
     )
     return str(env_path)
+
+
+def validate_config_args(args: argparse.Namespace) -> None:
+    required = {
+        "backend": "--backend",
+        "vnode": "--vnode/GORAK_VNODE",
+        "database": "--database/GORAK_DATABASE",
+    }
+    if args.config_command == "remote":
+        required = {
+            "host": "--host/GORAK_REMOTE_HOST",
+            "user": "--user/GORAK_REMOTE_USER",
+            "gorak_root": "--gorak-root/GORAK_REMOTE_ROOT",
+            "vnode": "--vnode/GORAK_VNODE",
+            "database": "--database/GORAK_DATABASE",
+        }
+
+    missing = [hint for name, hint in required.items() if not getattr(args, name, None)]
+
+    backend = "remote" if args.config_command == "remote" else args.backend
+    sql_backend = getattr(args, "sql_backend", None)
+    if backend == "remote" or sql_backend == "remote":
+        for name, hint in [
+            ("host", "--host/GORAK_REMOTE_HOST"),
+            ("user", "--user/GORAK_REMOTE_USER"),
+            ("gorak_root", "--gorak-root/GORAK_REMOTE_ROOT"),
+        ]:
+            if not getattr(args, name, None) and hint not in missing:
+                missing.append(hint)
+
+    if sql_backend == "odbc":
+        for name, hint in [
+            ("db_driver", "--db-driver/GORAK_DB_DRIVER"),
+            ("db_host", "--db-host/GORAK_DB_HOST"),
+            ("db_listen_address", "--db-listen-address/GORAK_DB_LISTEN_ADDRESS"),
+            ("db_user", "--db-user/GORAK_DB_USER"),
+            ("db_password", "--db-password/GORAK_DB_PASSWORD"),
+        ]:
+            if not getattr(args, name, None):
+                missing.append(hint)
+
+    if missing:
+        raise ProjectError("Missing config settings: " + ", ".join(missing))
 
 
 def remote_install_command(args: argparse.Namespace) -> str:
@@ -313,7 +385,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(new_command(parsed))
             return
 
-        if parsed.command == "config" and parsed.config_command == "remote":
+        if parsed.command == "config":
             print(config_remote_command(parsed))
             return
 

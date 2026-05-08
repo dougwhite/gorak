@@ -108,6 +108,9 @@ the folder name.
 ### Configuring OpenROAD access
 
 Everything local: OpenROAD CLI commands and SQL both run on this machine.
+```
+gorak config --backend local --vnode myvnode --database exampledb
+```
 ```env
 GORAK_BACKEND=local
 GORAK_VNODE=myvnode
@@ -115,6 +118,15 @@ GORAK_DATABASE=exampledb
 ```
 
 Everything remote: OpenROAD CLI commands and SQL both run through SSH helpers.
+```
+gorak config \
+  --backend remote \
+  --host windows-pc \
+  --user test \
+  --gorak-root 'C:\Development\gorak' \
+  --vnode myvnode \
+  --database exampledb
+```
 ```env
 GORAK_BACKEND=remote
 GORAK_REMOTE_HOST=windows-pc
@@ -125,6 +137,18 @@ GORAK_DATABASE=exampledb
 ```
 
 You can also use Ingres ODBC for improved performance:
+```
+gorak config \
+  --backend local \
+  --vnode myvnode \
+  --database exampledb \
+  --sql-backend odbc \
+  --db-driver 'Ingres AC' \
+  --db-host db-host.example \
+  --db-listen-address II7 \
+  --db-user ingres \
+  --db-password secret
+```
 ```env
 GORAK_BACKEND=local
 GORAK_VNODE=myvnode

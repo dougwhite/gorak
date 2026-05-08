@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from dotenv import dotenv_values, set_key
+from dotenv import dotenv_values, set_key, unset_key
 
 PROJECT_MANIFEST = "gorak.json"
 DEFAULT_VERSION = "0.1.0"
@@ -184,6 +184,70 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=4) + "\n")
 
 
+CONFIG_KEYS = [
+    "GORAK_BACKEND",
+    "GORAK_SQL_BACKEND",
+    "GORAK_REMOTE_HOST",
+    "GORAK_REMOTE_USER",
+    "GORAK_REMOTE_ROOT",
+    "GORAK_VNODE",
+    "GORAK_DATABASE",
+    "GORAK_DB_DRIVER",
+    "GORAK_DB_HOST",
+    "GORAK_DB_LISTEN_ADDRESS",
+    "GORAK_DB_DATABASE",
+    "GORAK_DB_USER",
+    "GORAK_DB_PASSWORD",
+]
+
+
+def configure_project(
+    project: GorakProject,
+    backend: str,
+    vnode: str,
+    database: str,
+    host: str | None = None,
+    user: str | None = None,
+    gorak_root: str | None = None,
+    sql_backend: str | None = None,
+    db_driver: str | None = None,
+    db_host: str | None = None,
+    db_listen_address: str | None = None,
+    db_database: str | None = None,
+    db_user: str | None = None,
+    db_password: str | None = None,
+) -> Path:
+    """Write a complete .env connection shape for the selected backends."""
+
+    env_path = project.root / ".env"
+    env_path.touch(exist_ok=True)
+
+    values = {
+        "GORAK_BACKEND": backend,
+        "GORAK_SQL_BACKEND": sql_backend,
+        "GORAK_REMOTE_HOST": host,
+        "GORAK_REMOTE_USER": user,
+        "GORAK_REMOTE_ROOT": gorak_root,
+        "GORAK_VNODE": vnode,
+        "GORAK_DATABASE": database,
+        "GORAK_DB_DRIVER": db_driver,
+        "GORAK_DB_HOST": db_host,
+        "GORAK_DB_LISTEN_ADDRESS": db_listen_address,
+        "GORAK_DB_DATABASE": db_database,
+        "GORAK_DB_USER": db_user,
+        "GORAK_DB_PASSWORD": db_password,
+    }
+
+    for key in CONFIG_KEYS:
+        value = values[key]
+        if value is None:
+            unset_key(env_path, key)
+        else:
+            set_key(env_path, key, value)
+
+    return env_path
+
+
 def configure_remote(
     project: GorakProject,
     host: str,
@@ -192,19 +256,12 @@ def configure_remote(
     vnode: str,
     database: str,
 ) -> Path:
-    env_path = project.root / ".env"
-    env_path.touch(exist_ok=True)
-
-    values = {
-        "GORAK_BACKEND": "remote",
-        "GORAK_REMOTE_HOST": host,
-        "GORAK_REMOTE_USER": user,
-        "GORAK_REMOTE_ROOT": gorak_root,
-        "GORAK_VNODE": vnode,
-        "GORAK_DATABASE": database,
-    }
-
-    for key, value in values.items():
-        set_key(env_path, key, value)
-
-    return env_path
+    return configure_project(
+        project=project,
+        backend="remote",
+        host=host,
+        user=user,
+        gorak_root=gorak_root,
+        vnode=vnode,
+        database=database,
+    )
