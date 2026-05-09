@@ -131,9 +131,10 @@ def parse_component_node(node: etree._Element) -> Component:
         field_defaults = parse_field_defaults_node(field_defaults_node)
         props["fielddefaults"] = field_defaults
 
+    startmenu_node = node.find("startmenu")
     topform_node = node.find("topform")
     markup = (
-        encode_frame_markup_node(topform_node, field_defaults)
+        encode_frame_markup(startmenu_node, topform_node, field_defaults)
         if component_type == "framesource" and topform_node is not None
         else None
     )
@@ -141,14 +142,19 @@ def parse_component_node(node: etree._Element) -> Component:
     return Component(name, component_type, props, script, markup)
 
 
-def encode_frame_markup_node(
-    node: etree._Element,
+def encode_frame_markup(
+    startmenu_node: etree._Element | None,
+    topform_node: etree._Element,
     field_defaults: dict[str, Any] | None = None,
 ) -> str:
     """Encode an OpenROAD frame form tree as XML-compatible .wml markup."""
 
     index = MarkupDefaultsIndex.from_defaults(field_defaults or {})
-    return serialize_wml(frame_markup_element(node, index))
+    frame = etree.Element("frame")
+    if startmenu_node is not None:
+        frame.append(frame_markup_element(startmenu_node, index))
+    frame.append(frame_markup_element(topform_node, index))
+    return serialize_wml(frame)
 
 
 def frame_markup_element(
@@ -163,7 +169,7 @@ def frame_markup_element(
     copy_markup_attributes(node, element)
     default_properties = defaults_index.properties_for(tag, node)
     for child in node:
-        if child.tag == "childfields":
+        if child.tag in {"childfields", "childmenufields"}:
             append_childfields(element, child, defaults_index)
         elif child.tag == "script":
             script = etree.SubElement(element, "script")

@@ -141,9 +141,11 @@ class TestParseXml:
 
         assert component.markup is not None
         markup = etree.fromstring(component.markup)
-        subform = markup.find("subform")
-        assert markup.tag == "topform"
-        assert markup.get("bgcolor") == "70"
+        topform = markup.find("topform")
+        assert markup.tag == "frame"
+        assert topform is not None
+        subform = topform.find("subform")
+        assert topform.get("bgcolor") == "70"
         assert subform is not None
         assert subform.get("name") == "example_composite_field"
         button = subform.find("buttonfield")
@@ -189,9 +191,11 @@ class TestParseXml:
 
         assert component.markup is not None
         markup = etree.fromstring(component.markup)
-        button = markup.find("buttonfield")
-        assert markup.get("bgcolor") is None
-        assert markup.get("fgcolor") is None
+        topform = markup.find("topform")
+        assert topform is not None
+        button = topform.find("buttonfield")
+        assert topform.get("bgcolor") is None
+        assert topform.get("fgcolor") is None
         assert button is not None
         assert button.attrib == {"name": "example_button"}
 
@@ -236,7 +240,7 @@ class TestParseXml:
 
         assert component.markup is not None
         markup = etree.fromstring(component.markup)
-        entryfield = markup.find("entryfield")
+        entryfield = markup.find("./topform/entryfield")
         assert entryfield is not None
         assert entryfield.attrib == {"name": "example_entryfield"}
 
@@ -263,14 +267,14 @@ class TestParseXml:
         assert component.markup is not None
         assert (
             """
-  <entryfield
-    name="example_entryfield"
-    datatype="varchar(100)"
-    xleft="104"
-    ytop="188"
-    width="3531"
-    height="188"
-  />
+    <entryfield
+      name="example_entryfield"
+      datatype="varchar(100)"
+      xleft="104"
+      ytop="188"
+      width="3531"
+      height="188"
+    />
 """.strip()
             in component.markup
         )
@@ -298,14 +302,53 @@ class TestParseXml:
 
         assert component.markup is not None
         markup = etree.fromstring(component.markup)
-        choiceitems = markup.find("./optionfield/valuelist/choiceitems")
-        choice = markup.find("./optionfield/valuelist/choiceitems/row")
+        choiceitems = markup.find("./topform/optionfield/valuelist/choiceitems")
+        choice = markup.find("./topform/optionfield/valuelist/choiceitems/row")
         assert choiceitems is not None
         assert choiceitems.get("row_class") == "choicedetail"
         assert choice is not None
         assert choice.get("enumdisplay") == "GET"
         assert choice.get("enumtext") == "GET"
         assert choice.get("enumvalue") == "1"
+
+    def test_frame_markup_includes_startmenu(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <startmenu>
+                    <name>menu</name>
+                    <childmenufields>
+                        <row xsi:type="menustack">
+                            <name>file_menu</name>
+                            <textlabel>File</textlabel>
+                            <childmenufields>
+                                <row xsi:type="menubutton">
+                                    <name>exit_btn</name>
+                                    <textlabel>Exit</textlabel>
+                                </row>
+                            </childmenufields>
+                        </row>
+                    </childmenufields>
+                </startmenu>
+                <topform />
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        markup = etree.fromstring(component.markup)
+        menu = markup.find("startmenu")
+        assert markup.tag == "frame"
+        assert menu is not None
+        assert menu.get("name") == "menu"
+        stack = menu.find("menustack")
+        assert stack is not None
+        assert stack.get("name") == "file_menu"
+        assert stack.get("textlabel") == "File"
+        button = stack.find("menubutton")
+        assert button is not None
+        assert button.get("name") == "exit_btn"
+        assert button.get("textlabel") == "Exit"
 
 
 class TestParseApplicationXml:
