@@ -107,6 +107,9 @@ class TestAppExport:
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
         assert "[framesource]" in (
+            project_root / "sample_app" / "fm_complex_frame.w4gl"
+        ).read_text()
+        assert "[framesource]" in (
             project_root / "sample_app" / "fm_example_frame.w4gl"
         ).read_text()
         assert "[proc4glsource]" in (
@@ -119,6 +122,7 @@ class TestAppExport:
             "Exporting application sample_app from local\n"
             "Retrieving application metadata\n"
             "Exporting full application XML\n"
+            "Encoding component sample_app::fm_complex_frame\n"
             "Encoding component sample_app::fm_example_frame\n"
             "Encoding component sample_app::p4_example_procedure\n"
             "Encoding component sample_app::uc_example_userclass\n"
@@ -203,6 +207,7 @@ class TestAppExport:
             "Exporting application sample_app from local\n"
             "Retrieving application metadata\n"
             "Exporting full application XML\n"
+            "Encoding component sample_app::fm_complex_frame\n"
             "Encoding component sample_app::fm_example_frame\n"
             "Encoding component sample_app::p4_example_procedure\n"
             "Encoding component sample_app::uc_example_userclass\n"
@@ -268,6 +273,7 @@ class TestAppExport:
             "Exporting application orders_mixedcase from local\n"
             "Retrieving application metadata\n"
             "Exporting full application XML\n"
+            "Encoding component orders_mixedCase::fm_complex_frame\n"
             "Encoding component orders_mixedCase::fm_example_frame\n"
             "Encoding component orders_mixedCase::p4_example_procedure\n"
             "Encoding component orders_mixedCase::uc_example_userclass\n"
@@ -424,6 +430,7 @@ class TestAppExport:
             "Exporting application sample_app from remote host project-user@project-host\n"
             "Retrieving application metadata\n"
             "Exporting full application XML\n"
+            "Encoding component sample_app::fm_complex_frame\n"
             "Encoding component sample_app::fm_example_frame\n"
             "Encoding component sample_app::p4_example_procedure\n"
             "Encoding component sample_app::uc_example_userclass\n"

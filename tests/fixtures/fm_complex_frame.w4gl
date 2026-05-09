@@ -1,11 +1,13 @@
 [framesource]
-datatype = "integer"
+datatype = "uc_example_userclass"
 templatename = "standard"
 hasstatusbar = "1"
-windowheight = "1625"
-windowwidth = "2292"
+windowheight = "3490"
+windowwidth = "4729"
 gridx = "250"
 gridy = "250"
+mainbarbottom = ""
+mainbartop = ""
 
 ===
 
@@ -14,5 +16,5 @@ declare
 
 enddeclare
 {
-	CurFrame.Trace(text = 'Here is an example of some code block');
+
 }

@@ -1,0 +1,42 @@
+<topform
+  bgcolor="70"
+  width="23999"
+  height="24000"
+  designbias="16"
+  readbias="16"
+  outlinewidth="0"
+  isresizebounded="1"
+  transparentcolor="91"
+>
+  <subform
+    name="example_composite_field"
+    defaultvalue="1"
+    xleft="156"
+    ytop="198"
+    width="1656"
+    height="792"
+    designbias="3"
+  >
+    <buttonfield
+      name="example_button"
+      xleft="115"
+      ytop="427"
+      width="1021"
+      height="229"
+      designbias="3"
+    >
+      <script><![CDATA[ON click =
+{
+	MESSAGE 'Hello World!';
+}]]></script>
+    </buttonfield>
+    <entryfield
+      name="example_entryfield"
+      xleft="104"
+      ytop="104"
+      width="1417"
+      designbias="3"
+      charsperline="22"
+    />
+  </subform>
+</topform>

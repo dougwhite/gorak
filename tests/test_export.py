@@ -290,12 +290,15 @@ def test_export_application_to_paths_uses_local_backend(
     assert calls == [("myvnode", "exampledb", "sample_app", paths.xml_path)]
     assert paths.xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
     assert [component.name for component in exported.components] == [
+        "fm_complex_frame",
         "fm_example_frame",
         "p4_example_procedure",
         "uc_example_userclass",
     ]
     assert (tmp_path / "field_defaults.json").is_file()
     assert (tmp_path / "sample_app" / "field_defaults.json").read_text() == "{}\n"
+    assert (tmp_path / "sample_app" / "fm_complex_frame.w4gl").is_file()
+    assert (tmp_path / "sample_app" / "fm_complex_frame.wml").is_file()
     assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
     assert (tmp_path / "sample_app" / "fm_example_frame.wml").is_file()
     assert not (tmp_path / "sample_app" / "p4_example_procedure.wml").exists()
