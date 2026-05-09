@@ -1,5 +1,6 @@
 """SSH/SCP wrappers for running Gorak helper scripts on a Windows host."""
 
+import json
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -29,6 +30,19 @@ class RemoteHost:
 
 
 RunCommand = Callable[[list[str]], str]
+REMOTE_HELPER_MANIFEST = "gorak-helpers.json"
+REMOTE_HELPER_VERSION = "1"
+REMOTE_HELPER_FILES = [
+    "applist.sql",
+    "backup-application.bat",
+    "backup-component.bat",
+    "get-app-list.bat",
+    "get-component-list.bat",
+    "get-component-sync-metadata.bat",
+    "get-include-list.bat",
+    REMOTE_HELPER_MANIFEST,
+]
+MISSING_REMOTE_HELPERS = "__GORAK_HELPERS_MISSING__"
 
 
 class RemoteCommandError(RuntimeError):
@@ -68,6 +82,17 @@ def build_make_remote_dir_command(remote: RemoteHost) -> list[str]:
     """Build an SSH command that creates the remote gorak root if needed."""
 
     command = f'if not exist "{remote.gorak_root}" mkdir "{remote.gorak_root}"'
+    return ["ssh", "-T", remote.ssh_target, command]
+
+
+def build_read_remote_manifest_command(remote: RemoteHost) -> list[str]:
+    """Build an SSH command that prints the installed helper manifest."""
+
+    manifest_path = f"{remote.gorak_root}\\{REMOTE_HELPER_MANIFEST}"
+    command = (
+        f'if exist "{manifest_path}" '
+        f'(type "{manifest_path}") else (echo {MISSING_REMOTE_HELPERS})'
+    )
     return ["ssh", "-T", remote.ssh_target, command]
 
 
@@ -130,6 +155,35 @@ def install_remote_helpers(
         )
 
     return [path.name for path in files]
+
+
+def verify_remote_helpers(
+    remote: RemoteHost,
+    run_cmd: RunCommand = run_subprocess,
+) -> None:
+    """Verify packaged helpers are installed on the remote host."""
+
+    output = run_cmd(build_read_remote_manifest_command(remote)).strip()
+    if output == MISSING_REMOTE_HELPERS:
+        raise RemoteCommandError(remote_helper_error())
+
+    try:
+        manifest = json.loads(output)
+    except json.JSONDecodeError as ex:
+        raise RemoteCommandError(remote_helper_error()) from ex
+
+    if (
+        manifest.get("version") != REMOTE_HELPER_VERSION
+        or manifest.get("files") != REMOTE_HELPER_FILES
+    ):
+        raise RemoteCommandError(remote_helper_error())
+
+
+def remote_helper_error() -> str:
+    return (
+        "Remote helpers are missing or outdated. "
+        "Run `gorak remote install` and try again."
+    )
 
 
 def backup_component(

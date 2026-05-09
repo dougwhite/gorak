@@ -100,6 +100,45 @@ class TestRemoteInstallCommand:
             r"Installed 1 file to project-user@project-host:C:\Development\gorak" "\n"
         )
 
+    def test_checks_remote_helpers_with_explicit_flags(
+        self,
+        monkeypatch: MonkeyPatch,
+        capsys: CaptureFixture[str],
+    ) -> None:
+        calls: list[object] = []
+
+        def fake_verify_remote_helpers(remote: RemoteHost) -> None:
+            calls.append(("check", remote))
+
+        monkeypatch.setattr(cli, "verify_remote_helpers", fake_verify_remote_helpers)
+
+        cli.main(
+            [
+                "remote",
+                "check",
+                "--user",
+                "test",
+                "--host",
+                "WINDOWS-PC",
+                "--gorak-root",
+                r"C:\Development\gorak",
+            ]
+        )
+
+        assert calls == [
+            (
+                "check",
+                RemoteHost(
+                    user="test",
+                    host="WINDOWS-PC",
+                    gorak_root=r"C:\Development\gorak",
+                ),
+            )
+        ]
+        assert capsys.readouterr().out == (
+            r"Remote helpers OK on test@WINDOWS-PC:C:\Development\gorak" "\n"
+        )
+
     def test_requires_remote_settings_outside_project(
         self,
         monkeypatch: MonkeyPatch,
@@ -130,4 +169,5 @@ class TestRemoteInstallCommand:
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
             "get-include-list.bat",
+            "gorak-helpers.json",
         ]

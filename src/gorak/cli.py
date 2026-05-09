@@ -49,6 +49,7 @@ from .remote import (
     RemoteCommandError,
     RemoteHost,
     install_remote_helpers,
+    verify_remote_helpers,
 )
 from .sync import sync_project
 
@@ -85,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     remote_install = remote_subparsers.add_parser("install")
     add_remote_host_args(remote_install)
+
+    remote_check = remote_subparsers.add_parser("check")
+    add_remote_host_args(remote_check)
 
     app_parser = subparsers.add_parser("app")
     app_subparsers = app_parser.add_subparsers(dest="app_command")
@@ -289,6 +293,14 @@ def remote_install_command(args: argparse.Namespace) -> str:
         f"Installed {len(copied)} {file_label} "
         f"to {remote.ssh_target}:{remote.gorak_root}"
     )
+
+
+def remote_check_command(args: argparse.Namespace) -> str:
+    """Checks whether Windows SSH helper files are installed and current."""
+
+    remote = resolve_remote_host(args, load_context(Path.cwd()))
+    verify_remote_helpers(remote)
+    return f"Remote helpers OK on {remote.ssh_target}:{remote.gorak_root}"
 
 
 def install_packaged_remote_helpers(remote: RemoteHost) -> list[str]:
@@ -552,6 +564,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "remote" and parsed.remote_command == "install":
             print(remote_install_command(parsed))
+            return
+
+        if parsed.command == "remote" and parsed.remote_command == "check":
+            print(remote_check_command(parsed))
             return
 
         if parsed.command == "app" and parsed.app_command == "list":

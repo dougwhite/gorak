@@ -1,0 +1,13 @@
+{
+  "version": "1",
+  "files": [
+    "applist.sql",
+    "backup-application.bat",
+    "backup-component.bat",
+    "get-app-list.bat",
+    "get-component-list.bat",
+    "get-component-sync-metadata.bat",
+    "get-include-list.bat",
+    "gorak-helpers.json"
+  ]
+}

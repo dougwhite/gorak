@@ -1,17 +1,20 @@
 import subprocess
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 from pytest import MonkeyPatch
 
 from gorak.domain import Application, ComponentInfo
 from gorak.remote import (
+    REMOTE_HELPER_FILES,
     RemoteCommandError,
     RemoteHost,
     backup_application,
     backup_component,
     build_download_command,
     build_make_remote_dir_command,
+    build_read_remote_manifest_command,
     build_remote_command,
     build_upload_command,
     download_file,
@@ -21,6 +24,7 @@ from gorak.remote import (
     get_include_list,
     install_remote_helpers,
     run_subprocess,
+    verify_remote_helpers,
     windows_path_to_scp_path,
 )
 
@@ -96,6 +100,25 @@ COMPONENT_SYNC_METADATA_OUTPUT = """
 +--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
 """
 
+REMOTE_MANIFEST_OUTPUT = dedent(
+    """
+        {
+          "version": "1",
+          "files": [
+            "applist.sql",
+            "backup-application.bat",
+            "backup-component.bat",
+            "get-app-list.bat",
+            "get-component-list.bat",
+            "get-component-sync-metadata.bat",
+            "get-include-list.bat",
+            "gorak-helpers.json"
+          ]
+        }
+        """
+).strip()
+REMOTE_MANIFEST_COMMAND = build_read_remote_manifest_command(REMOTE_HOST)
+
 
 class TestBuildRemoteCommand:
     """Tests for the build_remote_command() function"""
@@ -163,6 +186,24 @@ class TestBuildMakeRemoteDirCommand:
             "-T",
             "test@WINDOWS-PC",
             r'if not exist "c:\Development\gorak" mkdir "c:\Development\gorak"',
+        ]
+
+
+class TestBuildReadRemoteManifestCommand:
+    """Tests for the remote helper manifest check command."""
+
+    def test_returns_an_ssh_command_for_reading_the_remote_manifest(self) -> None:
+        command = build_read_remote_manifest_command(REMOTE_HOST)
+
+        assert command == [
+            "ssh",
+            "-T",
+            "test@WINDOWS-PC",
+            (
+                r'if exist "c:\Development\gorak\gorak-helpers.json" '
+                r'(type "c:\Development\gorak\gorak-helpers.json") '
+                r"else (echo __GORAK_HELPERS_MISSING__)"
+            ),
         ]
 
 
@@ -256,6 +297,60 @@ class TestInstallRemoteHelpers:
         ]
 
 
+class TestVerifyRemoteHelpers:
+    """Tests for the remote helper manifest verification."""
+
+    def test_accepts_current_remote_manifest(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return REMOTE_MANIFEST_OUTPUT
+
+        verify_remote_helpers(REMOTE_HOST, run_cmd=fake_run)
+
+        assert calls == [REMOTE_MANIFEST_COMMAND]
+
+    def test_remote_helper_files_match_the_installed_manifest(self) -> None:
+        assert REMOTE_HELPER_FILES == [
+            "applist.sql",
+            "backup-application.bat",
+            "backup-component.bat",
+            "get-app-list.bat",
+            "get-component-list.bat",
+            "get-component-sync-metadata.bat",
+            "get-include-list.bat",
+            "gorak-helpers.json",
+        ]
+
+    def test_rejects_missing_remote_manifest(self) -> None:
+        with pytest.raises(RemoteCommandError) as ex:
+            verify_remote_helpers(
+                REMOTE_HOST,
+                run_cmd=lambda command: "__GORAK_HELPERS_MISSING__",
+            )
+
+        assert "Run `gorak remote install`" in str(ex.value)
+
+    def test_rejects_stale_remote_manifest(self) -> None:
+        with pytest.raises(RemoteCommandError) as ex:
+            verify_remote_helpers(
+                REMOTE_HOST,
+                run_cmd=lambda command: '{"version": "old", "files": []}',
+            )
+
+        assert "missing or outdated" in str(ex.value)
+
+    def test_rejects_incomplete_remote_manifest(self) -> None:
+        with pytest.raises(RemoteCommandError) as ex:
+            verify_remote_helpers(
+                REMOTE_HOST,
+                run_cmd=lambda command: '{"version": "1", "files": []}',
+            )
+
+        assert "missing or outdated" in str(ex.value)
+
+
 class TestBackupComponent:
     """Tests for the backup_component() function"""
 
@@ -282,7 +377,7 @@ class TestBackupComponent:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\backup-component.bat vnode::db app component",
-            ]
+            ],
         ]
 
     def test_uses_subprocess_runner_by_default(self, monkeypatch: MonkeyPatch) -> None:
@@ -319,7 +414,7 @@ class TestBackupComponent:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\backup-component.bat vnode::db app component",
-            ]
+            ],
         ]
 
     def test_returns_only_the_last_output_line(self) -> None:
@@ -368,7 +463,7 @@ class TestBackupApplication:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\backup-application.bat vnode::db app",
-            ]
+            ],
         ]
 
     def test_returns_only_the_last_output_line(self) -> None:
@@ -418,7 +513,7 @@ class TestGetAppList:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-app-list.bat vnode db",
-            ]
+            ],
         ]
 
 
@@ -452,7 +547,7 @@ class TestGetComponentList:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-component-list.bat vnode db sample_app",
-            ]
+            ],
         ]
 
 
@@ -484,7 +579,7 @@ class TestGetIncludeList:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-include-list.bat vnode db sample_app",
-            ]
+            ],
         ]
 
 
@@ -512,7 +607,7 @@ class TestGetAllComponentSyncMetadata:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-component-sync-metadata.bat vnode db",
-            ]
+            ],
         ]
 
 
