@@ -12,6 +12,7 @@ from gorak.parser import (
     extract_attributes,
     extract_methods,
     extract_props,
+    extract_taggedvalues,
     join_segments,
     parse_application_xml,
     parse_xml,
@@ -354,6 +355,25 @@ class TestParseXml:
 class TestParseApplicationXml:
     """Tests for application-level metadata in full OpenROAD exports."""
 
+    def test_parses_exported_application_metadata_name_variants(self) -> None:
+        xml = etree.fromstring("""
+            <OPENROAD>
+                <APPLICATION name="sample_app">
+                    <procstart>fm_start</procstart>
+                    <versshortremarks>Versioned description</versshortremarks>
+                    <databasename>vnode::runtime_db</databasename>
+                    <database_type>1</database_type>
+                </APPLICATION>
+            </OPENROAD>
+        """)
+
+        export = parse_application_xml(xml)
+
+        assert export.application.start_component == "fm_start"
+        assert export.application.description == "Versioned description"
+        assert export.application.database_name == "vnode::runtime_db"
+        assert export.application.database_type == "1"
+
     def test_parses_included_applications_in_openroad_order(self) -> None:
         xml = etree.fromstring("""
             <OPENROAD>
@@ -525,6 +545,28 @@ class TestExtractMethods:
         """)
 
         assert extract_methods(node) == {"PrivateMethod": "PRIVATE METHOD"}
+
+
+class TestExtractTaggedValues:
+    """Tests for the `extract_taggedvalues()` function."""
+
+    def test_extracts_tagged_values_by_name(self) -> None:
+        node = etree.fromstring("""
+            <taggedvalues>
+                <row>
+                    <name>db_name</name>
+                    <value>testdb</value>
+                </row>
+                <row>
+                    <name>db_tableprefix</name>
+                </row>
+            </taggedvalues>
+        """)
+
+        assert extract_taggedvalues(node) == {
+            "db_name": "testdb",
+            "db_tableprefix": "",
+        }
 
 
 class TestTomlProps:
@@ -699,3 +741,18 @@ class TestWmlEncode:
         """).strip()
 
         assert result == expected
+
+    def test_component_with_taggedvalues_encodes_toml_section(self) -> None:
+        component = Component(
+            "uc_generated",
+            "classsource",
+            {"taggedvalues": {"db_name": "testdb", "db_tableprefix": ""}},
+        )
+
+        assert encode_w4gl(component) == dedent("""
+            [classsource]
+            
+            [taggedvalues]
+            db_name = "testdb"
+            db_tableprefix = ""
+        """).strip()

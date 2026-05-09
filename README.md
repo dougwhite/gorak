@@ -293,8 +293,9 @@ gorak app export \
 Inside a Gorak project this writes `application/app.json`,
 `.openroad/application/application.xml`, `application/*.w4gl`, and
 `application/*.wml` for frames. The exported `app.json` contains the starting
-component, description, and included applications from the source export. The
-application name is implied by the folder name.
+component, description, runtime database metadata when present, and included
+applications from the source export. The application name is implied by the
+folder name.
 
 Outside a project, pass an output directory:
 ```

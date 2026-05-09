@@ -18,6 +18,7 @@ IGNORED_PROPERTIES = {
     "fielddefaults",
     "attributes",
     "methods",
+    "taggedvalues",
 }
 
 NS = {
@@ -58,8 +59,10 @@ def parse_application_xml(tree: etree._ElementTree | etree._Element) -> Applicat
     return ApplicationExport(
         application=Application(
             name=name,
-            start_component=(app_node.findtext("proc_start") or "").strip(),
-            description=(app_node.findtext("short_remark") or "").strip(),
+            start_component=first_text(app_node, "proc_start", "procstart"),
+            description=first_text(app_node, "short_remark", "versshortremarks"),
+            database_name=first_text(app_node, "databasename"),
+            database_type=first_text(app_node, "database_type"),
         ),
         components=parse_components_xml(root),
         included_applications=parse_included_applications(app_node),
@@ -124,6 +127,10 @@ def parse_component_node(node: etree._Element) -> Component:
     methods_node = node.find("methods")
     if methods_node is not None:
         props["methods"] = extract_methods(methods_node)
+
+    taggedvalues_node = node.find("taggedvalues")
+    if taggedvalues_node is not None:
+        props["taggedvalues"] = extract_taggedvalues(taggedvalues_node)
 
     field_defaults_node = node.find("fielddefaults")
     field_defaults: dict[str, Any] = {}
@@ -375,6 +382,27 @@ def extract_methods(node: etree._Element) -> dict[str, str]:
     return methods
 
 
+def extract_taggedvalues(node: etree._Element) -> dict[str, str]:
+    """Extract OpenROAD tagged value rows as name/value pairs."""
+
+    taggedvalues: dict[str, str] = {}
+    for row in node.findall("row"):
+        name = row.findtext("name")
+        if name is not None:
+            taggedvalues[name] = (row.findtext("value") or "").strip()
+
+    return taggedvalues
+
+
+def first_text(node: etree._Element, *names: str) -> str:
+    for name in names:
+        value = node.findtext(name)
+        if value is not None:
+            return cast(str, value).strip()
+
+    return ""
+
+
 def type_declaration(datatype: str, nullable: bool) -> str:
     """Format an OpenROAD datatype declaration."""
 
@@ -415,11 +443,11 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
     props = {
         key: value
         for key, value in component.props.items()
-        if key not in {"attributes", "methods", "fielddefaults"}
+        if key not in {"attributes", "methods", "taggedvalues", "fielddefaults"}
     }
     doc.add(component.type, tomlkit.item(props))
 
-    for key in ["attributes", "methods", "fielddefaults"]:
+    for key in ["attributes", "methods", "taggedvalues", "fielddefaults"]:
         if key in component.props:
             doc.add(key, tomlkit.item(component.props[key]))
 

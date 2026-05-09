@@ -49,7 +49,11 @@ def test_audit_reports_unsupported_application_metadata() -> None:
         <OPENROAD>
             <APPLICATION name="sample_app">
                 <proc_start>fm_start</proc_start>
+                <procstart>fm_start</procstart>
                 <short_remark>Example app</short_remark>
+                <versshortremarks>Example app</versshortremarks>
+                <databasename>vnode::runtime_db</databasename>
+                <database_type>1</database_type>
                 <included_apps />
                 <long_remark>Not represented yet</long_remark>
             </APPLICATION>
@@ -60,6 +64,24 @@ def test_audit_reports_unsupported_application_metadata() -> None:
         "name": "sample_app",
         "missing_paths": ["APPLICATION[sample_app]/long_remark"],
     }
+
+
+def test_audit_allows_taggedvalues_and_flags_queries_and_extension() -> None:
+    xml = etree.fromstring("""
+        <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <COMPONENT name="uc_generated" xsi:type="classsource">
+                <script />
+                <taggedvalues />
+                <queries />
+                <extension />
+            </COMPONENT>
+        </OPENROAD>
+    """)
+
+    assert audit_xml(xml)["components"][0]["missing_paths"] == [
+        "COMPONENT[uc_generated]/queries",
+        "COMPONENT[uc_generated]/extension",
+    ]
 
 
 def test_filter_missing_only_removes_represented_application_and_components() -> None:

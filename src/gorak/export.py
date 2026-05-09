@@ -71,7 +71,7 @@ def application_metadata(
     """Build app.json data from known metadata and preserved local-only fields."""
 
     existing = existing or {}
-    return {
+    metadata = {
         "starting_component": application.start_component,
         "description": application.description,
         "included_applications": (
@@ -80,6 +80,12 @@ def application_metadata(
             else existing.get("included_applications", [])
         ),
     }
+    if application.database_name:
+        metadata["database_name"] = application.database_name
+    if application.database_type:
+        metadata["database_type"] = application.database_type
+
+    return metadata
 
 
 def write_app_metadata(
@@ -118,8 +124,29 @@ def export_application(
         paths=paths,
         progress=progress,
     )
-    write_app_metadata(root, application, exported.included_applications)
+    write_app_metadata(
+        root,
+        merge_application_metadata(application, exported.application),
+        exported.included_applications,
+    )
     return exported
+
+
+def merge_application_metadata(
+    database_application: Application,
+    exported_application: Application,
+) -> Application:
+    """Combine SQL metadata with values only present in full XML exports."""
+
+    return Application(
+        name=database_application.name,
+        start_component=(
+            database_application.start_component or exported_application.start_component
+        ),
+        description=database_application.description or exported_application.description,
+        database_name=exported_application.database_name,
+        database_type=exported_application.database_type,
+    )
 
 
 def export_component(

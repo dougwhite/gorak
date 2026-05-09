@@ -338,7 +338,18 @@ def app_export_command(args: argparse.Namespace) -> str:
 def applications_to_json(applications: list[Application]) -> str:
     """Format applications as JSON."""
 
-    return json.dumps([asdict(app) for app in applications], indent=2)
+    return json.dumps([application_to_dict(app) for app in applications], indent=2)
+
+
+def application_to_dict(application: Application) -> dict[str, str]:
+    """Format application metadata, omitting optional blank values."""
+
+    data = asdict(application)
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in {"database_name", "database_type"} or value
+    }
 
 
 def applications_to_csv(applications: list[Application]) -> str:
@@ -351,7 +362,7 @@ def applications_to_csv(applications: list[Application]) -> str:
         lineterminator="\n",
     )
     writer.writeheader()
-    writer.writerows(asdict(app) for app in applications)
+    writer.writerows(application_to_dict(app) for app in applications)
 
     return output.getvalue().rstrip("\n")
 

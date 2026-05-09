@@ -11,6 +11,8 @@ class Application:
     name: str
     start_component: str
     description: str
+    database_name: str = ""
+    database_type: str = ""
 
 
 @dataclass(frozen=True)

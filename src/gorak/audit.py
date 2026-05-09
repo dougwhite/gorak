@@ -8,19 +8,28 @@ from lxml import etree
 from .parser import NS, xml_root
 
 REPRESENTED_APP_CHILDREN = {
+    "database_type",
+    "databasename",
     "included_apps",
     "proc_start",
+    "procstart",
     "short_remark",
+    "versshortremarks",
 }
 REPRESENTED_COMPONENT_CHILDREN = {
     "attributes",
     "fielddefaults",
     "methods",
     "script",
+    "taggedvalues",
 }
 REPRESENTED_FRAME_CHILDREN = {
     "startmenu",
     "topform",
+}
+UNREPRESENTED_COMPONENT_CHILDREN = {
+    "extension",
+    "queries",
 }
 
 
@@ -123,6 +132,8 @@ def is_represented_component_child(
     child: etree._Element,
     represented_children: set[str],
 ) -> bool:
+    if child.tag in UNREPRESENTED_COMPONENT_CHILDREN:
+        return False
     if child.tag in represented_children:
         return True
 

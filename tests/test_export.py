@@ -17,6 +17,7 @@ from gorak.export import (
     export_application_to_paths,
     export_component,
     export_component_to_paths,
+    merge_application_metadata,
     project_component_export_paths,
     read_application,
     read_applications,
@@ -60,11 +61,15 @@ def test_application_metadata_uses_openroad_application_values() -> None:
             name="sample_app",
             start_component="fm_start",
             description="Example application",
+            database_name="vnode::runtime_db",
+            database_type="1",
         )
     ) == {
         "starting_component": "fm_start",
         "description": "Example application",
         "included_applications": [],
+        "database_name": "vnode::runtime_db",
+        "database_type": "1",
     }
 
 
@@ -95,6 +100,29 @@ def test_application_metadata_uses_exported_included_applications() -> None:
         "source_include",
         {"name": "image_include", "image": "image_include.pkg"},
     ]
+
+
+def test_merge_application_metadata_uses_sql_values_and_xml_only_values() -> None:
+    assert merge_application_metadata(
+        Application(
+            name="sample_app",
+            start_component="fm_from_sql",
+            description="SQL description",
+        ),
+        Application(
+            name="sample_app",
+            start_component="fm_from_xml",
+            description="XML description",
+            database_name="vnode::runtime_db",
+            database_type="1",
+        ),
+    ) == Application(
+        name="sample_app",
+        start_component="fm_from_sql",
+        description="SQL description",
+        database_name="vnode::runtime_db",
+        database_type="1",
+    )
 
 
 def test_write_app_metadata_writes_app_json(tmp_path: Path) -> None:
