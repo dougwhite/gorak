@@ -1,6 +1,6 @@
 from lxml import etree
 
-from gorak.audit import audit_xml
+from gorak.audit import audit_xml, filter_missing_only, filter_reports_missing_only
 
 
 def test_audit_reports_unsupported_nested_component_children() -> None:
@@ -60,3 +60,65 @@ def test_audit_reports_unsupported_application_metadata() -> None:
         "name": "sample_app",
         "missing_paths": ["APPLICATION[sample_app]/long_remark"],
     }
+
+
+def test_filter_missing_only_removes_represented_application_and_components() -> None:
+    report = {
+        "path": ".openroad/app/app.xml",
+        "application": {"name": "app", "missing_paths": []},
+        "components": [
+            {"name": "fm_ok", "type": "framesource", "missing_paths": []},
+            {
+                "name": "fm_missing",
+                "type": "framesource",
+                "missing_paths": ["COMPONENT[fm_missing]/mainbarbottom"],
+            },
+        ],
+    }
+
+    assert filter_missing_only(report) == {
+        "path": ".openroad/app/app.xml",
+        "application": None,
+        "components": [
+            {
+                "name": "fm_missing",
+                "type": "framesource",
+                "missing_paths": ["COMPONENT[fm_missing]/mainbarbottom"],
+            }
+        ],
+    }
+
+
+def test_filter_reports_missing_only_removes_files_with_no_missing_paths() -> None:
+    assert filter_reports_missing_only(
+        [
+            {
+                "path": ".openroad/ok/ok.xml",
+                "application": None,
+                "components": [],
+            },
+            {
+                "path": ".openroad/app/app.xml",
+                "application": None,
+                "components": [
+                    {
+                        "name": "fm_missing",
+                        "type": "framesource",
+                        "missing_paths": ["COMPONENT[fm_missing]/mainbarbottom"],
+                    }
+                ],
+            },
+        ]
+    ) == [
+        {
+            "path": ".openroad/app/app.xml",
+            "application": None,
+            "components": [
+                {
+                    "name": "fm_missing",
+                    "type": "framesource",
+                    "missing_paths": ["COMPONENT[fm_missing]/mainbarbottom"],
+                }
+            ],
+        }
+    ]

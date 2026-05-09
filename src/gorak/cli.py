@@ -11,7 +11,12 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import cast
 
-from .audit import audit_xml_file
+from .audit import (
+    audit_project_xml,
+    audit_xml_file,
+    filter_missing_only,
+    filter_reports_missing_only,
+)
 from .connection import (
     connection_source,
     resolve_openroad_connection,
@@ -122,7 +127,9 @@ def build_parser() -> argparse.ArgumentParser:
     debug_subparsers = debug_parser.add_subparsers(dest="debug_command")
 
     debug_audit = debug_subparsers.add_parser("audit")
-    debug_audit.add_argument("xml_file")
+    debug_audit.add_argument("xml_file", nargs="?")
+    debug_audit.add_argument("--all", action="store_true")
+    debug_audit.add_argument("--missing-only", action="store_true")
 
     return parser
 
@@ -423,7 +430,27 @@ def defaults_flatten_command(args: argparse.Namespace) -> str:
 def debug_audit_command(args: argparse.Namespace) -> str:
     """Audit what an XML export does not currently represent in source files."""
 
-    return json.dumps(audit_xml_file(cast(str, args.xml_file)), indent=2)
+    audit_all = cast(bool, args.all)
+    xml_file = cast(str | None, args.xml_file)
+    if audit_all and xml_file is not None:
+        raise ProjectError("Use either --all or XML_FILE, not both")
+    if audit_all:
+        project = load_project(Path.cwd())
+        reports = audit_project_xml(project.root)
+        if cast(bool, args.missing_only):
+            reports = filter_reports_missing_only(reports)
+        return json.dumps(reports, indent=2)
+    if xml_file is None:
+        raise ProjectError("Missing XML_FILE or --all")
+
+    report = audit_xml_file(xml_file)
+    if cast(bool, args.missing_only):
+        report = filter_missing_only(report) or {
+            "path": xml_file,
+            "application": None,
+            "components": [],
+        }
+    return json.dumps(report, indent=2)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

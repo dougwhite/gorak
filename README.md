@@ -267,6 +267,16 @@ Gorak does not currently represent in `.w4gl`, `.wml`, `app.json`, or
 gorak debug audit tests/fixtures/gorak_examples.xml
 ```
 
+Inside a Gorak project, audit every cached XML export under `.openroad/`:
+```
+gorak debug audit --all
+```
+
+To show only application/components with missing paths:
+```
+gorak debug audit --all --missing-only
+```
+
 The output is JSON. This is a development/debugging aid, not a guarantee of
 round-trip safety.
 
