@@ -339,6 +339,7 @@ def export_component_command(args: argparse.Namespace) -> str:
         app=app,
         component=component,
         output_path=cast(str | None, args.output),
+        progress=print,
     )
     return component_export_summary(path, context.project.root if context.project else None)
 

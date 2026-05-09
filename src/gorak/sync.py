@@ -11,6 +11,7 @@ from .export import (
     component_export_paths,
     export_application_to_paths,
     export_component_to_paths,
+    normalize_application_paths,
     read_all_component_sync_metadata,
 )
 from .project import GorakContext, ProjectError
@@ -61,9 +62,9 @@ def sync_project(
 
     exported = export_changed_components(connection, root, changed, metadata, progress)
     for item in metadata:
-        entries[component_key(item.application_name, item.component_name)] = (
-            component_state(item)
-        )
+        key = component_key(item.application_name, item.component_name)
+        remove_case_variant_entries(entries, key)
+        entries[key] = component_state(item)
 
     state["components"] = entries
     save_state(root, state)
@@ -89,6 +90,7 @@ def export_changed_components(
     metadata_by_app = changes_by_app(metadata)
     for app, app_changes in changes_by_app(changed).items():
         if len(app_changes) > 1:
+            normalize_application_paths(root, app, progress)
             progress_message(progress, f"Exporting changed application {app}")
             export_application_to_paths(
                 connection=connection,
@@ -101,6 +103,7 @@ def export_changed_components(
 
         item = app_changes[0]
         key = component_key(item.application_name, item.component_name)
+        normalize_application_paths(root, item.application_name, progress)
         progress_message(progress, f"Exporting changed component {key}")
         export_component_to_paths(
             connection=connection,
@@ -111,6 +114,7 @@ def export_changed_components(
                 item.application_name,
                 item.component_name,
             ),
+            progress=progress,
         )
         exported += 1
 
@@ -127,13 +131,13 @@ def changes_by_app(
     return grouped
 
 
-def tracked_applications(root: Path, entries: dict[str, dict[str, object]]) -> list[str]:
+def tracked_applications(
+    root: Path, entries: dict[str, dict[str, object]]
+) -> list[str]:
     """Return apps known from state, falling back to project app folders."""
 
     apps = {
-        key.split("/", 1)[0]
-        for key in entries
-        if "/" in key and key.split("/", 1)[0]
+        key.split("/", 1)[0] for key in entries if "/" in key and key.split("/", 1)[0]
     }
     if apps:
         return sorted(apps)
@@ -149,6 +153,15 @@ def tracked_applications(root: Path, entries: dict[str, dict[str, object]]) -> l
 
 def component_state(metadata: ComponentSyncMetadata) -> dict[str, object]:
     return asdict(metadata)
+
+
+def remove_case_variant_entries(
+    entries: dict[str, dict[str, object]],
+    key: str,
+) -> None:
+    for existing in list(entries):
+        if existing != key and existing.lower() == key.lower():
+            entries.pop(existing)
 
 
 def progress_message(progress: Callable[[str], None] | None, message: str) -> None:

@@ -108,9 +108,68 @@ def test_sync_exports_components_missing_from_state(
     ]
     assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
     state = load_state(tmp_path)
-    assert state["components"][component_key("sample_app", "fm_start")][
-        "alter_count"
-    ] == 3
+    assert (
+        state["components"][component_key("sample_app", "fm_start")]["alter_count"] == 3
+    )
+
+
+def test_sync_renames_existing_app_folder_and_state_to_database_casing(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    context = write_project(tmp_path)
+    old_app_dir = tmp_path / "sample_app"
+    item = metadata()
+    item = ComponentSyncMetadata(
+        application_name="Sample_App",
+        component_name=item.component_name,
+        entity_type=item.entity_type,
+        base_entity_id=item.base_entity_id,
+        version_entity_id=item.version_entity_id,
+        version_number=item.version_number,
+        alter_date=item.alter_date,
+        alter_count=item.alter_count,
+        last_altered_by=item.last_altered_by,
+        current_make=item.current_make,
+    )
+    save_state(
+        tmp_path,
+        {
+            "version": 1,
+            "components": {
+                component_key("sample_app", "fm_start"): {
+                    "version_entity_id": 999,
+                    "alter_date": "old",
+                    "alter_count": 1,
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(
+        sync_module,
+        "read_all_component_sync_metadata",
+        lambda connection: [item],
+    )
+
+    def fake_backup_component(
+        vnode: str,
+        database: str,
+        app: str,
+        component: str,
+        output_path: Path,
+    ) -> str:
+        output_path.write_text(FIXTURE_PATH.read_text())
+        return str(output_path)
+
+    monkeypatch.setattr(export_module, "local_backup_component", fake_backup_component)
+
+    sync_project(connection(), context)
+
+    assert not old_app_dir.exists()
+    assert (tmp_path / "Sample_App" / "app.json").is_file()
+    state = load_state(tmp_path)
+    assert component_key("sample_app", "fm_start") not in state["components"]
+    assert component_key("Sample_App", "fm_start") in state["components"]
 
 
 def test_sync_skips_unchanged_components(

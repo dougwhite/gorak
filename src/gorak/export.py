@@ -4,6 +4,8 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from shutil import rmtree
+from uuid import uuid4
 
 from lxml import etree
 
@@ -125,6 +127,7 @@ def export_application(
     root = export_root(context, output_path)
     progress_message(progress, "Retrieving application metadata")
     application = read_application(connection, app)
+    normalize_application_paths(root, application.name, progress)
     paths = application_export_paths(root, application.name)
     exported = export_application_to_paths(
         connection=connection,
@@ -157,7 +160,8 @@ def merge_application_metadata(
         start_component=(
             database_application.start_component or exported_application.start_component
         ),
-        description=database_application.description or exported_application.description,
+        description=database_application.description
+        or exported_application.description,
         database_name=exported_application.database_name,
         database_type=exported_application.database_type,
     )
@@ -169,6 +173,7 @@ def export_component(
     app: str,
     component: str,
     output_path: str | None,
+    progress: Callable[[str], None] | None = None,
 ) -> Path:
     """Export one component and return the .w4gl path named by the XML component."""
 
@@ -180,11 +185,20 @@ def export_component(
                 xml_path=Path(temp_dir) / f"{component}.xml",
                 w4gl_path=Path(str(output_path)),
             )
-            return export_component_to_paths(connection, app, component, paths)
+            return export_component_to_paths(
+                connection, app, component, paths, progress
+            )
 
     canonical_app = canonical_application_name(connection, context.project.root, app)
+    normalize_application_paths(context.project.root, canonical_app, progress)
     paths = project_component_export_paths(context, canonical_app, component)
-    path = export_component_to_paths(connection, canonical_app, component, paths)
+    path = export_component_to_paths(
+        connection,
+        canonical_app,
+        component,
+        paths,
+        progress,
+    )
     record_component_sync_metadata(connection, context.project.root, canonical_app)
     return path
 
@@ -206,8 +220,18 @@ def export_application_to_paths(
     apply_field_default_inheritance(paths.source_dir.parent, app, exported.components)
     for component in exported.components:
         progress_message(progress, f"Encoding component {app}::{component.name}")
-        write_component_w4gl(paths.source_dir, component.name, encode_w4gl(component))
-        write_component_wml(paths.source_dir, component.name, encode_wml(component))
+        write_component_w4gl(
+            paths.source_dir,
+            component.name,
+            encode_w4gl(component),
+            progress,
+        )
+        write_component_wml(
+            paths.source_dir,
+            component.name,
+            encode_wml(component),
+            progress,
+        )
 
     return exported
 
@@ -217,6 +241,7 @@ def export_component_to_paths(
     app: str,
     component: str,
     paths: ComponentExportPaths,
+    progress: Callable[[str], None] | None = None,
 ) -> Path:
     """Export one component XML and encode the component named inside that XML."""
 
@@ -225,6 +250,7 @@ def export_component_to_paths(
     backup_component_xml(connection, app, component, paths.xml_path)
 
     parsed_component = parse_xml(etree.parse(str(paths.xml_path)))
+    normalize_component_xml_path(paths.xml_path, parsed_component.name)
     apply_field_default_inheritance(
         paths.w4gl_path.parent.parent,
         app,
@@ -234,11 +260,13 @@ def export_component_to_paths(
         paths.w4gl_path.parent,
         parsed_component.name,
         encode_w4gl(parsed_component),
+        progress,
     )
     write_component_wml(
         paths.w4gl_path.parent,
         parsed_component.name,
         encode_wml(parsed_component),
+        progress,
     )
     return w4gl_path
 
@@ -367,14 +395,16 @@ def canonical_application_name(
 ) -> str:
     """Resolve a case-insensitive app request to the database/project casing."""
 
+    try:
+        return read_application(connection, app).name
+    except (LocalCommandError, RemoteCommandError, OSError):
+        pass
+
     for path in root.iterdir():
         if path.is_dir() and path.name.lower() == app.lower():
             return path.name
 
-    try:
-        return read_application(connection, app).name
-    except (LocalCommandError, RemoteCommandError, OSError):
-        return app
+    return app
 
 
 def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentInfo]:
@@ -443,7 +473,9 @@ def read_all_component_sync_metadata(
     if sql_backend == "odbc":
         return odbc_get_all_component_sync_metadata(require_odbc_settings(connection))
     if sql_backend == "local":
-        return local_get_all_component_sync_metadata(connection.vnode, connection.database)
+        return local_get_all_component_sync_metadata(
+            connection.vnode, connection.database
+        )
 
     return get_all_component_sync_metadata(
         remote=require_remote_host(connection),
@@ -506,16 +538,112 @@ def component_export_paths(
     )
 
 
+def normalize_application_paths(
+    root: Path,
+    app: str,
+    progress: Callable[[str], None] | None = None,
+) -> None:
+    """Rename existing app/cache directories to match database casing."""
+
+    normalize_case_path(root / app, progress=progress, label="application")
+    cache_dir = normalize_case_path(root / ".openroad" / app, disposable=True)
+    normalize_case_path(cache_dir / f"{app}.xml", disposable=True)
+
+
+def normalize_component_xml_path(xml_path: Path, component_name: str) -> Path:
+    """Rename cached component XML to match the component name from XML."""
+
+    target = xml_path.parent / f"{component_name}.xml"
+    if target.name.lower() != xml_path.name.lower():
+        return xml_path
+    return normalize_case_path(target, fallback=xml_path, disposable=True)
+
+
+def normalize_case_path(
+    path: Path,
+    fallback: Path | None = None,
+    disposable: bool = False,
+    progress: Callable[[str], None] | None = None,
+    label: str = "path",
+) -> Path:
+    """Rename a same-name-different-case path to `path` when present."""
+
+    source = fallback if fallback is not None and fallback.exists() else None
+    if source is not None and source != path and path.exists():
+        if disposable:
+            remove_path(path)
+        else:
+            raise ProjectError(f"Case-conflicting paths exist: {source} and {path}")
+
+    if source is None:
+        variants = case_variants(path)
+        exact = [child for child in variants if child.name == path.name]
+        others = [child for child in variants if child.name != path.name]
+        if exact and others:
+            if disposable:
+                remove_paths(others)
+                return path
+            raise ProjectError(f"Case-conflicting paths exist for: {path}")
+        if exact:
+            return path
+        if len(others) > 1:
+            if disposable:
+                remove_paths(others)
+                return path
+            raise ProjectError(f"Case-conflicting paths exist for: {path}")
+        source = others[0] if others else None
+
+    if source is None or source == path:
+        return path
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.parent / f".gorak-case-rename-{uuid4().hex}"
+    source.rename(temp_path)
+    temp_path.rename(path)
+    progress_message(
+        progress, f"Corrected {label} casing: {source.name} -> {path.name}"
+    )
+    return path
+
+
+def case_variants(path: Path) -> list[Path]:
+    parent = path.parent
+    if not parent.is_dir():
+        return []
+
+    return [
+        child for child in parent.iterdir() if child.name.lower() == path.name.lower()
+    ]
+
+
+def remove_paths(paths: list[Path]) -> None:
+    for path in paths:
+        remove_path(path)
+
+
+def remove_path(path: Path) -> None:
+    if path.is_dir():
+        rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
 def progress_message(progress: Callable[[str], None] | None, message: str) -> None:
     if progress is not None:
         progress(message)
 
 
-def write_component_w4gl(source_dir: Path, component_name: str, content: str) -> Path:
+def write_component_w4gl(
+    source_dir: Path,
+    component_name: str,
+    content: str,
+    progress: Callable[[str], None] | None = None,
+) -> Path:
     """Write a component using the OpenROAD XML name as the source filename."""
 
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.w4gl"
+    normalize_case_path(path, progress=progress, label="component")
     path.write_text(content)
     return path
 
@@ -524,6 +652,7 @@ def write_component_wml(
     source_dir: Path,
     component_name: str,
     content: str | None,
+    progress: Callable[[str], None] | None = None,
 ) -> Path | None:
     """Write frame markup when a component has a visual source tree."""
 
@@ -532,5 +661,6 @@ def write_component_wml(
 
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.wml"
+    normalize_case_path(path, progress=progress, label="component")
     path.write_text(content + "\n")
     return path

@@ -18,12 +18,15 @@ from gorak.export import (
     export_component,
     export_component_to_paths,
     merge_application_metadata,
+    normalize_application_paths,
     project_component_export_paths,
     read_application,
     read_applications,
     read_components,
     read_includes,
     write_app_metadata,
+    write_component_w4gl,
+    write_component_wml,
 )
 from gorak.project import GorakContext, GorakProject, ProjectError, write_json
 from gorak.remote import RemoteHost
@@ -100,6 +103,66 @@ def test_application_metadata_uses_exported_included_applications() -> None:
         "source_include",
         {"name": "image_include", "image": "image_include.pkg"},
     ]
+
+
+def test_write_component_w4gl_renames_existing_file_to_xml_casing(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "sample_app"
+    source_dir.mkdir()
+    old_path = source_dir / "g_log.w4gl"
+    old_path.write_text("old")
+
+    path = write_component_w4gl(source_dir, "G_LOG", "new")
+
+    assert path == source_dir / "G_LOG.w4gl"
+    assert path.read_text() == "new"
+    assert not old_path.exists()
+
+
+def test_write_component_w4gl_reports_case_correction(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "sample_app"
+    source_dir.mkdir()
+    (source_dir / "g_log.w4gl").write_text("old")
+    messages: list[str] = []
+
+    write_component_w4gl(source_dir, "G_LOG", "new", messages.append)
+
+    assert messages == ["Corrected component casing: g_log.w4gl -> G_LOG.w4gl"]
+
+
+def test_write_component_wml_renames_existing_file_to_xml_casing(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "sample_app"
+    source_dir.mkdir()
+    old_path = source_dir / "g_log.wml"
+    old_path.write_text("old")
+
+    path = write_component_wml(source_dir, "G_LOG", "<frame />")
+
+    assert path == source_dir / "G_LOG.wml"
+    assert path.read_text() == "<frame />\n"
+    assert not old_path.exists()
+
+
+def test_normalize_application_paths_cleans_openroad_case_conflicts(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / ".openroad"
+    stale_cache = cache / "sample_app"
+    current_cache = cache / "Sample_App"
+    stale_cache.mkdir(parents=True)
+    current_cache.mkdir()
+    (stale_cache / "sample_app.xml").write_text("old")
+    (current_cache / "Sample_App.xml").write_text("current")
+
+    normalize_application_paths(tmp_path, "Sample_App")
+
+    assert not stale_cache.exists()
+    assert (current_cache / "Sample_App.xml").read_text() == "current"
 
 
 def test_merge_application_metadata_uses_sql_values_and_xml_only_values() -> None:
@@ -241,6 +304,41 @@ def test_export_component_to_paths_uses_local_backend(
     assert "[framesource]" in result.read_text()
 
 
+def test_export_component_to_paths_renames_cached_xml_to_component_casing(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    paths = component_export_paths(tmp_path, "sample_app", "g_log")
+    xml = FIXTURE_PATH.read_text().replace("fm_example_frame", "G_LOG")
+
+    def fake_local_backup_component(
+        vnode: str,
+        database: str,
+        app: str,
+        component: str,
+        output_path: Path,
+    ) -> str:
+        output_path.write_text(xml)
+        return str(output_path)
+
+    monkeypatch.setattr(
+        export_module,
+        "local_backup_component",
+        fake_local_backup_component,
+    )
+
+    result = export_component_to_paths(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        app="sample_app",
+        component="g_log",
+        paths=paths,
+    )
+
+    assert result == tmp_path / "sample_app" / "G_LOG.w4gl"
+    assert not paths.xml_path.exists()
+    assert (tmp_path / ".openroad" / "sample_app" / "G_LOG.xml").read_text() == xml
+
+
 def test_export_component_to_paths_uses_xml_component_name_for_w4gl_filename(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -330,9 +428,10 @@ def test_export_application_to_paths_uses_local_backend(
     assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
     assert (tmp_path / "sample_app" / "fm_example_frame.wml").is_file()
     assert not (tmp_path / "sample_app" / "p4_example_procedure.wml").exists()
-    assert "[fielddefaults]" not in (
-        tmp_path / "sample_app" / "fm_example_frame.w4gl"
-    ).read_text()
+    assert (
+        "[fielddefaults]"
+        not in (tmp_path / "sample_app" / "fm_example_frame.w4gl").read_text()
+    )
     assert (tmp_path / "sample_app" / "p4_example_procedure.w4gl").is_file()
     assert (tmp_path / "sample_app" / "uc_example_userclass.w4gl").is_file()
 
@@ -364,9 +463,7 @@ def test_apply_field_default_inheritance_keeps_changed_nested_frame_overrides(
                     {
                         "type": "controlbutton",
                         "group": "controlbutton",
-                        "properties": {
-                            "optionmenu": {"bgcolor": "70", "fgcolor": "1"}
-                        },
+                        "properties": {"optionmenu": {"bgcolor": "70", "fgcolor": "1"}},
                     }
                 ]
             }
@@ -497,6 +594,7 @@ def test_export_component_uses_project_paths(
         app: str,
         component: str,
         paths: export_module.ComponentExportPaths,
+        progress: object = None,
     ) -> Path:
         calls.append((connection, app, component, paths))
         return paths.w4gl_path
@@ -548,6 +646,7 @@ def test_export_component_uses_canonical_application_name_for_project_paths(
         app: str,
         component: str,
         paths: export_module.ComponentExportPaths,
+        progress: object = None,
     ) -> Path:
         calls.append((app, paths))
         return paths.w4gl_path
@@ -577,6 +676,67 @@ def test_export_component_uses_canonical_application_name_for_project_paths(
     )
 
     assert path == tmp_path / "UnitTestFramework" / "p4_start.w4gl"
+    assert calls == [
+        (
+            "UnitTestFramework",
+            component_export_paths(tmp_path, "UnitTestFramework", "p4_start"),
+        )
+    ]
+
+
+def test_export_component_renames_existing_app_folder_to_database_casing(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    old_app_dir = tmp_path / "unittestframework"
+    old_app_dir.mkdir()
+    (old_app_dir / "app.json").write_text("{}\n")
+    old_cache_dir = tmp_path / ".openroad" / "unittestframework"
+    old_cache_dir.mkdir(parents=True)
+    (old_cache_dir / "unittestframework.xml").write_text("<old />")
+    project = GorakProject(root=tmp_path, name="repo")
+    calls: list[object] = []
+
+    def fake_export_component_to_paths(
+        connection: OpenRoadConnection,
+        app: str,
+        component: str,
+        paths: export_module.ComponentExportPaths,
+        progress: object = None,
+    ) -> Path:
+        calls.append((app, paths))
+        return paths.w4gl_path
+
+    monkeypatch.setattr(
+        export_module,
+        "export_component_to_paths",
+        fake_export_component_to_paths,
+    )
+    monkeypatch.setattr(
+        export_module,
+        "read_application",
+        lambda connection, app: Application("UnitTestFramework", "fm_start", ""),
+    )
+    monkeypatch.setattr(
+        export_module,
+        "record_component_sync_metadata",
+        lambda connection, root, app: None,
+    )
+
+    export_component(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        context=GorakContext(project=project, env={}),
+        app="unittestframework",
+        component="p4_start",
+        output_path=None,
+    )
+
+    assert not old_app_dir.exists()
+    assert (tmp_path / "UnitTestFramework" / "app.json").is_file()
+    assert not old_cache_dir.exists()
+    assert (
+        tmp_path / ".openroad" / "UnitTestFramework" / "UnitTestFramework.xml"
+    ).is_file()
     assert calls == [
         (
             "UnitTestFramework",
