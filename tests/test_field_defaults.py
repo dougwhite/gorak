@@ -22,175 +22,202 @@ def field_defaults_node() -> etree._Element:
     return node
 
 
-def test_parse_field_defaults_uses_field_type_keys() -> None:
+def test_parse_field_defaults_has_common_model_container() -> None:
     defaults = parse_field_defaults_node(field_defaults_node())
 
-    assert "barfield" in defaults["field_types"]
-    assert "entryfield" in defaults["field_types"]
+    assert defaults["common_model_container"] == {
+        "type": "matrixfield",
+        "properties": {
+            "bgcolor": "2",
+            "fgcolor": "1",
+            "width": "10416",
+            "height": "10417",
+            "designbias": "2",
+            "trimbias": "8",
+            "updatebias": "16",
+            "querybias": "16",
+            "readbias": "32",
+            "user1bias": "16",
+            "user2bias": "16",
+            "user3bias": "16",
+            "fieldstyle": "0",
+            "bgpattern": "1",
+            "focusbehavior": "1",
+            "outlinecolor": "1",
+        },
+    }
 
 
-def test_parse_field_defaults_preserves_matrix_and_child_properties() -> None:
+def test_parse_field_defaults_preserves_ordered_field_styles() -> None:
     defaults = parse_field_defaults_node(field_defaults_node())
-    barfield = defaults["field_types"]["barfield"]
+    field_styles = defaults["field_styles"]
 
-    assert barfield["type"] == "matrixfield"
-    assert barfield["properties"]["bgcolor"] == "2"
-    assert barfield["properties"]["fgcolor"] == "1"
-    assert barfield["properties"]["columns"] == "1"
-    assert barfield["properties"]["rows"] == "1"
-    assert barfield["childfields"] == [
-        {
-            "type": "barfield",
-            "attributes": {"row": "1", "column": "1"},
-            "properties": {
-                "datatype": "i4",
-                "defaultvalue": "3",
-                "defaultstring": "0",
-                "bgcolor": "84",
-                "fgcolor": "70",
-                "xleft": "271",
-                "ytop": "52",
-                "width": "740",
-                "height": "521",
-                "designbias": "4",
-                "trimbias": "256",
-                "updatebias": "16",
-                "querybias": "16",
-                "readbias": "32",
-                "user1bias": "16",
-                "user2bias": "16",
-                "user3bias": "16",
-                "gravity": "17",
-                "bgpattern": "-1",
-                "bgdisplaypolicy": "2",
-                "focusbehavior": "2",
-                "outlinecolor": "1",
-                "outlinestyle": "4",
-                "fgpattern": "-1",
-                "growfrom": "6",
-            },
-        }
+    assert field_styles[0] == {
+        "type": "barfield",
+        "group": "barfield",
+        "properties": {
+            "datatype": "i4",
+            "defaultvalue": "3",
+            "defaultstring": "0",
+            "bgcolor": "84",
+            "fgcolor": "70",
+            "xleft": "271",
+            "ytop": "52",
+            "width": "740",
+            "height": "521",
+            "designbias": "4",
+            "trimbias": "256",
+            "updatebias": "16",
+            "querybias": "16",
+            "readbias": "32",
+            "user1bias": "16",
+            "user2bias": "16",
+            "user3bias": "16",
+            "gravity": "17",
+            "bgpattern": "-1",
+            "bgdisplaypolicy": "2",
+            "focusbehavior": "2",
+            "outlinecolor": "1",
+            "outlinestyle": "4",
+            "fgpattern": "-1",
+            "growfrom": "6",
+        },
+    }
+    assert [style["group"] for style in field_styles if style["type"] == "entryfield"] == [
+        "entryfield",
+        "entryfield:2",
     ]
+    assert [
+        style["group"] for style in field_styles if style["type"] == "rectangleshape"
+    ] == ["rectangleshape", "rectangleshape"]
+
+
+def test_parse_field_defaults_preserves_nested_property_subtrees() -> None:
+    defaults = parse_field_defaults_node(field_defaults_node())
+
+    assert_nested_property(defaults, "controlbutton", "optionmenu", "bgcolor")
+    assert_nested_property(defaults, "flexibleform", "childfields", "row")
+    assert_nested_property(defaults, "imagetrim", "image", "obj_encoded")
+    assert_nested_property(defaults, "listfield", "valuelist", "choiceitems")
+    assert_nested_property(defaults, "listviewfield", "colattributes", "row")
+    assert_nested_property(defaults, "matrixfield", "childfields", "row")
+    assert_nested_property(defaults, "optionfield", "valuelist", "choiceitems")
+    assert_nested_property(defaults, "palettefield", "valuelist", "choiceitems")
+    assert_nested_property(defaults, "popupbutton", "optionmenu", "bgcolor")
+    assert_nested_property(defaults, "radiofield", "valuelist", "choiceitems")
+    assert_nested_property(defaults, "stackfield", "childfields", "row")
+    assert_nested_property(defaults, "tabfolder", "tabbar", "bgcolor")
+    assert_nested_property(defaults, "tabfolder", "tabpagearray", "row")
+    assert_nested_property(defaults, "tablefield", "controlbutton", "name")
+    assert_nested_property(defaults, "tablefield", "tablebody", "bgcolor")
+    assert_nested_property(defaults, "tablefield", "tableheader", "bgcolor")
+    assert_nested_property(defaults, "tablefield", "titletrim", "bgcolor")
+    assert_nested_property(defaults, "viewportfield", "viewfield", "bgcolor")
+
+
+def assert_nested_property(
+    defaults: dict[str, Any],
+    field_type: str,
+    property_name: str,
+    nested_key: str,
+) -> None:
+    style = next(
+        style
+        for style in defaults["field_styles"]
+        if style["type"] == field_type and property_name in style["properties"]
+    )
+
+    value = style["properties"][property_name]
+    assert isinstance(value, dict), f"{field_type}.{property_name}"
+    assert nested_key in value, f"{field_type}.{property_name}.{nested_key}"
 
 
 def test_merge_defaults_applies_nested_overrides_without_mutating_parent() -> None:
     parent: dict[str, Any] = {
-        "field_types": {
-            "entryfield": {
-                "properties": {"bgcolor": "84", "fgcolor": "86"},
-                "childfields": [{"properties": {"width": "896"}}],
-            }
+        "common_model_container": {
+            "properties": {"bgcolor": "2", "fgcolor": "1"}
         }
     }
     override: dict[str, Any] = {
-        "field_types": {
-            "entryfield": {
-                "properties": {"bgcolor": "70"},
-            }
-        }
+        "common_model_container": {"properties": {"bgcolor": "70"}}
     }
 
     merged = merge_defaults(parent, override)
 
     assert merged == {
-        "field_types": {
-            "entryfield": {
-                "properties": {"bgcolor": "70", "fgcolor": "86"},
-                "childfields": [{"properties": {"width": "896"}}],
-            }
+        "common_model_container": {
+            "properties": {"bgcolor": "70", "fgcolor": "1"}
         }
     }
-    assert parent["field_types"]["entryfield"]["properties"]["bgcolor"] == "84"
+    assert parent["common_model_container"]["properties"]["bgcolor"] == "2"
 
 
 def test_diff_defaults_returns_only_values_that_differ_from_parent() -> None:
     parent: dict[str, Any] = {
-        "field_types": {
-            "entryfield": {
-                "properties": {"bgcolor": "84", "fgcolor": "86"},
-                "childfields": [{"properties": {"width": "896"}}],
-            }
+        "common_model_container": {
+            "properties": {"bgcolor": "2", "fgcolor": "1"}
         }
     }
     child: dict[str, Any] = {
-        "field_types": {
-            "entryfield": {
-                "properties": {"bgcolor": "70", "fgcolor": "86"},
-                "childfields": [{"properties": {"width": "896"}}],
-            },
-            "buttonfield": {"properties": {"textlabel": "Button"}},
-        }
+        "common_model_container": {
+            "properties": {"bgcolor": "70", "fgcolor": "1"}
+        },
+        "field_styles": [
+            {"type": "entryfield", "group": "entryfield", "properties": {"bgcolor": "84"}}
+        ],
     }
 
     assert diff_defaults(parent, child) == {
-        "field_types": {
-            "entryfield": {"properties": {"bgcolor": "70"}},
-            "buttonfield": {"properties": {"textlabel": "Button"}},
-        }
+        "common_model_container": {"properties": {"bgcolor": "70"}},
+        "field_styles": [
+            {"type": "entryfield", "group": "entryfield", "properties": {"bgcolor": "84"}}
+        ],
     }
 
 
 def test_effective_defaults_merges_repo_app_and_frame_overrides() -> None:
     repo: dict[str, Any] = {
-        "field_types": {"entryfield": {"properties": {"bgcolor": "84"}}}
+        "common_model_container": {"properties": {"bgcolor": "2"}}
     }
     app: dict[str, Any] = {
-        "field_types": {"entryfield": {"properties": {"fgcolor": "86"}}}
+        "common_model_container": {"properties": {"fgcolor": "1"}}
     }
     frame: dict[str, Any] = {
-        "field_types": {"entryfield": {"properties": {"bgcolor": "70"}}}
+        "field_styles": [
+            {"type": "entryfield", "group": "entryfield", "properties": {"bgcolor": "84"}}
+        ]
     }
 
     assert effective_defaults(repo, app, frame) == {
-        "field_types": {
-            "entryfield": {
-                "properties": {
-                    "bgcolor": "70",
-                    "fgcolor": "86",
-                }
-            }
-        }
+        "common_model_container": {"properties": {"bgcolor": "2", "fgcolor": "1"}},
+        "field_styles": [
+            {"type": "entryfield", "group": "entryfield", "properties": {"bgcolor": "84"}}
+        ],
     }
 
 
 def test_common_defaults_returns_values_shared_by_every_child() -> None:
     assert common_defaults(
         [
-            {
-                "field_types": {
-                    "entryfield": {
-                        "properties": {"bgcolor": "70", "fgcolor": "86"}
-                    }
-                }
-            },
-            {
-                "field_types": {
-                    "entryfield": {
-                        "properties": {"bgcolor": "70", "fgcolor": "72"}
-                    }
-                }
-            },
+            {"common_model_container": {"properties": {"bgcolor": "2"}}},
+            {"common_model_container": {"properties": {"bgcolor": "2"}}},
         ]
-    ) == {
-        "field_types": {"entryfield": {"properties": {"bgcolor": "70"}}}
-    }
+    ) == {"common_model_container": {"properties": {"bgcolor": "2"}}}
 
 
 def test_remove_defaults_removes_matching_nested_values() -> None:
     assert remove_defaults(
         {
-            "field_types": {
-                "entryfield": {
-                    "properties": {"bgcolor": "70", "fgcolor": "86"}
-                }
+            "common_model_container": {
+                "properties": {"bgcolor": "2", "fgcolor": "1"}
             }
         },
-        {"field_types": {"entryfield": {"properties": {"bgcolor": "70"}}}},
-    ) == {"field_types": {"entryfield": {"properties": {"fgcolor": "86"}}}}
+        {"common_model_container": {"properties": {"bgcolor": "2"}}},
+    ) == {"common_model_container": {"properties": {"fgcolor": "1"}}}
 
 
 def test_flatten_app_defaults_moves_shared_values_to_repo(tmp_path: Path) -> None:
-    (tmp_path / "field_defaults.json").write_text('{"field_types": {}}\n')
+    (tmp_path / "field_defaults.json").write_text("{}\n")
     for app_name in ["orders", "billing"]:
         app_dir = tmp_path / app_name
         app_dir.mkdir()
@@ -198,12 +225,10 @@ def test_flatten_app_defaults_moves_shared_values_to_repo(tmp_path: Path) -> Non
         (app_dir / "field_defaults.json").write_text(
             """
 {
-    "field_types": {
-        "entryfield": {
-            "properties": {
-                "bgcolor": "70",
-                "fgcolor": "86"
-            }
+    "common_model_container": {
+        "properties": {
+            "bgcolor": "2",
+            "fgcolor": "1"
         }
     }
 }
@@ -216,12 +241,10 @@ def test_flatten_app_defaults_moves_shared_values_to_repo(tmp_path: Path) -> Non
     assert result.promoted_values == 2
     assert (tmp_path / "field_defaults.json").read_text() == (
         "{\n"
-        '    "field_types": {\n'
-        '        "entryfield": {\n'
-        '            "properties": {\n'
-        '                "bgcolor": "70",\n'
-        '                "fgcolor": "86"\n'
-        "            }\n"
+        '    "common_model_container": {\n'
+        '        "properties": {\n'
+        '            "bgcolor": "2",\n'
+        '            "fgcolor": "1"\n'
         "        }\n"
         "    }\n"
         "}\n"

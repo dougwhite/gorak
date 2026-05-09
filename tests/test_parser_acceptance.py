@@ -28,9 +28,7 @@ class TestParseXmlAcceptance:
         assert component.type == "framesource"
         assert component.props["datatype"] == "integer"
         assert component.props["templatename"] == "standard"
-        assert component.props["fielddefaults"]["field_types"]["barfield"]["type"] == (
-            "matrixfield"
-        )
+        assert component.props["fielddefaults"]["field_styles"][0]["type"] == "barfield"
         assert "topform" not in component.props
         assert component.script is not None
         assert "initialize()=" in component.script

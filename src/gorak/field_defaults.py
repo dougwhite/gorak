@@ -9,7 +9,7 @@ from typing import Any, cast
 from lxml import etree
 
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
-FieldDefaults = dict[str, dict[str, Any]]
+FieldDefaults = dict[str, Any]
 JsonObject = dict[str, Any]
 
 
@@ -22,45 +22,107 @@ class FlattenResult:
 def parse_field_defaults_node(node: etree._Element) -> FieldDefaults:
     """Parse an OpenROAD <fielddefaults> node into stable JSON-like data."""
 
-    field_types: dict[str, Any] = {}
-    for row in node.findall("row"):
-        key = (row.findtext("clienttext") or "").strip()
-        if not key:
+    rows = node.findall("row")
+    style_counts: dict[str, int] = {}
+    field_styles: list[dict[str, Any]] = []
+    common_container = common_matrix_container(rows)
+
+    for row in rows:
+        group = group_name(row, style_counts)
+        childfields = row.find("childfields")
+        if childfields is None:
             continue
 
-        field_types[key] = parse_default_row(row)
+        for child in childfields.findall("row"):
+            field_type = child.get(XSI_TYPE, "")
+            if not field_type:
+                continue
 
-    return {"field_types": field_types}
+            field_styles.append(parse_childfield_row(group, child))
 
-
-def parse_default_row(row: etree._Element) -> dict[str, Any]:
-    childfields = row.find("childfields")
-    properties = {
-        child.tag: (child.text or "").strip()
-        for child in row
-        if child.tag not in {"clienttext", "childfields"}
+    return {
+        "common_model_container": common_container,
+        "field_styles": field_styles,
     }
 
-    parsed: dict[str, Any] = {
-        "type": row.get(XSI_TYPE, ""),
+
+def common_matrix_container(rows: list[etree._Element]) -> dict[str, Any]:
+    """Return matrixfield wrapper values shared by every default row."""
+
+    containers = [matrix_container(row) for row in rows]
+    properties = common_defaults(
+        [container["properties"] for container in containers if container["properties"]]
+    )
+    if not containers:
+        return {"type": "", "properties": {}}
+
+    return {
+        "type": containers[0]["type"],
         "properties": properties,
     }
-    if childfields is not None:
-        parsed["childfields"] = [
-            parse_childfield_row(child) for child in childfields.findall("row")
-        ]
-
-    return parsed
 
 
-def parse_childfield_row(row: etree._Element) -> dict[str, Any]:
-    attributes = {key: value for key, value in row.attrib.items() if key != XSI_TYPE}
-    properties = {child.tag: (child.text or "").strip() for child in row}
+def matrix_container(row: etree._Element) -> dict[str, Any]:
+    properties = {
+        child.tag: element_value(child)
+        for child in row
+        if child.tag not in {"clienttext", "childfields", "columns", "rows"}
+    }
     return {
         "type": row.get(XSI_TYPE, ""),
-        "attributes": attributes,
         "properties": properties,
     }
+
+
+def group_name(row: etree._Element, style_counts: dict[str, int]) -> str:
+    base_name = (row.findtext("clienttext") or "field").strip()
+    style_counts[base_name] = style_counts.get(base_name, 0) + 1
+    if style_counts[base_name] == 1:
+        return base_name
+    return f"{base_name}:{style_counts[base_name]}"
+
+
+def parse_childfield_row(group: str, row: etree._Element) -> dict[str, Any]:
+    properties = {child.tag: element_value(child) for child in row}
+    return {
+        "type": row.get(XSI_TYPE, ""),
+        "group": group,
+        "properties": properties,
+    }
+
+
+def element_value(node: etree._Element) -> Any:
+    """Convert an XML property node into JSON-compatible data."""
+
+    if len(node) == 0:
+        return (node.text or "").strip()
+
+    value: dict[str, Any] = {}
+    node_type = node.get(XSI_TYPE)
+    attributes = {key: item for key, item in node.attrib.items() if key != XSI_TYPE}
+    if node_type is not None:
+        value["type"] = node_type
+    if attributes:
+        value["attributes"] = attributes
+
+    for child in node:
+        child_value = element_value(child)
+        if child.tag == "row":
+            value.setdefault("row", []).append(child_value)
+        elif child.tag in value:
+            existing = value[child.tag]
+            if isinstance(existing, list):
+                existing.append(child_value)
+            else:
+                value[child.tag] = [existing, child_value]
+        else:
+            value[child.tag] = child_value
+
+    text = (node.text or "").strip()
+    if text:
+        value["text"] = text
+
+    return value
 
 
 def effective_defaults(
@@ -195,6 +257,11 @@ def count_leaf_values(defaults: JsonObject) -> int:
     for value in defaults.values():
         if isinstance(value, dict):
             count += count_leaf_values(value)
+        elif isinstance(value, list):
+            count += sum(
+                count_leaf_values(item) if isinstance(item, dict) else 1
+                for item in value
+            )
         else:
             count += 1
     return count
