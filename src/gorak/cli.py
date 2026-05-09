@@ -11,6 +11,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import cast
 
+from .audit import audit_xml_file
 from .connection import (
     connection_source,
     resolve_openroad_connection,
@@ -116,6 +117,12 @@ def build_parser() -> argparse.ArgumentParser:
     defaults_parser = subparsers.add_parser("defaults")
     defaults_subparsers = defaults_parser.add_subparsers(dest="defaults_command")
     defaults_subparsers.add_parser("flatten")
+
+    debug_parser = subparsers.add_parser("debug")
+    debug_subparsers = debug_parser.add_subparsers(dest="debug_command")
+
+    debug_audit = debug_subparsers.add_parser("audit")
+    debug_audit.add_argument("xml_file")
 
     return parser
 
@@ -413,6 +420,12 @@ def defaults_flatten_command(args: argparse.Namespace) -> str:
     )
 
 
+def debug_audit_command(args: argparse.Namespace) -> str:
+    """Audit what an XML export does not currently represent in source files."""
+
+    return json.dumps(audit_xml_file(cast(str, args.xml_file)), indent=2)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
 
@@ -458,6 +471,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "defaults" and parsed.defaults_command == "flatten":
             print(defaults_flatten_command(parsed))
+            return
+
+        if parsed.command == "debug" and parsed.debug_command == "audit":
+            print(debug_audit_command(parsed))
             return
     except ProjectError as ex:
         print(f"ERROR: {ex}", file=sys.stderr)

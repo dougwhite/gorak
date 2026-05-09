@@ -258,6 +258,18 @@ You can promote shared app-level overrides into the repo default file with:
 gorak defaults flatten
 ```
 
+### Debugging representation coverage
+
+Audit an OpenROAD XML export for top-level application/component XML nodes that
+Gorak does not currently represent in `.w4gl`, `.wml`, `app.json`, or
+`field_defaults.json`:
+```
+gorak debug audit tests/fixtures/gorak_examples.xml
+```
+
+The output is JSON. This is a development/debugging aid, not a guarantee of
+round-trip safety.
+
 ### Exporting an application
 
 Export every component in one OpenROAD application:
