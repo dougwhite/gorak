@@ -31,6 +31,7 @@ class Component:
     type: str
     props: dict[str, Any]
     script: str | None = None
+    markup: str | None = None
 
 
 @dataclass(frozen=True)

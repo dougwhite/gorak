@@ -23,7 +23,7 @@ from .domain import (
     IncludedApplication,
 )
 from .field_defaults import diff_defaults, effective_defaults
-from .parser import encode_w4gl, parse_application_xml, parse_xml
+from .parser import encode_w4gl, encode_wml, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
     backup_application,
@@ -163,6 +163,7 @@ def export_application_to_paths(
     for component in exported.components:
         progress_message(progress, f"Encoding component {app}::{component.name}")
         write_component_w4gl(paths.source_dir, component.name, encode_w4gl(component))
+        write_component_wml(paths.source_dir, component.name, encode_wml(component))
 
     return exported
 
@@ -185,11 +186,17 @@ def export_component_to_paths(
         app,
         [parsed_component],
     )
-    return write_component_w4gl(
+    w4gl_path = write_component_w4gl(
         paths.w4gl_path.parent,
         parsed_component.name,
         encode_w4gl(parsed_component),
     )
+    write_component_wml(
+        paths.w4gl_path.parent,
+        parsed_component.name,
+        encode_wml(parsed_component),
+    )
+    return w4gl_path
 
 
 def apply_field_default_inheritance(
@@ -405,4 +412,20 @@ def write_component_w4gl(source_dir: Path, component_name: str, content: str) ->
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.w4gl"
     path.write_text(content)
+    return path
+
+
+def write_component_wml(
+    source_dir: Path,
+    component_name: str,
+    content: str | None,
+) -> Path | None:
+    """Write frame markup when a component has a visual source tree."""
+
+    if content is None:
+        return None
+
+    source_dir.mkdir(parents=True, exist_ok=True)
+    path = source_dir / f"{component_name}.wml"
+    path.write_text(content + "\n")
     return path

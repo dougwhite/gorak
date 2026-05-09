@@ -1,7 +1,7 @@
 """Parse a small, intentionally conservative subset of OpenROAD XML exports."""
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 import tomlkit
 from lxml import etree
@@ -126,7 +126,52 @@ def parse_component_node(node: etree._Element) -> Component:
     if field_defaults_node is not None:
         props["fielddefaults"] = parse_field_defaults_node(field_defaults_node)
 
-    return Component(name, component_type, props, script)
+    topform_node = node.find("topform")
+    markup = (
+        encode_frame_markup_node(topform_node)
+        if component_type == "framesource" and topform_node is not None
+        else None
+    )
+
+    return Component(name, component_type, props, script, markup)
+
+
+def encode_frame_markup_node(node: etree._Element) -> str:
+    """Encode an OpenROAD frame form tree as XML-compatible .wml markup."""
+
+    return cast(
+        str,
+        etree.tostring(
+            frame_markup_element(node),
+            encoding="unicode",
+            pretty_print=True,
+        ),
+    ).strip()
+
+
+def frame_markup_element(node: etree._Element) -> etree._Element:
+    tag = node.get(f"{{{NS['xsi']}}}type") if node.tag == "row" else node.tag
+    if not tag:
+        tag = node.tag
+
+    element = etree.Element(tag)
+    for child in node:
+        if child.tag == "childfields":
+            append_childfields(element, child)
+        elif child.tag == "script":
+            script = etree.SubElement(element, "script")
+            script.text = etree.CDATA((child.text or "").strip())
+        elif len(child) == 0:
+            element.set(child.tag, (child.text or "").strip())
+        else:
+            element.append(frame_markup_element(child))
+
+    return element
+
+
+def append_childfields(parent: etree._Element, childfields: etree._Element) -> None:
+    for row in childfields.findall("row"):
+        parent.append(frame_markup_element(row))
 
 
 def extract_props(
@@ -233,3 +278,9 @@ def encode_w4gl(component: Component) -> str:
 
     props = tomlkit.dumps(toml_props(component))
     return join_segments([props, component.script], "===")
+
+
+def encode_wml(component: Component) -> str | None:
+    """Return frame markup for components that have a visual definition."""
+
+    return component.markup

@@ -8,6 +8,7 @@ from tomlkit.items import Table
 from gorak.domain import Component
 from gorak.parser import (
     encode_w4gl,
+    encode_wml,
     extract_attributes,
     extract_methods,
     extract_props,
@@ -111,6 +112,46 @@ class TestParseXml:
             parse_xml(no_type)
 
         assert "<COMPONENT> node must have an xsi:type attribute" in str(ex.value)
+
+    def test_frame_component_encodes_topform_as_wml_markup(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <topform>
+                    <bgcolor>70</bgcolor>
+                    <childfields>
+                        <row xsi:type="subform">
+                            <name>example_composite_field</name>
+                            <childfields>
+                                <row xsi:type="buttonfield">
+                                    <name>example_button</name>
+                                    <script><![CDATA[ON click =
+{
+    MESSAGE 'Hello World!';
+}]]></script>
+                                    <textlabel><![CDATA[Button]]></textlabel>
+                                </row>
+                            </childfields>
+                        </row>
+                    </childfields>
+                </topform>
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        markup = etree.fromstring(component.markup)
+        subform = markup.find("subform")
+        assert markup.tag == "topform"
+        assert markup.get("bgcolor") == "70"
+        assert subform is not None
+        assert subform.get("name") == "example_composite_field"
+        button = subform.find("buttonfield")
+        assert button is not None
+        assert button.get("name") == "example_button"
+        assert button.get("textlabel") == "Button"
+        assert button.findtext("script") is not None
+        assert "MESSAGE 'Hello World!';" in button.findtext("script", "")
 
 
 class TestParseApplicationXml:
@@ -433,6 +474,20 @@ class TestW4glEncode:
         """).strip()
 
         assert result == expected
+
+
+class TestWmlEncode:
+    """Tests for the `encode_wml()` function."""
+
+    def test_returns_component_markup_when_present(self) -> None:
+        component = Component("fm_simple", "framesource", {}, markup="<topform/>")
+
+        assert encode_wml(component) == "<topform/>"
+
+    def test_returns_none_for_components_without_markup(self) -> None:
+        component = Component("p4_simple", "proc4glsource", {})
+
+        assert encode_wml(component) is None
 
     def test_component_with_no_script_just_returns_promps_toml(self) -> None:
         component = Component(

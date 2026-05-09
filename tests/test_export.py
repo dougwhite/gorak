@@ -297,6 +297,8 @@ def test_export_application_to_paths_uses_local_backend(
     assert (tmp_path / "field_defaults.json").is_file()
     assert (tmp_path / "sample_app" / "field_defaults.json").read_text() == "{}\n"
     assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
+    assert (tmp_path / "sample_app" / "fm_example_frame.wml").is_file()
+    assert not (tmp_path / "sample_app" / "p4_example_procedure.wml").exists()
     assert "[fielddefaults]" not in (
         tmp_path / "sample_app" / "fm_example_frame.w4gl"
     ).read_text()
@@ -401,6 +403,7 @@ def test_export_component_to_paths_uses_remote_backend(
     ]
     assert result == tmp_path / "sample_app" / "fm_example_frame.w4gl"
     assert "[framesource]" in result.read_text()
+    assert (tmp_path / "sample_app" / "fm_example_frame.wml").is_file()
 
 
 def test_export_application_to_paths_uses_remote_backend(
