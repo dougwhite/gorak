@@ -11,6 +11,9 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import cast
 
+import pyodbc
+from sqlalchemy.exc import SQLAlchemyError
+
 from .audit import (
     audit_project_xml,
     audit_xml_file,
@@ -34,6 +37,7 @@ from .export import (
     read_includes,
 )
 from .field_defaults import flatten_app_defaults
+from .local import LocalCommandError
 from .project import (
     ProjectError,
     configure_project,
@@ -42,6 +46,7 @@ from .project import (
     load_project,
 )
 from .remote import (
+    RemoteCommandError,
     RemoteHost,
     install_remote_helpers,
 )
@@ -581,11 +586,49 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(debug_audit_command(parsed))
             return
     except ProjectError as ex:
-        print(f"ERROR: {ex}", file=sys.stderr)
+        print(format_cli_error(ex), file=sys.stderr)
+        raise SystemExit(1) from ex
+    except (LocalCommandError, RemoteCommandError, SQLAlchemyError, pyodbc.Error) as ex:
+        print(format_cli_error(ex), file=sys.stderr)
+        raise SystemExit(1) from ex
+    except FileNotFoundError as ex:
+        print(format_cli_error(ex), file=sys.stderr)
         raise SystemExit(1) from ex
 
     parser.print_help()
     raise SystemExit(1)
+
+
+def format_cli_error(error: BaseException) -> str:
+    if isinstance(error, ProjectError):
+        return f"ERROR: {error}"
+    if isinstance(error, LocalCommandError):
+        return format_backend_error("Local backend error", error)
+    if isinstance(error, RemoteCommandError):
+        return format_backend_error("Remote backend error", error)
+    if isinstance(error, (SQLAlchemyError, pyodbc.Error)):
+        return format_backend_error("ODBC backend error", error)
+    if isinstance(error, FileNotFoundError):
+        command = error.filename or str(error)
+        return f"ERROR: Command not found: {command}"
+
+    return f"ERROR: {error}"
+
+
+def format_backend_error(title: str, error: BaseException) -> str:
+    message = concise_error_text(str(error))
+    if not message:
+        return f"ERROR: {title}"
+    return f"ERROR: {title}\n{message}"
+
+
+def concise_error_text(message: str) -> str:
+    lines = [
+        line.strip()
+        for line in message.splitlines()
+        if line.strip() and not line.strip().startswith("** WARNING:")
+    ]
+    return "\n".join(lines[:4])
 
 
 if __name__ == "__main__":
