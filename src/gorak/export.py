@@ -23,25 +23,33 @@ from .domain import (
     IncludedApplication,
 )
 from .field_defaults import diff_defaults, effective_defaults
+from .local import LocalCommandError
 from .parser import encode_w4gl, encode_wml, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
+    RemoteCommandError,
     backup_application,
     backup_component,
     download_file,
+    get_all_component_sync_metadata,
     get_app_list,
     get_component_list,
     get_include_list,
 )
+from .sync_state import update_component_entries
 
 local_backup_application = local.backup_application
 local_backup_component = local.backup_component
 local_get_app_list = local.get_app_list
 local_get_component_list = local.get_component_list
 local_get_include_list = local.get_include_list
+local_get_component_sync_metadata = local.get_component_sync_metadata
+local_get_all_component_sync_metadata = local.get_all_component_sync_metadata
 odbc_get_app_list = database_module.get_app_list
 odbc_get_component_list = database_module.get_component_list
 odbc_get_include_list = database_module.get_include_list
+odbc_get_component_sync_metadata = database_module.get_component_sync_metadata
+odbc_get_all_component_sync_metadata = database_module.get_all_component_sync_metadata
 
 
 @dataclass(frozen=True)
@@ -129,6 +137,7 @@ def export_application(
         merge_application_metadata(application, exported.application),
         exported.included_applications,
     )
+    record_component_sync_metadata(connection, root, application.name)
     return exported
 
 
@@ -168,8 +177,11 @@ def export_component(
             )
             return export_component_to_paths(connection, app, component, paths)
 
-    paths = project_component_export_paths(context, app, component)
-    return export_component_to_paths(connection, app, component, paths)
+    canonical_app = canonical_application_name(connection, context.project.root, app)
+    paths = project_component_export_paths(context, canonical_app, component)
+    path = export_component_to_paths(connection, canonical_app, component, paths)
+    record_component_sync_metadata(connection, context.project.root, canonical_app)
+    return path
 
 
 def export_application_to_paths(
@@ -343,6 +355,23 @@ def read_application(connection: OpenRoadConnection, app: str) -> Application:
     raise ProjectError(f"Application not found: {app}")
 
 
+def canonical_application_name(
+    connection: OpenRoadConnection,
+    root: Path,
+    app: str,
+) -> str:
+    """Resolve a case-insensitive app request to the database/project casing."""
+
+    for path in root.iterdir():
+        if path.is_dir() and path.name.lower() == app.lower():
+            return path.name
+
+    try:
+        return read_application(connection, app).name
+    except (LocalCommandError, RemoteCommandError, OSError):
+        return app
+
+
 def read_components(connection: OpenRoadConnection, app: str) -> list[ComponentInfo]:
     sql_backend = connection_sql_backend(connection)
     if sql_backend == "odbc":
@@ -382,6 +411,50 @@ def read_includes(
         database=connection.database,
         app=app,
     )
+
+
+def read_component_sync_metadata(
+    connection: OpenRoadConnection,
+    app: str,
+) -> list[database_module.ComponentSyncMetadata]:
+    sql_backend = connection_sql_backend(connection)
+    if sql_backend == "odbc":
+        return odbc_get_component_sync_metadata(require_odbc_settings(connection), app)
+    if sql_backend == "local":
+        return local_get_component_sync_metadata(
+            connection.vnode,
+            connection.database,
+            app,
+        )
+
+    metadata = read_all_component_sync_metadata(connection)
+    return [item for item in metadata if item.application_name.lower() == app.lower()]
+
+
+def read_all_component_sync_metadata(
+    connection: OpenRoadConnection,
+) -> list[database_module.ComponentSyncMetadata]:
+    sql_backend = connection_sql_backend(connection)
+    if sql_backend == "odbc":
+        return odbc_get_all_component_sync_metadata(require_odbc_settings(connection))
+    if sql_backend == "local":
+        return local_get_all_component_sync_metadata(connection.vnode, connection.database)
+
+    return get_all_component_sync_metadata(
+        remote=require_remote_host(connection),
+        vnode=connection.vnode,
+        database=connection.database,
+    )
+
+
+def record_component_sync_metadata(
+    connection: OpenRoadConnection,
+    root: Path,
+    app: str,
+) -> None:
+    """Store current change metadata for future syncs."""
+
+    update_component_entries(root, read_component_sync_metadata(connection, app))
 
 
 def project_component_export_paths(

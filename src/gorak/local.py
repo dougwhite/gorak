@@ -6,10 +6,12 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
+from .database import ComponentSyncMetadata
 from .domain import Application, ComponentInfo, IncludedApplication
 from .sql_output import (
     parse_app_list_output,
     parse_component_list_output,
+    parse_component_sync_metadata_output,
     parse_include_list_output,
 )
 
@@ -183,6 +185,31 @@ def get_include_list(
     return parse_include_list_output(output)
 
 
+def get_component_sync_metadata(
+    vnode: str,
+    database: str,
+    app: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[ComponentSyncMetadata]:
+    output = run_cmd(
+        build_sql_command(vnode, database),
+        component_sync_metadata_query(app),
+    )
+    return parse_component_sync_metadata_output(output)
+
+
+def get_all_component_sync_metadata(
+    vnode: str,
+    database: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[ComponentSyncMetadata]:
+    output = run_cmd(
+        build_sql_command(vnode, database),
+        component_sync_metadata_query(),
+    )
+    return parse_component_sync_metadata_output(output)
+
+
 def component_list_query(app: str) -> str:
     app_name = app.replace("'", "''")
     return "\n".join(
@@ -198,6 +225,47 @@ def component_list_query(app: str) -> str:
             "",
         ]
     )
+
+
+def component_sync_metadata_query(app: str | None = None) -> str:
+    app_filter = ""
+    app_name_expression = (
+        "case when app_current.entity_name is null "
+        "then app_folder.entity_name "
+        "else app_current.entity_name end"
+    )
+    if app is not None:
+        app_name = app.replace("'", "''")
+        app_filter = f"and lower({app_name_expression}) = lower('{app_name}')"
+
+    lines = [
+        "select case when app_current.entity_name is null",
+        "            then app_folder.entity_name",
+        "            else app_current.entity_name",
+        "       end as application_name,",
+        "       base.entity_name as component_name,",
+        "       base.entity_type,",
+        "       base.entity_id as base_entity_id,",
+        "       ver.entity_id as version_entity_id,",
+        "       ver.version_number,",
+        "       c.alter_date,",
+        "       c.alter_count,",
+        "       c.last_altered_by,",
+        "       c.current_make",
+        "from ii_entities base",
+        "left join ii_entities app_folder on base.folder_id = app_folder.entity_id",
+        "left join ii_entities app_current on app_current.base_entity_id = app_folder.entity_id",
+        "left join ii_applications a on a.entity_id = app_current.entity_id",
+        "left join ii_entities ver on ver.base_entity_id = base.entity_id",
+        "                         and ver.version_number = -1",
+        "left join ii_components c on c.entity_id = ver.entity_id",
+        "where base.base_entity_id = 0",
+        "and base.folder_id != 0",
+    ]
+    if app_filter:
+        lines.append(app_filter)
+    lines.extend(["order by application_name, base.entity_name", r"\p\g", ""])
+    return "\n".join(lines)
 
 
 def include_list_query(app: str) -> str:

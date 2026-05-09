@@ -14,8 +14,11 @@ from gorak.local import (
     build_database_target,
     build_sql_command,
     component_list_query,
+    component_sync_metadata_query,
+    get_all_component_sync_metadata,
     get_app_list,
     get_component_list,
+    get_component_sync_metadata,
     get_include_list,
     include_list_query,
     run_subprocess,
@@ -44,6 +47,14 @@ INCLUDE_LIST_OUTPUT = """
 |sample_app                      |source_include                  |                                                                |            1|
 |sample_app                      |image_include                   |image_include.pkg                                               |            2|
 +--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+"""
+
+COMPONENT_SYNC_METADATA_OUTPUT = """
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+|application_name                |component_name                  |entity_type                     |base_entity_id|version_entity_id|version_number|alter_date               |alter_count|last_altered_by                 |current_make|
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+|sample_app                      |fm_start                        |framesource                     |           100|              101|            -1|2026_05_09 02:29:36 GMT  |          3|ingres                          |           2|
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
 """
 
 
@@ -256,6 +267,56 @@ def test_get_component_list_runs_sql_for_application() -> None:
 def test_component_list_query_escapes_application_name() -> None:
     assert "and lower(ea.entity_name) = lower('owner''s_app')" in component_list_query(
         "owner's_app"
+    )
+
+
+def test_get_component_sync_metadata_runs_sql_for_application() -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command: list[str], input_text: str | None = None) -> str:
+        calls.append((command, input_text))
+        return COMPONENT_SYNC_METADATA_OUTPUT
+
+    result = get_component_sync_metadata(
+        vnode="myvnode",
+        database="exampledb",
+        app="sample_app",
+        run_cmd=fake_run,
+    )
+
+    assert result[0].component_name == "fm_start"
+    command, input_text = calls[0]
+    assert command == ["sql", "myvnode::exampledb"]
+    assert input_text is not None
+    assert "and lower(case when app_current.entity_name is null" in input_text
+    assert "then app_folder.entity_name" in input_text
+    assert "else app_current.entity_name end) = lower('sample_app')" in input_text
+
+
+def test_get_all_component_sync_metadata_runs_one_sql() -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command: list[str], input_text: str | None = None) -> str:
+        calls.append((command, input_text))
+        return COMPONENT_SYNC_METADATA_OUTPUT
+
+    result = get_all_component_sync_metadata(
+        vnode="myvnode",
+        database="exampledb",
+        run_cmd=fake_run,
+    )
+
+    assert result[0].component_name == "fm_start"
+    command, input_text = calls[0]
+    assert command == ["sql", "myvnode::exampledb"]
+    assert input_text is not None
+    assert "from ii_entities base" in input_text
+    assert "lower(case when app_current.entity_name is null" not in input_text
+
+
+def test_component_sync_metadata_query_escapes_application_name() -> None:
+    assert "then app_folder.entity_name else app_current.entity_name end) = lower('owner''s_app')" in (
+        component_sync_metadata_query("owner's_app")
     )
 
 

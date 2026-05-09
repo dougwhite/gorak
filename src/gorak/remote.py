@@ -5,10 +5,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from .database import ComponentSyncMetadata
 from .domain import Application, ComponentInfo, IncludedApplication
 from .sql_output import (
     parse_app_list_output,
     parse_component_list_output,
+    parse_component_sync_metadata_output,
     parse_include_list_output,
 )
 
@@ -225,3 +227,20 @@ def get_include_list(
     )
 
     return parse_include_list_output(run_cmd(command))
+
+
+def get_all_component_sync_metadata(
+    remote: RemoteHost,
+    vnode: str,
+    database: str,
+    run_cmd: RunCommand = run_subprocess,
+) -> list[ComponentSyncMetadata]:
+    """Read component change metadata for all applications remotely."""
+
+    command = build_remote_command(
+        remote=remote,
+        script="get-component-sync-metadata.bat",
+        args=[vnode, database],
+    )
+
+    return parse_component_sync_metadata_output(run_cmd(command))

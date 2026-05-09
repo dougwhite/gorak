@@ -1,7 +1,9 @@
+from gorak.database import ComponentSyncMetadata
 from gorak.domain import Application, ComponentInfo
 from gorak.sql_output import (
     parse_app_list_output,
     parse_component_list_output,
+    parse_component_sync_metadata_output,
     parse_include_list_output,
     table_rows,
 )
@@ -65,6 +67,14 @@ INCLUDE_LIST_OUTPUT = """
 +--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
 """
 
+COMPONENT_SYNC_METADATA_OUTPUT = """
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+|application_name                |component_name                  |entity_type                     |base_entity_id|version_entity_id|version_number|alter_date               |alter_count|last_altered_by                 |current_make|
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+|sample_app                      |fm_start                        |framesource                     |           100|              101|            -1|2026_05_09 02:29:36 GMT  |          3|ingres                          |           2|
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+"""
+
 
 def test_table_rows_reads_only_data_rows() -> None:
     assert table_rows(APP_LIST_OUTPUT, expected_cells=3, header="application_name") == [
@@ -123,4 +133,21 @@ def test_parse_include_list_output() -> None:
     assert parse_include_list_output(INCLUDE_LIST_OUTPUT) == [
         "source_include",
         {"name": "image_include", "image": "image_include.pkg"},
+    ]
+
+
+def test_parse_component_sync_metadata_output() -> None:
+    assert parse_component_sync_metadata_output(COMPONENT_SYNC_METADATA_OUTPUT) == [
+        ComponentSyncMetadata(
+            application_name="sample_app",
+            component_name="fm_start",
+            entity_type="framesource",
+            base_entity_id=100,
+            version_entity_id=101,
+            version_number=-1,
+            alter_date="2026_05_09 02:29:36 GMT",
+            alter_count=3,
+            last_altered_by="ingres",
+            current_make=2,
+        )
     ]

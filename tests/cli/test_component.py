@@ -40,6 +40,15 @@ def write_remote_project(root: Path) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def skip_sync_metadata_recording(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        export_module,
+        "record_component_sync_metadata",
+        lambda connection, root, app: None,
+    )
+
+
 class TestComponentExport:
     """Tests for the component export CLI command."""
 

@@ -43,6 +43,7 @@ from .remote import (
     RemoteHost,
     install_remote_helpers,
 )
+from .sync import sync_project
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
 
@@ -122,6 +123,9 @@ def build_parser() -> argparse.ArgumentParser:
     defaults_parser = subparsers.add_parser("defaults")
     defaults_subparsers = defaults_parser.add_subparsers(dest="defaults_command")
     defaults_subparsers.add_parser("flatten")
+
+    sync_parser = subparsers.add_parser("sync")
+    add_openroad_connection_args(sync_parser)
 
     debug_parser = subparsers.add_parser("debug")
     debug_subparsers = debug_parser.add_subparsers(dest="debug_command")
@@ -438,6 +442,20 @@ def defaults_flatten_command(args: argparse.Namespace) -> str:
     )
 
 
+def sync_command(args: argparse.Namespace) -> str:
+    """Export locally tracked components that changed in OpenROAD."""
+
+    context = load_context(Path.cwd())
+    connection = resolve_openroad_connection(args, context)
+    print(f"Syncing from {connection_source(connection)}")
+    result = sync_project(connection, context, progress=print)
+    component_label = "component" if result.exported == 1 else "components"
+    return (
+        f"Sync complete: checked {result.checked}, "
+        f"exported {result.exported} {component_label}"
+    )
+
+
 def debug_audit_command(args: argparse.Namespace) -> str:
     """Audit what an XML export does not currently represent in source files."""
 
@@ -509,6 +527,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "defaults" and parsed.defaults_command == "flatten":
             print(defaults_flatten_command(parsed))
+            return
+
+        if parsed.command == "sync":
+            print(sync_command(parsed))
             return
 
         if parsed.command == "debug" and parsed.debug_command == "audit":

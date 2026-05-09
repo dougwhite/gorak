@@ -333,6 +333,19 @@ explicit path.
 The Windows-side SSH helper files are packaged with `gorak` and installed to
 the remote host with `gorak remote install`.
 
+### Syncing database changes
+
+After exporting an application or component, Gorak records component
+`alter_date` / `alter_count` markers in `.openroad/gorak-state.json`.
+You can re-export components whose database markers changed with:
+```
+gorak sync
+```
+
+Sync performs one SQL metadata scan through the configured SQL backend. When
+more than one component has changed in an application, it exports the whole
+application; when only one component changed, it exports that component.
+
 ### Generating a project summary for llm assisted development
 
 If you pair program with an AI like ChatGPT or Grok, or you just want a markdown summary of the codebase - a file containing the main codebase as markdown code snippets can be obtained by running the following:
@@ -420,7 +433,7 @@ source_repo
     - allowing you to continue to use workbench for frame design, debugging, generation tools etc.
 - `gorak` becomes the authoritative source of the code, and seamlessly manages the obnoxious workbench limitations as best is possible
 
-Well... That's not quite true... Because import/sync has not been built yet.
+Well... That's not quite true... Because import and two-way sync have not been built yet.
 
 `gorak` is a work in progress!
 

@@ -506,6 +506,16 @@ def test_export_component_uses_project_paths(
         "export_component_to_paths",
         fake_export_component_to_paths,
     )
+    monkeypatch.setattr(
+        export_module,
+        "read_application",
+        lambda connection, app: Application("sample_app", "fm_start", ""),
+    )
+    monkeypatch.setattr(
+        export_module,
+        "record_component_sync_metadata",
+        lambda connection, root, app: None,
+    )
 
     path = export_component(
         connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
@@ -522,6 +532,55 @@ def test_export_component_uses_project_paths(
             "sample_app",
             "p4_start",
             component_export_paths(tmp_path, "sample_app", "p4_start"),
+        )
+    ]
+
+
+def test_export_component_uses_canonical_application_name_for_project_paths(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    project = GorakProject(root=tmp_path, name="repo")
+    calls: list[object] = []
+
+    def fake_export_component_to_paths(
+        connection: OpenRoadConnection,
+        app: str,
+        component: str,
+        paths: export_module.ComponentExportPaths,
+    ) -> Path:
+        calls.append((app, paths))
+        return paths.w4gl_path
+
+    monkeypatch.setattr(
+        export_module,
+        "export_component_to_paths",
+        fake_export_component_to_paths,
+    )
+    monkeypatch.setattr(
+        export_module,
+        "read_application",
+        lambda connection, app: Application("UnitTestFramework", "fm_start", ""),
+    )
+    monkeypatch.setattr(
+        export_module,
+        "record_component_sync_metadata",
+        lambda connection, root, app: None,
+    )
+
+    path = export_component(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        context=GorakContext(project=project, env={}),
+        app="unittestframework",
+        component="p4_start",
+        output_path=None,
+    )
+
+    assert path == tmp_path / "UnitTestFramework" / "p4_start.w4gl"
+    assert calls == [
+        (
+            "UnitTestFramework",
+            component_export_paths(tmp_path, "UnitTestFramework", "p4_start"),
         )
     ]
 

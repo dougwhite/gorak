@@ -1,5 +1,6 @@
 """Parse Ingres terminal monitor table output used by the current backends."""
 
+from .database import ComponentSyncMetadata
 from .domain import Application, ComponentInfo, IncludedApplication
 
 
@@ -61,3 +62,27 @@ def parse_include_list_output(output: str) -> list[IncludedApplication]:
             includes.append(name)
 
     return includes
+
+
+def parse_component_sync_metadata_output(output: str) -> list[ComponentSyncMetadata]:
+    """Parse Ingres output into component change metadata."""
+
+    return [
+        ComponentSyncMetadata(
+            application_name=cells[0],
+            component_name=cells[1],
+            entity_type=cells[2],
+            base_entity_id=int(cells[3] or "0"),
+            version_entity_id=int(cells[4] or "0"),
+            version_number=int(cells[5] or "0"),
+            alter_date=cells[6],
+            alter_count=int(cells[7] or "0"),
+            last_altered_by=cells[8],
+            current_make=int(cells[9] or "0"),
+        )
+        for cells in table_rows(
+            output,
+            expected_cells=10,
+            header="application_name",
+        )
+    ]

@@ -2,10 +2,13 @@ from collections.abc import Iterator
 from typing import Any, cast
 
 from gorak.database import (
+    ComponentSyncMetadata,
     OdbcSettings,
     build_odbc_connection_string,
+    get_all_component_sync_metadata,
     get_app_list,
     get_component_list,
+    get_component_sync_metadata,
     get_include_list,
 )
 from gorak.domain import Application, ComponentInfo
@@ -27,6 +30,21 @@ class FakeConnection:
         parameters: dict[str, object] | None = None,
     ) -> list[dict[str, object]]:
         self.calls.append((str(statement), parameters))
+        if "ii_components c" in str(statement):
+            return [
+                {
+                    "application_name": "sample_app",
+                    "component_name": "fm_start",
+                    "entity_type": "framesource",
+                    "base_entity_id": 100,
+                    "version_entity_id": 101,
+                    "version_number": -1,
+                    "alter_date": "2026_05_09 02:29:36 GMT",
+                    "alter_count": 3,
+                    "last_altered_by": "ingres",
+                    "current_make": 2,
+                }
+            ]
         if parameters is None:
             return [
                 {
@@ -136,3 +154,60 @@ def test_get_include_list_queries_one_application() -> None:
     statement, parameters = cast(tuple[object, dict[str, object] | None], calls[1])
     assert "from ii_incl_apps i" in str(statement)
     assert parameters == {"app_name": "sample_app"}
+
+
+def test_get_component_sync_metadata_queries_component_change_markers() -> None:
+    calls: list[object] = []
+    factory = next(fake_engine_factory(calls))
+
+    assert get_component_sync_metadata(
+        settings(),
+        "sample_app",
+        engine_factory=factory,
+    ) == [
+        ComponentSyncMetadata(
+            application_name="sample_app",
+            component_name="fm_start",
+            entity_type="framesource",
+            base_entity_id=100,
+            version_entity_id=101,
+            version_number=-1,
+            alter_date="2026_05_09 02:29:36 GMT",
+            alter_count=3,
+            last_altered_by="ingres",
+            current_make=2,
+        )
+    ]
+    assert calls[0] == settings()
+    statement, parameters = cast(tuple[object, dict[str, object] | None], calls[1])
+    assert "from ii_entities base" in str(statement)
+    assert "ii_components c" in str(statement)
+    assert parameters == {"app_name": "sample_app"}
+
+
+def test_get_all_component_sync_metadata_queries_all_change_markers() -> None:
+    calls: list[object] = []
+    factory = next(fake_engine_factory(calls))
+
+    assert get_all_component_sync_metadata(
+        settings(),
+        engine_factory=factory,
+    ) == [
+        ComponentSyncMetadata(
+            application_name="sample_app",
+            component_name="fm_start",
+            entity_type="framesource",
+            base_entity_id=100,
+            version_entity_id=101,
+            version_number=-1,
+            alter_date="2026_05_09 02:29:36 GMT",
+            alter_count=3,
+            last_altered_by="ingres",
+            current_make=2,
+        )
+    ]
+    assert calls[0] == settings()
+    statement, parameters = cast(tuple[object, dict[str, object] | None], calls[1])
+    assert "from ii_entities base" in str(statement)
+    assert "ii_components c" in str(statement)
+    assert parameters is None

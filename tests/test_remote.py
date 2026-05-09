@@ -15,6 +15,7 @@ from gorak.remote import (
     build_remote_command,
     build_upload_command,
     download_file,
+    get_all_component_sync_metadata,
     get_app_list,
     get_component_list,
     get_include_list,
@@ -85,6 +86,14 @@ INCLUDE_LIST_OUTPUT = """
 |sample_app                      |source_include                  |                                                                |            1|
 |sample_app                      |image_include                   |image_include.pkg                                               |            2|
 +--------------------------------+--------------------------------+----------------------------------------------------------------+-------------+
+"""
+
+COMPONENT_SYNC_METADATA_OUTPUT = """
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+|application_name                |component_name                  |entity_type                     |base_entity_id|version_entity_id|version_number|alter_date               |alter_count|last_altered_by                 |current_make|
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
+|sample_app                      |fm_start                        |framesource                     |           100|              101|            -1|2026_05_09 02:29:36 GMT  |          3|ingres                          |           2|
++--------------------------------+--------------------------------+--------------------------------+--------------+-----------------+--------------+-------------------------+-----------+--------------------------------+------------+
 """
 
 
@@ -475,6 +484,34 @@ class TestGetIncludeList:
                 "-T",
                 "test@WINDOWS-PC",
                 r"c:\Development\gorak\get-include-list.bat vnode db sample_app",
+            ]
+        ]
+
+
+class TestGetAllComponentSyncMetadata:
+    """Tests for remote component sync metadata."""
+
+    def test_runs_remote_get_component_sync_metadata_command(self) -> None:
+        calls = []
+
+        def fake_run(command: list[str]) -> str:
+            calls.append(command)
+            return COMPONENT_SYNC_METADATA_OUTPUT
+
+        result = get_all_component_sync_metadata(
+            remote=REMOTE_HOST,
+            vnode="vnode",
+            database="db",
+            run_cmd=fake_run,
+        )
+
+        assert result[0].component_name == "fm_start"
+        assert calls == [
+            [
+                "ssh",
+                "-T",
+                "test@WINDOWS-PC",
+                r"c:\Development\gorak\get-component-sync-metadata.bat vnode db",
             ]
         ]
 
