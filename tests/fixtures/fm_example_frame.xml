@@ -27,8 +27,8 @@ enddeclare
 		<topform>
 			<bgcolor>70</bgcolor>
 			<fgcolor>1</fgcolor>
-			<width>24000</width>
-			<height>23999</height>
+			<width>23999</width>
+			<height>24000</height>
 			<designbias>16</designbias>
 			<trimbias>8</trimbias>
 			<updatebias>16</updatebias>
@@ -142,8 +142,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[barfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -192,8 +192,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[boxtrim]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -246,8 +246,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[buttonfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -297,8 +297,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[controlbutton]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -356,8 +356,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[ellipseshape]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -400,8 +400,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[entryfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -451,8 +451,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[entryfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -474,7 +474,7 @@ enddeclare
 						<xleft>271</xleft>
 						<ytop>52</ytop>
 						<width>896</width>
-						<height>312</height>
+						<height>313</height>
 						<designbias>4</designbias>
 						<trimbias>256</trimbias>
 						<updatebias>16</updatebias>
@@ -504,8 +504,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[extobjfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -549,8 +549,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[flexibleform]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -570,7 +570,7 @@ enddeclare
 						<xleft>271</xleft>
 						<ytop>52</ytop>
 						<width>615</width>
-						<height>437</height>
+						<height>438</height>
 						<designbias>4</designbias>
 						<trimbias>8</trimbias>
 						<updatebias>16</updatebias>
@@ -653,8 +653,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[freetrim]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -706,8 +706,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[imagefield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -755,8 +755,8 @@ enddeclare
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[imagetrim]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -835,8 +835,8 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[listfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -859,7 +859,7 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 						<xleft>271</xleft>
 						<ytop>52</ytop>
 						<width>969</width>
-						<height>562</height>
+						<height>563</height>
 						<designbias>4</designbias>
 						<trimbias>256</trimbias>
 						<updatebias>16</updatebias>
@@ -921,8 +921,8 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[listviewfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -985,8 +985,8 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[matrixfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1006,7 +1006,7 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 						<xleft>271</xleft>
 						<ytop>52</ytop>
 						<width>677</width>
-						<height>437</height>
+						<height>438</height>
 						<designbias>4</designbias>
 						<trimbias>8</trimbias>
 						<updatebias>16</updatebias>
@@ -1304,8 +1304,8 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[optionfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1375,8 +1375,8 @@ r3007ffffc4000044003744001c44007f4400494400084403784401c84407f84
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[palettefield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1634,8 +1634,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[popupbutton]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1695,8 +1695,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[radiofield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1766,8 +1766,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[rectangleshape]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1833,8 +1833,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[scrollbarfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1883,8 +1883,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[segmentshape]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1929,8 +1929,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[sliderfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -1981,8 +1981,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[stackfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -2158,7 +2158,7 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 								<defaultvalue>1</defaultvalue>
 								<bgcolor>70</bgcolor>
 								<fgcolor>72</fgcolor>
-								<ytop>187</ytop>
+								<ytop>188</ytop>
 								<width>260</width>
 								<height>177</height>
 								<designbias>256</designbias>
@@ -2222,8 +2222,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[subform]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -2268,8 +2268,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[tabfolder]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -2382,7 +2382,7 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 								<fgcolor>72</fgcolor>
 								<ytop>208</ytop>
 								<width>969</width>
-								<height>562</height>
+								<height>563</height>
 								<designbias>256</designbias>
 								<trimbias>8</trimbias>
 								<updatebias>16</updatebias>
@@ -2404,7 +2404,7 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 								<fgcolor>72</fgcolor>
 								<ytop>208</ytop>
 								<width>969</width>
-								<height>562</height>
+								<height>563</height>
 								<designbias>256</designbias>
 								<trimbias>8</trimbias>
 								<updatebias>16</updatebias>
@@ -2432,8 +2432,8 @@ r3000e07000e07000e07r7000e07000e07000e07r7000e07000e07000e07r700
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[tablefield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -2956,8 +2956,8 @@ on click =
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[togglefield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -3008,8 +3008,8 @@ on click =
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[treeviewfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
@@ -3031,7 +3031,7 @@ on click =
 						<xleft>271</xleft>
 						<ytop>52</ytop>
 						<width>1062</width>
-						<height>1062</height>
+						<height>1063</height>
 						<designbias>4</designbias>
 						<trimbias>256</trimbias>
 						<updatebias>16</updatebias>
@@ -3057,8 +3057,8 @@ on click =
 				<bgcolor>2</bgcolor>
 				<fgcolor>1</fgcolor>
 				<clienttext><![CDATA[viewportfield]]></clienttext>
-				<width>10417</width>
-				<height>10416</height>
+				<width>10416</width>
+				<height>10417</height>
 				<designbias>2</designbias>
 				<trimbias>8</trimbias>
 				<updatebias>16</updatebias>
