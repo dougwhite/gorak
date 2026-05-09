@@ -1,7 +1,7 @@
 """Synchronize local source files from changed OpenROAD database components."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .connection import OpenRoadConnection
@@ -83,6 +83,7 @@ def export_changed_components(
     progress: Callable[[str], None] | None,
 ) -> int:
     exported = 0
+    metadata_by_app = changes_by_app(metadata)
     for app, app_changes in changes_by_app(changed).items():
         if len(app_changes) > 1:
             progress_message(progress, f"Exporting changed application {app}")
@@ -92,7 +93,7 @@ def export_changed_components(
                 paths=application_export_paths(root, app),
                 progress=progress,
             )
-            exported += len([item for item in metadata if item.application_name == app])
+            exported += len(metadata_by_app[app])
             continue
 
         item = app_changes[0]
@@ -144,18 +145,7 @@ def tracked_applications(root: Path, entries: dict[str, dict[str, object]]) -> l
 
 
 def component_state(metadata: ComponentSyncMetadata) -> dict[str, object]:
-    return {
-        "application_name": metadata.application_name,
-        "component_name": metadata.component_name,
-        "entity_type": metadata.entity_type,
-        "base_entity_id": metadata.base_entity_id,
-        "version_entity_id": metadata.version_entity_id,
-        "version_number": metadata.version_number,
-        "alter_date": metadata.alter_date,
-        "alter_count": metadata.alter_count,
-        "last_altered_by": metadata.last_altered_by,
-        "current_make": metadata.current_make,
-    }
+    return asdict(metadata)
 
 
 def progress_message(progress: Callable[[str], None] | None, message: str) -> None:

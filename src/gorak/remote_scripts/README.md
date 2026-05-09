@@ -20,9 +20,8 @@ so the command works from a built distribution as well as a source checkout.
    When run inside a Gorak project, `remote install` can read the user, host,
    and remote root from the project `.env`.
 
-4. Set an environment variable? `GORAK_REMOTE_SSH=???`
-
-> TODO: Figure out how the gorak client will determine to use these over a local w4gldev.exe?
+4. Configure the project with `GORAK_BACKEND=remote` or pass `--backend remote`
+   on commands that talk to OpenROAD.
 
 example usage:
 ```

@@ -15,7 +15,7 @@ without migration tooling.
 
 Do not rely on `gorak` as the only copy of important OpenROAD source. Keep your
 OpenROAD source database, XML exports, backups, and normal recovery processes in
-place. Import, round-trip sync, and full XML reconstruction are not implemented
+place. Import, full round-trip sync, and XML reconstruction are not implemented
 yet.
 
 ## Setting up for development
@@ -436,10 +436,6 @@ source_repo
 Well... That's not quite true... Because import and two-way sync have not been built yet.
 
 `gorak` is a work in progress!
+But big ambitions aside... the project's current focus is:
 
-But big ambitions aside... the project's current focus is the one-way export
-workflow: get useful `.w4gl`, `.wml`, and app metadata out of an OpenROAD source
-database and into git-friendly files.
-   
-> Enable OpenROAD programmers to use VS Code and git against OpenROAD source
-> without giving up Workbench yet.
+> Enable OpenROAD programmers to use VS Code for OpenROAD in a way that isn't complete cancer.
