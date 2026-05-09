@@ -175,6 +175,29 @@ def test_diff_defaults_returns_only_values_that_differ_from_parent() -> None:
     }
 
 
+def test_diff_defaults_preserves_changed_nested_subtrees() -> None:
+    parent: dict[str, Any] = {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {"optionmenu": {"bgcolor": "2", "fgcolor": "1"}},
+            }
+        ]
+    }
+    child: dict[str, Any] = {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {"optionmenu": {"bgcolor": "70", "fgcolor": "1"}},
+            }
+        ]
+    }
+
+    assert diff_defaults(parent, child) == child
+
+
 def test_effective_defaults_merges_repo_app_and_frame_overrides() -> None:
     repo: dict[str, Any] = {
         "common_model_container": {"properties": {"bgcolor": "2"}}

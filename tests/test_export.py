@@ -6,10 +6,11 @@ from pytest import MonkeyPatch
 from gorak import export as export_module
 from gorak.connection import OpenRoadConnection
 from gorak.database import OdbcSettings
-from gorak.domain import Application, ComponentInfo
+from gorak.domain import Application, Component, ComponentInfo
 from gorak.export import (
     application_export_paths,
     application_metadata,
+    apply_field_default_inheritance,
     component_export_paths,
     encode_xml_file,
     export_application,
@@ -23,7 +24,7 @@ from gorak.export import (
     read_includes,
     write_app_metadata,
 )
-from gorak.project import GorakContext, GorakProject, ProjectError
+from gorak.project import GorakContext, GorakProject, ProjectError, write_json
 from gorak.remote import RemoteHost
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
@@ -301,6 +302,55 @@ def test_export_application_to_paths_uses_local_backend(
     ).read_text()
     assert (tmp_path / "sample_app" / "p4_example_procedure.w4gl").is_file()
     assert (tmp_path / "sample_app" / "uc_example_userclass.w4gl").is_file()
+
+
+def test_apply_field_default_inheritance_keeps_changed_nested_frame_overrides(
+    tmp_path: Path,
+) -> None:
+    app_dir = tmp_path / "sample_app"
+    app_dir.mkdir()
+    write_json(
+        tmp_path / "field_defaults.json",
+        {
+            "field_styles": [
+                {
+                    "type": "controlbutton",
+                    "group": "controlbutton",
+                    "properties": {"optionmenu": {"bgcolor": "2", "fgcolor": "1"}},
+                }
+            ]
+        },
+    )
+    write_json(app_dir / "field_defaults.json", {})
+    component = Component(
+        name="fm_start",
+        type="framesource",
+        props={
+            "fielddefaults": {
+                "field_styles": [
+                    {
+                        "type": "controlbutton",
+                        "group": "controlbutton",
+                        "properties": {
+                            "optionmenu": {"bgcolor": "70", "fgcolor": "1"}
+                        },
+                    }
+                ]
+            }
+        },
+    )
+
+    apply_field_default_inheritance(tmp_path, "sample_app", [component])
+
+    assert component.props["fielddefaults"] == {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {"optionmenu": {"bgcolor": "70", "fgcolor": "1"}},
+            }
+        ]
+    }
 
 
 def test_export_component_to_paths_uses_remote_backend(

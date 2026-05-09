@@ -58,6 +58,18 @@ def test_create_project_creates_default_project_skeleton(
     assert capsys.readouterr().err == ""
 
 
+def test_create_project_seeds_nested_field_default_subtrees(tmp_path: Path) -> None:
+    project = create_project(tmp_path / "my_project", run_cmd=lambda command, cwd: None)
+    defaults = json.loads((project.root / "field_defaults.json").read_text())
+    controlbutton = next(
+        style
+        for style in defaults["field_styles"]
+        if style["type"] == "controlbutton"
+    )
+
+    assert controlbutton["properties"]["optionmenu"]["bgcolor"] == "2"
+
+
 def test_create_project_warns_when_git_init_fails(
     tmp_path: Path,
     capsys: CaptureFixture[str],
