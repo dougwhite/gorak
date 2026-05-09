@@ -5,7 +5,7 @@ from typing import Any
 
 from lxml import etree
 
-from .parser import NS, xml_root
+from .parser import FRAME_MARKUP_CHILDREN, NS, xml_root
 
 REPRESENTED_APP_CHILDREN = {
     "database_type",
@@ -24,13 +24,9 @@ REPRESENTED_COMPONENT_CHILDREN = {
     "taggedvalues",
 }
 REPRESENTED_FRAME_CHILDREN = {
-    "startmenu",
-    "topform",
+    *FRAME_MARKUP_CHILDREN,
 }
-UNREPRESENTED_COMPONENT_CHILDREN = {
-    "extension",
-    "queries",
-}
+IGNORED_COMPONENT_CHILDREN = {"extension", "queries"}
 
 
 def audit_xml_file(path: str) -> dict[str, Any]:
@@ -132,8 +128,8 @@ def is_represented_component_child(
     child: etree._Element,
     represented_children: set[str],
 ) -> bool:
-    if child.tag in UNREPRESENTED_COMPONENT_CHILDREN:
-        return False
+    if child.tag in IGNORED_COMPONENT_CHILDREN:
+        return True
     if child.tag in represented_children:
         return True
 

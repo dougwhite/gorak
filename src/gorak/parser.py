@@ -13,12 +13,30 @@ from .field_defaults import parse_field_defaults_node
 
 IGNORED_PROPERTIES = {
     "script",
-    "startmenu",
-    "topform",
     "fielddefaults",
     "attributes",
     "methods",
     "taggedvalues",
+    "startmenu",
+    "topform",
+    "mainbarbottom",
+    "mainbarleft",
+    "mainbarright",
+    "mainbartop",
+}
+FRAME_MARKUP_CHILDREN = {
+    "startmenu",
+    "topform",
+    "mainbarbottom",
+    "mainbarleft",
+    "mainbarright",
+    "mainbartop",
+}
+MAINBAR_MARKUP_CHILDREN = {
+    "mainbarbottom",
+    "mainbarleft",
+    "mainbarright",
+    "mainbartop",
 }
 
 NS = {
@@ -138,11 +156,10 @@ def parse_component_node(node: etree._Element) -> Component:
         field_defaults = parse_field_defaults_node(field_defaults_node)
         props["fielddefaults"] = field_defaults
 
-    startmenu_node = node.find("startmenu")
-    topform_node = node.find("topform")
+    markup_nodes = [child for child in node if child.tag in FRAME_MARKUP_CHILDREN]
     markup = (
-        encode_frame_markup(startmenu_node, topform_node, field_defaults)
-        if component_type == "framesource" and topform_node is not None
+        encode_frame_markup(markup_nodes, field_defaults)
+        if component_type == "framesource" and markup_nodes
         else None
     )
 
@@ -150,17 +167,15 @@ def parse_component_node(node: etree._Element) -> Component:
 
 
 def encode_frame_markup(
-    startmenu_node: etree._Element | None,
-    topform_node: etree._Element,
+    markup_nodes: list[etree._Element],
     field_defaults: dict[str, Any] | None = None,
 ) -> str:
     """Encode an OpenROAD frame form tree as XML-compatible .wml markup."""
 
     index = MarkupDefaultsIndex.from_defaults(field_defaults or {})
     frame = etree.Element("frame")
-    if startmenu_node is not None:
-        frame.append(frame_markup_element(startmenu_node, index))
-    frame.append(frame_markup_element(topform_node, index))
+    for markup_node in markup_nodes:
+        frame.append(frame_markup_element(markup_node, index))
     return serialize_wml(frame)
 
 
@@ -168,6 +183,9 @@ def frame_markup_element(
     node: etree._Element,
     defaults_index: "MarkupDefaultsIndex",
 ) -> etree._Element:
+    if node.tag in MAINBAR_MARKUP_CHILDREN:
+        return mainbar_markup_element(node, defaults_index)
+
     tag = node.get(f"{{{NS['xsi']}}}type") if node.tag == "row" else node.tag
     if not tag:
         tag = node.tag
@@ -175,6 +193,29 @@ def frame_markup_element(
     element = etree.Element(tag)
     copy_markup_attributes(node, element)
     default_properties = defaults_index.properties_for(tag, node)
+    append_markup_content(element, node, defaults_index, default_properties)
+    return element
+
+
+def mainbar_markup_element(
+    node: etree._Element,
+    defaults_index: "MarkupDefaultsIndex",
+) -> etree._Element:
+    element = etree.Element(node.tag)
+    copy_markup_attributes(node, element)
+    row = node.find("row")
+    if row is not None:
+        append_markup_content(element, row, defaults_index, {})
+
+    return element
+
+
+def append_markup_content(
+    element: etree._Element,
+    node: etree._Element,
+    defaults_index: "MarkupDefaultsIndex",
+    default_properties: dict[str, Any],
+) -> None:
     for child in node:
         if child.tag in {"childfields", "childmenufields"}:
             append_childfields(element, child, defaults_index)
@@ -187,8 +228,6 @@ def frame_markup_element(
                 element.set(child.tag, value)
         else:
             element.append(frame_markup_element(child, defaults_index))
-
-    return element
 
 
 def append_childfields(

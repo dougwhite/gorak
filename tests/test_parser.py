@@ -351,6 +351,66 @@ class TestParseXml:
         assert button.get("name") == "exit_btn"
         assert button.get("textlabel") == "Exit"
 
+    def test_frame_markup_includes_mainbars(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <topform />
+                <mainbartop>
+                    <row>
+                        <name>top_bar</name>
+                        <childfields>
+                            <row xsi:type="buttonfield">
+                                <name>top_button</name>
+                                <textlabel>Top</textlabel>
+                            </row>
+                        </childfields>
+                    </row>
+                    <row_class>mainbar</row_class>
+                </mainbartop>
+                <mainbarbottom>
+                    <row>
+                        <name>bottom_bar</name>
+                    </row>
+                    <row_class>mainbar</row_class>
+                </mainbarbottom>
+                <mainbarleft>
+                    <row>
+                        <name>left_bar</name>
+                    </row>
+                    <row_class>mainbar</row_class>
+                </mainbarleft>
+                <mainbarright>
+                    <row>
+                        <name>right_bar</name>
+                    </row>
+                    <row_class>mainbar</row_class>
+                </mainbarright>
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        markup = etree.fromstring(component.markup)
+        top_bar = markup.find("./mainbartop")
+        top_button = markup.find("./mainbartop/buttonfield")
+        bottom_bar = markup.find("./mainbarbottom")
+        left_bar = markup.find("./mainbarleft")
+        right_bar = markup.find("./mainbarright")
+        assert top_bar is not None
+        assert top_bar.get("name") == "top_bar"
+        assert top_bar.get("row_class") is None
+        assert top_bar.find("row") is None
+        assert top_button is not None
+        assert top_button.get("name") == "top_button"
+        assert top_button.get("textlabel") == "Top"
+        assert bottom_bar is not None
+        assert bottom_bar.get("name") == "bottom_bar"
+        assert left_bar is not None
+        assert left_bar.get("name") == "left_bar"
+        assert right_bar is not None
+        assert right_bar.get("name") == "right_bar"
+
 
 class TestParseApplicationXml:
     """Tests for application-level metadata in full OpenROAD exports."""

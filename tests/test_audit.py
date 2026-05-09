@@ -36,6 +36,10 @@ def test_audit_allows_supported_frame_subtrees() -> None:
                 <topform>
                     <childfields />
                 </topform>
+                <mainbartop />
+                <mainbarbottom />
+                <mainbarleft />
+                <mainbarright />
                 <fielddefaults />
             </COMPONENT>
         </OPENROAD>
@@ -66,7 +70,7 @@ def test_audit_reports_unsupported_application_metadata() -> None:
     }
 
 
-def test_audit_allows_taggedvalues_and_flags_queries_and_extension() -> None:
+def test_audit_allows_taggedvalues_queries_and_extension() -> None:
     xml = etree.fromstring("""
         <OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <COMPONENT name="uc_generated" xsi:type="classsource">
@@ -78,10 +82,7 @@ def test_audit_allows_taggedvalues_and_flags_queries_and_extension() -> None:
         </OPENROAD>
     """)
 
-    assert audit_xml(xml)["components"][0]["missing_paths"] == [
-        "COMPONENT[uc_generated]/queries",
-        "COMPONENT[uc_generated]/extension",
-    ]
+    assert audit_xml(xml)["components"][0]["missing_paths"] == []
 
 
 def test_filter_missing_only_removes_represented_application_and_components() -> None:

@@ -34,13 +34,7 @@ class TestDebugAudit:
 
         output = json.loads(capsys.readouterr().out)
         assert output["application"] is None
-        assert [component["name"] for component in output["components"]] == [
-            "fm_complex_frame"
-        ]
-        assert output["components"][0]["missing_paths"] == [
-            "COMPONENT[fm_complex_frame]/mainbarbottom",
-            "COMPONENT[fm_complex_frame]/mainbartop",
-        ]
+        assert output["components"] == []
 
     def test_audits_all_cached_xml_in_project(
         self,
@@ -79,13 +73,7 @@ class TestDebugAudit:
         cli.main(["debug", "audit", "--all", "--missing-only"])
 
         output = json.loads(capsys.readouterr().out)
-        assert [result["path"] for result in output] == [
-            ".openroad/sample_app/sample_app.xml"
-        ]
-        assert output[0]["application"] is None
-        assert [component["name"] for component in output[0]["components"]] == [
-            "fm_complex_frame"
-        ]
+        assert output == []
 
     def test_audit_all_requires_project(
         self,
