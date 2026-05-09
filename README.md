@@ -95,6 +95,7 @@ This creates `my_project/gorak.json` and a starter application folder:
 my_project/
 ├── .env.example
 ├── .gitignore
+├── field_defaults.json
 ├── gorak.json
 └── my_project
     ├── app.json
@@ -218,6 +219,31 @@ gorak component list \
 
 The default output is JSON. CSV is also available with `--format csv`.
 
+### Listing included applications
+
+List ordered application includes for one OpenROAD application:
+```
+gorak includes list \
+  --vnode myvnode \
+  --database exampledb \
+  application
+```
+
+Source database includes are emitted as strings. Image/package includes are
+emitted as objects with `name` and `image`. OpenROAD's automatic `core.plb`
+include is omitted.
+
+### Field defaults
+
+New projects include a repo-level `field_defaults.json`. During export, frame
+defaults matching the repo/app defaults are omitted from the frame `.w4gl`; only
+overrides remain.
+
+You can promote shared app-level overrides into the repo default file with:
+```
+gorak defaults flatten
+```
+
 ### Exporting an application
 
 Export every component in one OpenROAD application:
@@ -229,11 +255,10 @@ gorak app export \
 ```
 
 Inside a Gorak project this writes `application/app.json`,
-`.openroad/application/*.xml`, and `application/*.w4gl`. The exported
-`app.json` currently contains the starting component and description from the
-source database. The application name is implied by the folder name. Existing
-`included_applications` values are preserved, otherwise they default to an empty
-list until included-application handling is revisited.
+`.openroad/application/application.xml`, `application/*.w4gl`, and
+`application/*.wml` for frames. The exported `app.json` contains the starting
+component, description, and included applications from the source export. The
+application name is implied by the folder name.
 
 Outside a project, pass an output directory:
 ```
@@ -245,7 +270,8 @@ gorak app export \
 ```
 
 Outside a project this writes `backup/application/app.json`,
-`backup/.openroad/application/*.xml`, and `backup/application/*.w4gl`.
+`backup/.openroad/application/application.xml`, `backup/application/*.w4gl`, and
+frame `backup/application/*.wml` files.
 
 ### Exporting a component
 
@@ -262,9 +288,10 @@ gorak component export \
   component
 ```
 
-Inside a Gorak project this writes `.openroad/application/component.xml` and
-`application/component.w4gl`. Outside a project, pass `--output component.w4gl`
-to write the encoded source to an explicit path.
+Inside a Gorak project this writes `.openroad/application/component.xml`,
+`application/component.w4gl`, and `application/component.wml` for frames. Outside
+a project, pass `--output component.w4gl` to write the encoded source to an
+explicit path.
 
 The Windows-side SSH helper files are packaged with `gorak` and installed to
 the remote host with `gorak remote install`.
@@ -324,10 +351,11 @@ To cross these hurdles, we are building the `gorak` compiler.
 ```
 source_repo
 ├── gorak.json
+├── field_defaults.json
 ├── app1
 │   ├── app.json
 │   ├── fm_example_frame.w4gl
-│   └── fm_example_frame.4ml
+│   └── fm_example_frame.wml
 ├── app2
 │   ├── app.json
 │   └── uc_example.w4gl
@@ -340,8 +368,11 @@ source_repo
 
 ### Enter `gorak`
 
-- `gorak` is a "compiler" that transpiles a bespoke dialect of OpenROAD (represented in `.w4gl` and `.4ml` files) to the Ingres OpenROAD based source database via OpenROAD `.xml` imports
-- `gorak` can also transpile an OpenROAD `.xml` export file into `.w4gl` and `.4ml` files
+- `gorak` is a "compiler" that transpiles a bespoke dialect of OpenROAD
+  (represented in `.w4gl` and `.wml` files) to the Ingres OpenROAD based source
+  database via OpenROAD `.xml` imports
+- `gorak` can also transpile an OpenROAD `.xml` export file into `.w4gl` and
+  `.wml` files
 - in fact `gorak` can export an entire OpenROAD source database into a flat file syntax that is:
     - easily modifiable with modern development tools
     - plaintext / readable file formats
@@ -352,10 +383,13 @@ source_repo
     - allowing you to continue to use workbench for frame design, debugging, generation tools etc.
 - `gorak` becomes the authoritative source of the code, and seamlessly manages the obnoxious workbench limitations as best is possible
 
-Well... That's not quite true... Because `gorak` hasn't been built yet! 
+Well... That's not quite true... Because import/sync has not been built yet.
 
 `gorak` is a work in progress!
 
-But big ambitions aside... the project's current, TOP and only important focus right now is simply to:
+But big ambitions aside... the project's current focus is the one-way export
+workflow: get useful `.w4gl`, `.wml`, and app metadata out of an OpenROAD source
+database and into git-friendly files.
    
-> Enable OpenROAD programmers to use vscode in a way that isn't total cancer!
+> Enable OpenROAD programmers to use VS Code and git against OpenROAD source
+> without giving up Workbench yet.
