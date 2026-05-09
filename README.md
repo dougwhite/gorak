@@ -4,6 +4,20 @@ GORAK — the Greater OpenROAD Application Kit
 
 For developers who enjoy OpenROAD and their hair.
 
+## Early alpha warning
+
+`gorak` is early alpha software.
+
+It is currently useful for experimenting with one-way export of OpenROAD source
+into git-friendly files, but it is not production-ready. The `.w4gl`, `.wml`,
+`app.json`, and `field_defaults.json` formats are still evolving and may change
+without migration tooling.
+
+Do not rely on `gorak` as the only copy of important OpenROAD source. Keep your
+OpenROAD source database, XML exports, backups, and normal recovery processes in
+place. Import, round-trip sync, and full XML reconstruction are not implemented
+yet.
+
 ## Setting up for development
 
 1. Clone the repo
