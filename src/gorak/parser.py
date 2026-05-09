@@ -1,6 +1,8 @@
 """Parse a small, intentionally conservative subset of OpenROAD XML exports."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from html import escape
 from typing import Any, cast
 
 import tomlkit
@@ -21,6 +23,7 @@ IGNORED_PROPERTIES = {
 NS = {
     "xsi": "http://www.w3.org/2001/XMLSchema-instance",
 }
+MULTILINE_ATTRIBUTE_COUNT = 5
 
 
 def parse_xml(tree: etree._ElementTree | etree._Element) -> Component:
@@ -123,12 +126,14 @@ def parse_component_node(node: etree._Element) -> Component:
         props["methods"] = extract_methods(methods_node)
 
     field_defaults_node = node.find("fielddefaults")
+    field_defaults: dict[str, Any] = {}
     if field_defaults_node is not None:
-        props["fielddefaults"] = parse_field_defaults_node(field_defaults_node)
+        field_defaults = parse_field_defaults_node(field_defaults_node)
+        props["fielddefaults"] = field_defaults
 
     topform_node = node.find("topform")
     markup = (
-        encode_frame_markup_node(topform_node)
+        encode_frame_markup_node(topform_node, field_defaults)
         if component_type == "framesource" and topform_node is not None
         else None
     )
@@ -136,42 +141,192 @@ def parse_component_node(node: etree._Element) -> Component:
     return Component(name, component_type, props, script, markup)
 
 
-def encode_frame_markup_node(node: etree._Element) -> str:
+def encode_frame_markup_node(
+    node: etree._Element,
+    field_defaults: dict[str, Any] | None = None,
+) -> str:
     """Encode an OpenROAD frame form tree as XML-compatible .wml markup."""
 
-    return cast(
-        str,
-        etree.tostring(
-            frame_markup_element(node),
-            encoding="unicode",
-            pretty_print=True,
-        ),
-    ).strip()
+    index = MarkupDefaultsIndex.from_defaults(field_defaults or {})
+    return serialize_wml(frame_markup_element(node, index))
 
 
-def frame_markup_element(node: etree._Element) -> etree._Element:
+def frame_markup_element(
+    node: etree._Element,
+    defaults_index: "MarkupDefaultsIndex",
+) -> etree._Element:
     tag = node.get(f"{{{NS['xsi']}}}type") if node.tag == "row" else node.tag
     if not tag:
         tag = node.tag
 
     element = etree.Element(tag)
+    copy_markup_attributes(node, element)
+    default_properties = defaults_index.properties_for(tag, node)
     for child in node:
         if child.tag == "childfields":
-            append_childfields(element, child)
+            append_childfields(element, child, defaults_index)
         elif child.tag == "script":
             script = etree.SubElement(element, "script")
             script.text = etree.CDATA((child.text or "").strip())
-        elif len(child) == 0:
-            element.set(child.tag, (child.text or "").strip())
+        elif len(child) == 0 and not child.attrib:
+            value = (child.text or "").strip()
+            if should_encode_markup_attribute(child.tag, value, default_properties):
+                element.set(child.tag, value)
         else:
-            element.append(frame_markup_element(child))
+            element.append(frame_markup_element(child, defaults_index))
 
     return element
 
 
-def append_childfields(parent: etree._Element, childfields: etree._Element) -> None:
+def append_childfields(
+    parent: etree._Element,
+    childfields: etree._Element,
+    defaults_index: "MarkupDefaultsIndex",
+) -> None:
     for row in childfields.findall("row"):
-        parent.append(frame_markup_element(row))
+        parent.append(frame_markup_element(row, defaults_index))
+
+
+def copy_markup_attributes(source: etree._Element, target: etree._Element) -> None:
+    for name, value in source.attrib.items():
+        if name != f"{{{NS['xsi']}}}type":
+            target.set(name, value)
+
+
+def should_encode_markup_attribute(
+    name: str,
+    value: str,
+    default_properties: dict[str, Any],
+) -> bool:
+    """Return whether a scalar XML property should appear as a .wml attribute."""
+
+    if name == "name":
+        return True
+
+    default_value = default_properties.get(name)
+    return not isinstance(default_value, str) or default_value != value
+
+
+@dataclass(frozen=True)
+class MarkupDefaultsIndex:
+    """Precomputed field-default candidates used while encoding one frame."""
+
+    common_model_properties: dict[str, Any]
+    field_styles: dict[str, list[dict[str, Any]]]
+
+    @classmethod
+    def from_defaults(cls, field_defaults: dict[str, Any]) -> "MarkupDefaultsIndex":
+        container = field_defaults.get("common_model_container")
+        common_model_properties: dict[str, Any] = {}
+        if isinstance(container, dict) and isinstance(container.get("properties"), dict):
+            common_model_properties = cast(dict[str, Any], container["properties"])
+
+        field_styles: dict[str, list[dict[str, Any]]] = {}
+        for style in field_defaults.get("field_styles", []):
+            if (
+                isinstance(style, dict)
+                and isinstance(style.get("type"), str)
+                and isinstance(style.get("properties"), dict)
+            ):
+                field_styles.setdefault(style["type"], []).append(
+                    cast(dict[str, Any], style["properties"])
+                )
+
+        return cls(common_model_properties, field_styles)
+
+    def properties_for(self, tag: str, node: etree._Element) -> dict[str, Any]:
+        """Find the most likely field-default property set for a markup element."""
+
+        if tag == "topform":
+            return self.common_model_properties
+
+        candidates = self.field_styles.get(tag, [])
+        if not candidates:
+            return {}
+
+        scalar_values = {
+            child.tag: (child.text or "").strip() for child in node if len(child) == 0
+        }
+        return max(
+            candidates,
+            key=lambda properties: matching_default_count(properties, scalar_values),
+        )
+
+
+def matching_default_count(
+    default_properties: dict[str, Any],
+    scalar_values: dict[str, str],
+) -> int:
+    return sum(
+        1
+        for key, value in scalar_values.items()
+        if isinstance(default_properties.get(key), str)
+        and default_properties.get(key) == value
+    )
+
+
+def serialize_wml(element: etree._Element, indent: int = 0) -> str:
+    """Serialize generated markup with multiline attributes for dense elements."""
+
+    attrs = serialized_attributes(element)
+    children = list(element)
+    text = cast(str | None, element.text)
+    padding = "  " * indent
+
+    if not children and not text:
+        if use_multiline_attributes(attrs):
+            return "\n".join(
+                [
+                    f"{padding}<{element.tag}",
+                    *[f"{padding}  {name}={quoted_xml_attr(value)}" for name, value in attrs],
+                    f"{padding}/>",
+                ]
+            )
+        return f"{padding}<{element.tag}{inline_attrs(attrs)}/>"
+
+    if element.tag == "script":
+        return f"{padding}<script><![CDATA[{text or ''}]]></script>"
+
+    start = serialized_start_tag(element.tag, attrs, padding)
+    end = f"{padding}</{element.tag}>"
+    child_lines = [serialize_wml(child, indent + 1) for child in children]
+    return "\n".join([start, *child_lines, end])
+
+
+def serialized_start_tag(
+    tag: str,
+    attrs: list[tuple[str, str]],
+    padding: str,
+) -> str:
+    if not use_multiline_attributes(attrs):
+        return f"{padding}<{tag}{inline_attrs(attrs)}>"
+
+    return "\n".join(
+        [
+            f"{padding}<{tag}",
+            *[f"{padding}  {name}={quoted_xml_attr(value)}" for name, value in attrs],
+            f"{padding}>",
+        ]
+    )
+
+
+def serialized_attributes(element: etree._Element) -> list[tuple[str, str]]:
+    return [(name, value) for name, value in element.attrib.items()]
+
+
+def use_multiline_attributes(attrs: list[tuple[str, str]]) -> bool:
+    return len(attrs) >= MULTILINE_ATTRIBUTE_COUNT
+
+
+def inline_attrs(attrs: list[tuple[str, str]]) -> str:
+    if not attrs:
+        return ""
+
+    return "".join(f" {name}={quoted_xml_attr(value)}" for name, value in attrs)
+
+
+def quoted_xml_attr(value: str) -> str:
+    return f'"{escape(value, quote=True)}"'
 
 
 def extract_props(

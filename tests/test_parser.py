@@ -153,6 +153,160 @@ class TestParseXml:
         assert button.findtext("script") is not None
         assert "MESSAGE 'Hello World!';" in button.findtext("script", "")
 
+    def test_frame_markup_omits_attributes_that_match_field_defaults(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <topform>
+                    <bgcolor>70</bgcolor>
+                    <fgcolor>1</fgcolor>
+                    <childfields>
+                        <row xsi:type="buttonfield">
+                            <name>example_button</name>
+                            <bgcolor>70</bgcolor>
+                            <fgcolor>72</fgcolor>
+                            <textlabel><![CDATA[Button]]></textlabel>
+                        </row>
+                    </childfields>
+                </topform>
+                <fielddefaults>
+                    <row xsi:type="matrixfield">
+                        <clienttext>buttonfield</clienttext>
+                        <bgcolor>70</bgcolor>
+                        <fgcolor>1</fgcolor>
+                        <childfields>
+                            <row xsi:type="buttonfield">
+                                <bgcolor>70</bgcolor>
+                                <fgcolor>72</fgcolor>
+                                <textlabel><![CDATA[Button]]></textlabel>
+                            </row>
+                        </childfields>
+                    </row>
+                </fielddefaults>
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        markup = etree.fromstring(component.markup)
+        button = markup.find("buttonfield")
+        assert markup.get("bgcolor") is None
+        assert markup.get("fgcolor") is None
+        assert button is not None
+        assert button.attrib == {"name": "example_button"}
+
+    def test_frame_markup_uses_best_matching_default_for_repeated_field_types(
+        self,
+    ) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <topform>
+                    <childfields>
+                        <row xsi:type="entryfield">
+                            <name>example_entryfield</name>
+                            <bgcolor>84</bgcolor>
+                            <lines>3</lines>
+                        </row>
+                    </childfields>
+                </topform>
+                <fielddefaults>
+                    <row xsi:type="matrixfield">
+                        <clienttext>entryfield</clienttext>
+                        <childfields>
+                            <row xsi:type="entryfield">
+                                <bgcolor>84</bgcolor>
+                                <lines>1</lines>
+                            </row>
+                        </childfields>
+                    </row>
+                    <row xsi:type="matrixfield">
+                        <clienttext>entryfield</clienttext>
+                        <childfields>
+                            <row xsi:type="entryfield">
+                                <bgcolor>84</bgcolor>
+                                <lines>3</lines>
+                            </row>
+                        </childfields>
+                    </row>
+                </fielddefaults>
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        markup = etree.fromstring(component.markup)
+        entryfield = markup.find("entryfield")
+        assert entryfield is not None
+        assert entryfield.attrib == {"name": "example_entryfield"}
+
+    def test_frame_markup_formats_dense_elements_across_multiple_lines(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <topform>
+                    <childfields>
+                        <row xsi:type="entryfield">
+                            <name>example_entryfield</name>
+                            <datatype>varchar(100)</datatype>
+                            <xleft>104</xleft>
+                            <ytop>188</ytop>
+                            <width>3531</width>
+                            <height>188</height>
+                        </row>
+                    </childfields>
+                </topform>
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        assert (
+            """
+  <entryfield
+    name="example_entryfield"
+    datatype="varchar(100)"
+    xleft="104"
+    ytop="188"
+    width="3531"
+    height="188"
+  />
+""".strip()
+            in component.markup
+        )
+        etree.fromstring(component.markup)
+
+    def test_frame_markup_preserves_nested_row_attributes(self) -> None:
+        xml = _wrap_xml("""
+            <COMPONENT name="fm_example_frame" xsi:type="framesource">
+                <topform>
+                    <childfields>
+                        <row xsi:type="optionfield">
+                            <name>method</name>
+                            <valuelist>
+                                <choiceitems row_class="choicedetail">
+                                    <row enumdisplay="GET" enumtext="GET" enumvalue="1" />
+                                </choiceitems>
+                            </valuelist>
+                        </row>
+                    </childfields>
+                </topform>
+            </COMPONENT>
+        """)
+
+        component = parse_xml(xml)
+
+        assert component.markup is not None
+        markup = etree.fromstring(component.markup)
+        choiceitems = markup.find("./optionfield/valuelist/choiceitems")
+        choice = markup.find("./optionfield/valuelist/choiceitems/row")
+        assert choiceitems is not None
+        assert choiceitems.get("row_class") == "choicedetail"
+        assert choice is not None
+        assert choice.get("enumdisplay") == "GET"
+        assert choice.get("enumtext") == "GET"
+        assert choice.get("enumvalue") == "1"
+
 
 class TestParseApplicationXml:
     """Tests for application-level metadata in full OpenROAD exports."""
