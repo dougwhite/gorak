@@ -38,7 +38,7 @@ def test_sync_command_runs_project_sync(
         progress: Callable[[str], None] | None,
     ) -> SyncResult:
         calls.append((connection, context.project.root if context.project else None))
-        return SyncResult(checked=2, exported=1)
+        return SyncResult(checked=2, changed=1, exported=1)
 
     monkeypatch.setattr(cli, "sync_project", fake_sync_project)
 
@@ -49,5 +49,5 @@ def test_sync_command_runs_project_sync(
     assert root == project
     assert capsys.readouterr().out == (
         "Syncing from local\n"
-        "Sync complete: checked 2, exported 1 component\n"
+        "Sync complete: checked 2, changed 1, exported 1 component\n"
     )

@@ -113,7 +113,13 @@ class TestComponentExport:
         assert xml_path.read_text() == FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
         assert "initialize()=" in w4gl_path.read_text()
-        assert capsys.readouterr().out == f"{w4gl_path}\n"
+        assert capsys.readouterr().out == (
+            "Exporting component app::component from remote host "
+            "project-user@project-host\n"
+            "Wrote app/fm_example_frame.w4gl\n"
+            "Wrote app/fm_example_frame.wml\n"
+            "Export complete\n"
+        )
 
     def test_overwrites_existing_project_files(
         self,
@@ -151,7 +157,13 @@ class TestComponentExport:
         assert xml_path.read_text() == FIXTURE_PATH.read_text()
         assert w4gl_path.read_text() != "old w4gl"
         assert "[framesource]" in w4gl_path.read_text()
-        assert capsys.readouterr().out == f"{w4gl_path}\n"
+        assert capsys.readouterr().out == (
+            "Exporting component app::component from remote host "
+            "project-user@project-host\n"
+            "Wrote app/fm_example_frame.w4gl\n"
+            "Wrote app/fm_example_frame.wml\n"
+            "Export complete\n"
+        )
 
     def test_requires_output_outside_project(
         self,
@@ -256,7 +268,12 @@ class TestComponentExport:
         assert not output_path.exists()
         assert canonical_output_path.is_file()
         assert "[framesource]" in canonical_output_path.read_text()
-        assert capsys.readouterr().out == f"{canonical_output_path}\n"
+        assert capsys.readouterr().out == (
+            "Exporting component app::component from remote host test@WINDOWS-PC\n"
+            f"Wrote {canonical_output_path}\n"
+            f"Wrote {canonical_output_path.with_suffix('.wml')}\n"
+            "Export complete\n"
+        )
 
     def test_rejects_output_inside_project(
         self,
@@ -347,7 +364,12 @@ class TestComponentExport:
         ]
         assert xml_path.read_text() == FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
-        assert capsys.readouterr().out == f"{w4gl_path}\n"
+        assert capsys.readouterr().out == (
+            "Exporting component app::component from local\n"
+            "Wrote app/fm_example_frame.w4gl\n"
+            "Wrote app/fm_example_frame.wml\n"
+            "Export complete\n"
+        )
 
 
 class TestComponentList:

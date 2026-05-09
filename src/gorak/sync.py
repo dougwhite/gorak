@@ -26,6 +26,7 @@ from .sync_state import (
 @dataclass(frozen=True)
 class SyncResult:
     checked: int
+    changed: int
     exported: int
 
 
@@ -55,6 +56,8 @@ def sync_project(
             item,
         )
     ]
+    if not changed:
+        progress_message(progress, "No database changes found")
 
     exported = export_changed_components(connection, root, changed, metadata, progress)
     for item in metadata:
@@ -64,7 +67,7 @@ def sync_project(
 
     state["components"] = entries
     save_state(root, state)
-    return SyncResult(checked=len(metadata), exported=exported)
+    return SyncResult(checked=len(metadata), changed=len(changed), exported=exported)
 
 
 def tracked_metadata(

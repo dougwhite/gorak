@@ -135,7 +135,11 @@ class TestAppExport:
             "Encoding component sample_app::fm_example_frame\n"
             "Encoding component sample_app::p4_example_procedure\n"
             "Encoding component sample_app::uc_example_userclass\n"
-            "Export complete\n"
+            "Wrote sample_app/app.json\n"
+            "Wrote .openroad/sample_app/sample_app.xml\n"
+            "Wrote 4 .w4gl files\n"
+            "Wrote 2 .wml files\n"
+            "Export complete: 4 components\n"
         )
 
     def test_exports_application_to_output_folder_outside_project(
@@ -220,7 +224,11 @@ class TestAppExport:
             "Encoding component sample_app::fm_example_frame\n"
             "Encoding component sample_app::p4_example_procedure\n"
             "Encoding component sample_app::uc_example_userclass\n"
-            "Export complete\n"
+            "Wrote sample_app/app.json\n"
+            "Wrote .openroad/sample_app/sample_app.xml\n"
+            "Wrote 4 .w4gl files\n"
+            "Wrote 2 .wml files\n"
+            "Export complete: 4 components\n"
         )
 
     def test_exports_application_using_canonical_name_from_metadata(
@@ -286,7 +294,11 @@ class TestAppExport:
             "Encoding component orders_mixedCase::fm_example_frame\n"
             "Encoding component orders_mixedCase::p4_example_procedure\n"
             "Encoding component orders_mixedCase::uc_example_userclass\n"
-            "Export complete\n"
+            "Wrote orders_mixedCase/app.json\n"
+            "Wrote .openroad/orders_mixedCase/orders_mixedCase.xml\n"
+            "Wrote 4 .w4gl files\n"
+            "Wrote 2 .wml files\n"
+            "Export complete: 4 components\n"
         )
 
     def test_requires_output_folder_outside_project(
@@ -357,7 +369,10 @@ class TestAppExport:
             "Exporting application sample_app from local\n"
             "Retrieving application metadata\n"
             "Exporting full application XML\n"
-            "Export complete\n"
+            "Wrote sample_app/app.json\n"
+            "Wrote .openroad/sample_app/sample_app.xml\n"
+            "Wrote 0 .w4gl files\n"
+            "Export complete: 0 components\n"
         )
 
     def test_exports_application_with_remote_backend(
@@ -443,7 +458,11 @@ class TestAppExport:
             "Encoding component sample_app::fm_example_frame\n"
             "Encoding component sample_app::p4_example_procedure\n"
             "Encoding component sample_app::uc_example_userclass\n"
-            "Export complete\n"
+            "Wrote sample_app/app.json\n"
+            "Wrote .openroad/sample_app/sample_app.xml\n"
+            "Wrote 4 .w4gl files\n"
+            "Wrote 2 .wml files\n"
+            "Export complete: 4 components\n"
         )
 
 

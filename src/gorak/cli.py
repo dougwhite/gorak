@@ -22,11 +22,13 @@ from .connection import (
     resolve_openroad_connection,
     resolve_remote_host,
 )
-from .domain import Application, ComponentInfo, IncludedApplication
+from .domain import Application, ApplicationExport, ComponentInfo, IncludedApplication
 from .export import (
+    application_export_paths,
     encode_xml_file,
     export_application,
     export_component,
+    export_root,
     read_applications,
     read_components,
     read_includes,
@@ -311,14 +313,17 @@ def export_component_command(args: argparse.Namespace) -> str:
 
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
+    app = cast(str, args.app)
+    component = cast(str, args.component)
+    print(f"Exporting component {app}::{component} from {connection_source(connection)}")
     path = export_component(
         connection=connection,
         context=context,
-        app=cast(str, args.app),
-        component=cast(str, args.component),
+        app=app,
+        component=component,
         output_path=cast(str | None, args.output),
     )
-    return str(path)
+    return component_export_summary(path, context.project.root if context.project else None)
 
 
 def app_export_command(args: argparse.Namespace) -> str:
@@ -327,8 +332,9 @@ def app_export_command(args: argparse.Namespace) -> str:
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
     app = cast(str, args.app)
+    root = export_root(context, cast(str | None, args.output))
     print(f"Exporting application {app} from {connection_source(connection)}")
-    export_application(
+    exported = export_application(
         connection=connection,
         context=context,
         app=app,
@@ -336,7 +342,45 @@ def app_export_command(args: argparse.Namespace) -> str:
         progress=print,
     )
 
-    return "Export complete"
+    return application_export_summary(root, exported)
+
+
+def component_export_summary(path: Path, root: Path | None) -> str:
+    lines = [f"Wrote {display_path(path, root)}"]
+    wml_path = path.with_suffix(".wml")
+    if wml_path.is_file():
+        lines.append(f"Wrote {display_path(wml_path, root)}")
+    lines.append("Export complete")
+    return "\n".join(lines)
+
+
+def application_export_summary(root: Path, exported: ApplicationExport) -> str:
+    paths = application_export_paths(root, exported.application.name)
+    w4gl_count = len(exported.components)
+    wml_count = sum(1 for component in exported.components if component.markup is not None)
+    lines = [
+        f"Wrote {display_path(root / exported.application.name / 'app.json', root)}",
+        f"Wrote {display_path(paths.xml_path, root)}",
+        f"Wrote {w4gl_count} .w4gl {file_label(w4gl_count)}",
+    ]
+    if wml_count:
+        lines.append(f"Wrote {wml_count} .wml {file_label(wml_count)}")
+    component_label = "component" if w4gl_count == 1 else "components"
+    lines.append(f"Export complete: {w4gl_count} {component_label}")
+    return "\n".join(lines)
+
+
+def file_label(count: int) -> str:
+    return "file" if count == 1 else "files"
+
+
+def display_path(path: Path, root: Path | None) -> str:
+    if root is None:
+        return str(path)
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def applications_to_json(applications: list[Application]) -> str:
@@ -452,7 +496,7 @@ def sync_command(args: argparse.Namespace) -> str:
     component_label = "component" if result.exported == 1 else "components"
     return (
         f"Sync complete: checked {result.checked}, "
-        f"exported {result.exported} {component_label}"
+        f"changed {result.changed}, exported {result.exported} {component_label}"
     )
 
 

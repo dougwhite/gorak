@@ -132,13 +132,18 @@ def export_application(
         paths=paths,
         progress=progress,
     )
+    merged_application = merge_application_metadata(application, exported.application)
     write_app_metadata(
         root,
-        merge_application_metadata(application, exported.application),
+        merged_application,
         exported.included_applications,
     )
     record_component_sync_metadata(connection, root, application.name)
-    return exported
+    return ApplicationExport(
+        application=merged_application,
+        components=exported.components,
+        included_applications=exported.included_applications,
+    )
 
 
 def merge_application_metadata(
