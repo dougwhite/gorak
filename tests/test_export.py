@@ -6,7 +6,7 @@ from pytest import MonkeyPatch
 from gorak import export as export_module
 from gorak.connection import OpenRoadConnection
 from gorak.database import OdbcSettings
-from gorak.domain import Application, Component, ComponentInfo
+from gorak.domain import Application, ApplicationExport, Component, ComponentInfo
 from gorak.export import (
     application_export_paths,
     application_metadata,
@@ -28,6 +28,7 @@ from gorak.export import (
     write_component_w4gl,
     write_component_wml,
 )
+from gorak.local import LocalCommandError
 from gorak.project import GorakContext, GorakProject, ProjectError, write_json
 from gorak.remote import RemoteHost
 
@@ -582,6 +583,51 @@ def test_export_application_to_paths_uses_remote_backend(
     assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()
 
 
+def test_export_application_warns_when_sync_metadata_recording_fails(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    messages: list[str] = []
+
+    monkeypatch.setattr(
+        export_module,
+        "read_application",
+        lambda connection, app: Application("sample_app", "fm_start", ""),
+    )
+    monkeypatch.setattr(
+        export_module,
+        "export_application_to_paths",
+        lambda connection, app, paths, progress: ApplicationExport(
+            application=Application("sample_app", "", ""),
+            components=[],
+        ),
+    )
+    monkeypatch.setattr(
+        export_module,
+        "record_component_sync_metadata",
+        lambda connection, root, app: (_ for _ in ()).throw(
+            LocalCommandError("metadata failed")
+        ),
+    )
+
+    exported = export_application(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        context=GorakContext(project=GorakProject(root=tmp_path, name="repo"), env={}),
+        app="sample_app",
+        output_path=None,
+        progress=messages.append,
+    )
+
+    assert exported.application.name == "sample_app"
+    assert messages == [
+        "Retrieving application metadata",
+        (
+            "WARNING: Export succeeded, but sync metadata could not be recorded. "
+            "Run gorak sync later to refresh local state."
+        ),
+    ]
+
+
 def test_export_component_uses_project_paths(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -630,6 +676,49 @@ def test_export_component_uses_project_paths(
             "sample_app",
             "p4_start",
             component_export_paths(tmp_path, "sample_app", "p4_start"),
+        )
+    ]
+
+
+def test_export_component_warns_when_sync_metadata_recording_fails(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    project = GorakProject(root=tmp_path, name="repo")
+    messages: list[str] = []
+
+    monkeypatch.setattr(
+        export_module,
+        "export_component_to_paths",
+        lambda connection, app, component, paths, progress=None: paths.w4gl_path,
+    )
+    monkeypatch.setattr(
+        export_module,
+        "read_application",
+        lambda connection, app: Application("sample_app", "fm_start", ""),
+    )
+    monkeypatch.setattr(
+        export_module,
+        "record_component_sync_metadata",
+        lambda connection, root, app: (_ for _ in ()).throw(
+            LocalCommandError("metadata failed")
+        ),
+    )
+
+    path = export_component(
+        connection=OpenRoadConnection("local", "myvnode", "exampledb", None),
+        context=GorakContext(project=project, env={}),
+        app="sample_app",
+        component="p4_start",
+        output_path=None,
+        progress=messages.append,
+    )
+
+    assert path == tmp_path / "sample_app" / "p4_start.w4gl"
+    assert messages == [
+        (
+            "WARNING: Export succeeded, but sync metadata could not be recorded. "
+            "Run gorak sync later to refresh local state."
         )
     ]
 

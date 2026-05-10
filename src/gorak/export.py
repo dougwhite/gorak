@@ -7,7 +7,9 @@ from pathlib import Path
 from shutil import rmtree
 from uuid import uuid4
 
+import pyodbc
 from lxml import etree
+from sqlalchemy.exc import SQLAlchemyError
 
 from . import database as database_module
 from . import local
@@ -141,7 +143,12 @@ def export_application(
         merged_application,
         exported.included_applications,
     )
-    record_component_sync_metadata(connection, root, application.name)
+    record_component_sync_metadata_best_effort(
+        connection,
+        root,
+        application.name,
+        progress,
+    )
     return ApplicationExport(
         application=merged_application,
         components=exported.components,
@@ -199,7 +206,12 @@ def export_component(
         paths,
         progress,
     )
-    record_component_sync_metadata(connection, context.project.root, canonical_app)
+    record_component_sync_metadata_best_effort(
+        connection,
+        context.project.root,
+        canonical_app,
+        progress,
+    )
     return path
 
 
@@ -492,6 +504,30 @@ def record_component_sync_metadata(
     """Store current change metadata for future syncs."""
 
     update_component_entries(root, read_component_sync_metadata(connection, app))
+
+
+def record_component_sync_metadata_best_effort(
+    connection: OpenRoadConnection,
+    root: Path,
+    app: str,
+    progress: Callable[[str], None] | None,
+) -> None:
+    """Record sync metadata without failing a successful export."""
+
+    try:
+        record_component_sync_metadata(connection, root, app)
+    except (
+        LocalCommandError,
+        RemoteCommandError,
+        OSError,
+        SQLAlchemyError,
+        pyodbc.Error,
+    ):
+        progress_message(
+            progress,
+            "WARNING: Export succeeded, but sync metadata could not be recorded. "
+            "Run gorak sync later to refresh local state.",
+        )
 
 
 def project_component_export_paths(
