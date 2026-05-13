@@ -605,16 +605,19 @@ def normalize_case_path(
     """Rename a same-name-different-case path to `path` when present."""
 
     source = fallback if fallback is not None and fallback.exists() else None
-    if source is not None and source != path and path.exists():
-        if disposable:
-            remove_path(path)
-        else:
-            raise ProjectError(f"Case-conflicting paths exist: {source} and {path}")
+    variants = case_variants(path)
+    exact = [child for child in variants if child.name == path.name]
+    others = [child for child in variants if child.name != path.name]
+
+    if source is not None:
+        source = next((child for child in others if child.name == source.name), source)
+        if source.name != path.name and exact:
+            if disposable:
+                remove_paths(exact)
+            else:
+                raise ProjectError(f"Case-conflicting paths exist: {source} and {path}")
 
     if source is None:
-        variants = case_variants(path)
-        exact = [child for child in variants if child.name == path.name]
-        others = [child for child in variants if child.name != path.name]
         if exact and others:
             if disposable:
                 remove_paths(others)
@@ -629,7 +632,7 @@ def normalize_case_path(
             raise ProjectError(f"Case-conflicting paths exist for: {path}")
         source = others[0] if others else None
 
-    if source is None or source == path:
+    if source is None or source.name == path.name:
         return path
 
     path.parent.mkdir(parents=True, exist_ok=True)

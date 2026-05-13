@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,10 @@ from gorak.remote import RemoteHost
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
 FULL_APP_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "gorak_examples.xml"
+
+
+def child_names(path: Path) -> set[str]:
+    return {child.name for child in path.iterdir()}
 
 
 def test_component_export_paths_use_openroad_cache_and_w4gl_source() -> None:
@@ -118,7 +123,8 @@ def test_write_component_w4gl_renames_existing_file_to_xml_casing(
 
     assert path == source_dir / "G_LOG.w4gl"
     assert path.read_text() == "new"
-    assert not old_path.exists()
+    assert "g_log.w4gl" not in child_names(source_dir)
+    assert "G_LOG.w4gl" in child_names(source_dir)
 
 
 def test_write_component_w4gl_reports_case_correction(
@@ -146,7 +152,8 @@ def test_write_component_wml_renames_existing_file_to_xml_casing(
 
     assert path == source_dir / "G_LOG.wml"
     assert path.read_text() == "<frame />\n"
-    assert not old_path.exists()
+    assert "g_log.wml" not in child_names(source_dir)
+    assert "G_LOG.wml" in child_names(source_dir)
 
 
 def test_normalize_application_paths_cleans_openroad_case_conflicts(
@@ -156,14 +163,17 @@ def test_normalize_application_paths_cleans_openroad_case_conflicts(
     stale_cache = cache / "sample_app"
     current_cache = cache / "Sample_App"
     stale_cache.mkdir(parents=True)
-    current_cache.mkdir()
     (stale_cache / "sample_app.xml").write_text("old")
-    (current_cache / "Sample_App.xml").write_text("current")
+    if os.name != "nt":
+        current_cache.mkdir()
+        (current_cache / "Sample_App.xml").write_text("current")
 
     normalize_application_paths(tmp_path, "Sample_App")
 
-    assert not stale_cache.exists()
-    assert (current_cache / "Sample_App.xml").read_text() == "current"
+    assert "sample_app" not in child_names(cache)
+    assert "Sample_App" in child_names(cache)
+    expected = "current" if os.name != "nt" else "old"
+    assert (current_cache / "Sample_App.xml").read_text() == expected
 
 
 def test_merge_application_metadata_uses_sql_values_and_xml_only_values() -> None:
@@ -336,7 +346,8 @@ def test_export_component_to_paths_renames_cached_xml_to_component_casing(
     )
 
     assert result == tmp_path / "sample_app" / "G_LOG.w4gl"
-    assert not paths.xml_path.exists()
+    assert "g_log.xml" not in child_names(paths.xml_path.parent)
+    assert "G_LOG.xml" in child_names(paths.xml_path.parent)
     assert (tmp_path / ".openroad" / "sample_app" / "G_LOG.xml").read_text() == xml
 
 
@@ -381,7 +392,8 @@ def test_export_component_to_paths_uses_xml_component_name_for_w4gl_filename(
 
     assert result == tmp_path / "sample_app" / "G_LOG.w4gl"
     assert result.is_file()
-    assert not paths.w4gl_path.exists()
+    assert "g_log.w4gl" not in child_names(paths.w4gl_path.parent)
+    assert "G_LOG.w4gl" in child_names(paths.w4gl_path.parent)
 
 
 def test_export_application_to_paths_uses_local_backend(
@@ -820,9 +832,9 @@ def test_export_component_renames_existing_app_folder_to_database_casing(
         output_path=None,
     )
 
-    assert not old_app_dir.exists()
+    assert "unittestframework" not in child_names(tmp_path)
     assert (tmp_path / "UnitTestFramework" / "app.json").is_file()
-    assert not old_cache_dir.exists()
+    assert "unittestframework" not in child_names(tmp_path / ".openroad")
     assert (
         tmp_path / ".openroad" / "UnitTestFramework" / "UnitTestFramework.xml"
     ).is_file()

@@ -43,7 +43,7 @@ def audit_project_xml(root: Path) -> list[dict[str, Any]]:
         return []
 
     return [
-        audit_xml_file(str(path.relative_to(root)))
+        audit_xml_file(path.relative_to(root).as_posix())
         for path in sorted(cache_root.rglob("*.xml"))
     ]
 

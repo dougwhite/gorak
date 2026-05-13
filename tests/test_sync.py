@@ -13,6 +13,10 @@ from gorak.sync_state import component_key, load_state, save_state
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
 
 
+def child_names(path: Path) -> set[str]:
+    return {child.name for child in path.iterdir()}
+
+
 def settings() -> OdbcSettings:
     return OdbcSettings(
         driver="Ingres AC",
@@ -165,7 +169,7 @@ def test_sync_renames_existing_app_folder_and_state_to_database_casing(
 
     sync_project(connection(), context)
 
-    assert not old_app_dir.exists()
+    assert "sample_app" not in child_names(tmp_path)
     assert (tmp_path / "Sample_App" / "app.json").is_file()
     state = load_state(tmp_path)
     assert component_key("sample_app", "fm_start") not in state["components"]
