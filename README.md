@@ -1,441 +1,108 @@
-# `gorak` 
+# gorak
 
-GORAK — the Greater OpenROAD Application Kit
+GORAK — the Greater OpenROAD Application Kit.
 
-For developers who enjoy OpenROAD and their hair.
+> Warning: gorak is in early alpha. Source file formats are subject to change.
+> Consider carefully before using this utility in a mission-critical or production environment.
 
-## Early alpha warning
+## Setup
 
-`gorak` is early alpha software.
+We recommend you install [`uv`](https://docs.astral.sh/uv/) for the best development experience.
 
-It is currently useful for experimenting with one-way export of OpenROAD source
-into git-friendly files, but it is not production-ready. The `.w4gl`, `.wml`,
-`app.json`, and `field_defaults.json` formats are still evolving and may change
-without migration tooling.
+Clone the repo and install vendor packages:
 
-Do not rely on `gorak` as the only copy of important OpenROAD source. Keep your
-OpenROAD source database, XML exports, backups, and normal recovery processes in
-place. Import, full round-trip sync, and XML reconstruction are not implemented
-yet.
-
-## Setting up for development
-
-1. Clone the repo
-```
+```bash
 git clone git@github.com:dougwhite/gorak.git
-```
-
-2. Install the dependencies using [uv](https://docs.astral.sh/uv/)
-```
 cd gorak
 uv sync
 ```
 
-3. Run the tests
-```
+Run the test suite:
+
+```bash
 uv run pytest
 ```
 
-## Installing and building
+Install the tool in editable mode:
 
-For day-to-day local development, install `gorak` as an editable command with:
-```
+```bash
 uv tool install --editable .
 ```
 
-After that, the `gorak` command can be run from outside this source checkout:
-```
-gorak --help
-gorak new my_project
-gorak app list --vnode myvnode --database exampledb
-```
+## Quickstart
 
-Because the install is editable, changes under `src/gorak` are picked up without
-rebuilding the package. To remove the command:
-```
-uv tool uninstall gorak
-```
+You can now run gorak like so:
 
-To build distribution artifacts:
-```
-uv build
-```
-
-This writes the wheel and source archive to `dist/`. The wheel can be installed
-as a standalone `gorak` command with:
-```
-uv tool install dist/gorak-0.1.0-py3-none-any.whl
-```
-
-## CLI helpers
-
-Show the available commands and options with:
-```
+```bash
 gorak --help
 ```
 
-Subcommands also provide their own help, for example:
-```
-gorak component export --help
+Create a new gorak project:
+
+```bash
+gorak new myproject
+cd myproject
 ```
 
-### Encoding an OpenROAD XML export
-
-You can encode an OpenROAD `.xml` export as `.w4gl` text on stdout:
+This will create the following project layout (with example application):
 ```
-gorak encode tests/fixtures/fm_example_frame.xml
-```
-
-Or write the result directly to a file:
-```
-gorak encode tests/fixtures/fm_example_frame.xml --output fm_example_frame.w4gl
-```
-
-### Creating a Gorak project
-
-Create a new Gorak project folder with:
-```
-gorak new my_project
-```
-
-By default this also runs `git init` in the new project. For a temporary project
-without its own git repository, use:
-```
-gorak new --nogit my_project
-```
-
-This creates `my_project/gorak.json` and a starter application folder:
-```
-my_project/
+myproject
 ├── .env.example
-├── .gitignore
 ├── field_defaults.json
+├── .gitignore
 ├── gorak.json
-└── my_project
+└── myproject
     ├── app.json
     └── p4_init.w4gl
 ```
 
-The starter `app.json` contains the starting component, description, and an
-empty included application list placeholder. The application name is implied by
-the folder name.
+Copy `.env.example` to `.env`:
 
-### Configuring OpenROAD access
+```bash
+cp .env.example .env
+```
 
-Everything local: OpenROAD CLI commands and SQL both run on this machine.
-```
-gorak config --backend local --vnode myvnode --database exampledb
-```
+Modify `.env` to match the correct Ingres/OpenROAD environment:
+
 ```env
 GORAK_BACKEND=local
 GORAK_VNODE=myvnode
 GORAK_DATABASE=exampledb
 ```
 
-Everything remote: OpenROAD CLI commands and SQL both run through SSH helpers.
-```
-gorak config \
-  --backend remote \
-  --host windows-pc \
-  --user test \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode myvnode \
-  --database exampledb
-```
-```env
-GORAK_BACKEND=remote
-GORAK_REMOTE_HOST=windows-pc
-GORAK_REMOTE_USER=test
-GORAK_REMOTE_ROOT=C:\Development\gorak
-GORAK_VNODE=myvnode
-GORAK_DATABASE=exampledb
+> See the [Configuration Guide](docs/config.md) for more information on alternate backends.
+
+Export an application from your OpenROAD repo:
+
+```bash
+gorak app export myapplication
 ```
 
-You can also use Ingres ODBC for improved performance:
-```
-gorak config \
-  --backend local \
-  --vnode myvnode \
-  --database exampledb \
-  --sql-backend odbc \
-  --db-driver 'Ingres AC' \
-  --db-host db-host.example \
-  --db-listen-address II7 \
-  --db-user ingres \
-  --db-password secret
-```
-```env
-GORAK_BACKEND=local
-GORAK_VNODE=myvnode
-GORAK_DATABASE=exampledb
+To sync new component changes:
 
-GORAK_SQL_BACKEND=odbc
-GORAK_DB_DRIVER=Ingres AC
-GORAK_DB_HOST=db-host.example
-GORAK_DB_LISTEN_ADDRESS=II7
-GORAK_DB_USER=ingres
-GORAK_DB_PASSWORD=secret
-```
-
-Direct SQL requires the Actian Ingres client runtime and ODBC driver.
-
-### Installing Windows SSH helpers
-
-Copy the Windows-side SSH helper files to the configured remote gorak root with:
-```
-gorak remote install \
-  --user test \
-  --host WINDOWS-PC \
-  --gorak-root 'C:\Development\gorak'
-```
-
-When run inside a Gorak project, `remote install` can read `--user`, `--host`,
-and `--gorak-root` from the project `.env`. The helper files are packaged with
-`gorak`, so this command works from an installed distribution as well as from a
-source checkout.
-
-### Listing OpenROAD applications
-
-You can list applications in a source database through either the remote or
-local backend:
-```
-gorak app list \
-  --user test \
-  --host WINDOWS-PC \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode myvnode \
-  --database exampledb
-```
-
-The default output is JSON. CSV is also available:
-```
-gorak app list \
-  --user test \
-  --host WINDOWS-PC \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode myvnode \
-  --database exampledb \
-  --format csv
-```
-
-### Listing OpenROAD components
-
-List the components in one OpenROAD application:
-```
-gorak component list \
-  --user test \
-  --host WINDOWS-PC \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode myvnode \
-  --database exampledb \
-  application
-```
-
-The default output is JSON. CSV is also available with `--format csv`.
-
-### Listing included applications
-
-List ordered application includes for one OpenROAD application:
-```
-gorak includes list \
-  --vnode myvnode \
-  --database exampledb \
-  application
-```
-
-Source database includes are emitted as strings. Image/package includes are
-emitted as objects with `name` and `image`. OpenROAD's automatic `core.plb`
-include is omitted.
-
-### Field defaults
-
-New projects include a repo-level `field_defaults.json`. During export, frame
-defaults matching the repo/app defaults are omitted from the frame `.w4gl`; only
-overrides remain.
-
-You can promote shared app-level overrides into the repo default file with:
-```
-gorak defaults flatten
-```
-
-### Debugging representation coverage
-
-Audit an OpenROAD XML export for top-level application/component XML nodes that
-Gorak does not currently represent in `.w4gl`, `.wml`, `app.json`, or
-`field_defaults.json`:
-```
-gorak debug audit tests/fixtures/gorak_examples.xml
-```
-
-Inside a Gorak project, audit every cached XML export under `.openroad/`:
-```
-gorak debug audit --all
-```
-
-To show only application/components with missing paths:
-```
-gorak debug audit --all --missing-only
-```
-
-The output is JSON. This is a development/debugging aid, not a guarantee of
-round-trip safety.
-
-### Exporting an application
-
-Export every component in one OpenROAD application:
-```
-gorak app export \
-  --vnode myvnode \
-  --database exampledb \
-  application
-```
-
-Inside a Gorak project this writes `application/app.json`,
-`.openroad/application/application.xml`, `application/*.w4gl`, and
-`application/*.wml` for frames. The exported `app.json` contains the starting
-component, description, runtime database metadata when present, and included
-applications from the source export. The application name is implied by the
-folder name.
-
-Outside a project, pass an output directory:
-```
-gorak app export \
-  --vnode myvnode \
-  --database exampledb \
-  --output ./backup \
-  application
-```
-
-Outside a project this writes `backup/application/app.json`,
-`backup/.openroad/application/application.xml`, `backup/application/*.w4gl`, and
-frame `backup/application/*.wml` files.
-
-### Exporting a component
-
-You can ask a Windows OpenROAD development host to export one component, then
-download and encode it into the local source tree:
-```
-gorak component export \
-  --user test \
-  --host WINDOWS-PC \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode vnode \
-  --database database \
-  application \
-  component
-```
-
-Inside a Gorak project this writes `.openroad/application/component.xml`,
-`application/component.w4gl`, and `application/component.wml` for frames. Outside
-a project, pass `--output component.w4gl` to write the encoded source to an
-explicit path.
-
-The Windows-side SSH helper files are packaged with `gorak` and installed to
-the remote host with `gorak remote install`.
-
-### Syncing database changes
-
-After exporting an application or component, Gorak records component
-`alter_date` / `alter_count` markers in `.openroad/gorak-state.json`.
-You can re-export components whose database markers changed with:
-```
+```bash
 gorak sync
 ```
 
-Sync performs one SQL metadata scan through the configured SQL backend. When
-more than one component has changed in an application, it exports the whole
-application; when only one component changed, it exports that component.
+## Full Documentation
 
-### Generating a project summary for llm assisted development
+- [Full Command List](docs/commands.md) - List of all commands and CLI parameters explained
+- [Configuration Guide](docs/config.md) - Customize how gorak communicates with OpenROAD / Ingres
+- [Files And Formats](docs/files.md) - Overview of the file formats and project layouts gorak uses
+- [Remote Helpers](docs/remote.md) - How to use gorak with a remote Windows OpenROAD host
+- [Development Guide](docs/development.md) - Guide to contributing to the gorak project
 
-If you pair program with an AI like ChatGPT or Grok, or you just want a markdown summary of the codebase - a file containing the main codebase as markdown code snippets can be obtained by running the following:
+## Project Goals
 
-```
-utils/llm_summary.sh
-```
+Gorak aims to make OpenROAD projects work like modern source code projects.
 
-The file will be written to `.llm/summary.md`
+The primary goal is to let developers work on an OpenROAD application entirely
+from VS Code, with OpenROAD Workbench acting as a build artifact server rather
+than the source of truth.
 
----
+Gorak is focused on:
 
-## About the project
-
-We are attempting to bring the Actian OpenROAD programming language into a good editor (vscode) to support things like git / vscode extensions / AI editing etc.
-
-There are a multitude of problems with this however...
-
-1) OpenROAD has lots of parts that are not in simple text / script form
-- frame definitions
-- field scripts
-- metadata (return values, who has the component locked etc)
-
-2) The source code is stored in the database
-- I can't point vscode at a directory and say "Here is my OpenROAD project!"
-- Editing a script in OpenROAD calls an external editor + a temp filename e.g something like: "textpad8 e0123123.w4l"
-- You edit the script and press save, when OpenROAD ide detects the code editor is no longer running it reuploads the script
-
-3) No syntax highlighting or language server exists for OpenROAD
-
-4) It's supposed to be a multi-user environment
-- Multiple developers connect to 1 database
-- Opening a frame for development *locks* (logical not transactional) the component until you save and close
-
-5) The compiler operates on the database level
-- The ide compiles and runs on top of an Actian Ingres database
-- cli compiler exists but is clunky
-
-6) An OpenROAD source database consists of many "applications"
-- each have their own meta props (starting component, starting database etc.)
-- each consists of many components
-- each has "included" applications, a list of applications whose components can be referenced
-
-7) Some components like userclasses for example are comprised of lots of metadata that is important to edit but not available in script form.
-
-8) OpenROAD isn't open source (boo)
-
----
-
-To cross these hurdles, we are building the `gorak` compiler.
-
-`gorak` transforms the traditional source_db -> applications -> components model and transforms it into something like this:
-```
-source_repo
-├── gorak.json
-├── field_defaults.json
-├── app1
-│   ├── app.json
-│   ├── fm_example_frame.w4gl
-│   └── fm_example_frame.wml
-├── app2
-│   ├── app.json
-│   └── uc_example.w4gl
-└── .openroad
-    ├── app1
-    │   └── fm_example_frame.xml
-    └── app2
-        └── uc_example.xml
-```
-
-### Enter `gorak`
-
-- `gorak` is a "compiler" that transpiles a bespoke dialect of OpenROAD
-  (represented in `.w4gl` and `.wml` files) to the Ingres OpenROAD based source
-  database via OpenROAD `.xml` imports
-- `gorak` can also transpile an OpenROAD `.xml` export file into `.w4gl` and
-  `.wml` files
-- in fact `gorak` can export an entire OpenROAD source database into a flat file syntax that is:
-    - easily modifiable with modern development tools
-    - plaintext / readable file formats
-    - compatible with git
-- `gorak` has a watch mode that can automatically merge disk based changes -> back into the source database for (actual) compilation by the OpenROAD compiler
-    - effectively making the source database a build artifact server
-- `gorak`'s watch mode also listens out for changes to the ingres database, and propagates changes back to disk (2 way sync)
-    - allowing you to continue to use workbench for frame design, debugging, generation tools etc.
-- `gorak` becomes the authoritative source of the code, and seamlessly manages the obnoxious workbench limitations as best is possible
-
-Well... That's not quite true... Because import and two-way sync have not been built yet.
-
-`gorak` is a work in progress!
-But big ambitions aside... the project's current focus is:
-
-> Enable OpenROAD programmers to use VS Code for OpenROAD in a way that isn't complete cancer.
+- A useful CLI for day-to-day OpenROAD development.
+- Human-readable, text-based OpenROAD source and metadata.
+- Git source control for OpenROAD applications.
+- Two-way sync between local source files and OpenROAD repositories.

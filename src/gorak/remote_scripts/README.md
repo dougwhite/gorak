@@ -3,6 +3,8 @@
 These helper files are packaged with `gorak` and used by `gorak remote install`,
 so the command works from a built distribution as well as a source checkout.
 
+See `docs/remote.md` for the user-facing remote setup guide.
+
 1. Configure OpenSSH access to your OpenROAD windows development machine
 
 2. Create a directory to host the gorak ssh commands e.g `C:\Development\gorak`
@@ -19,6 +21,17 @@ so the command works from a built distribution as well as a source checkout.
 
    When run inside a Gorak project, `remote install` can read the user, host,
    and remote root from the project `.env`.
+
+   You can verify the installed helper manifest with:
+   ```
+   uv run gorak remote check \
+     --user [user] \
+     --host [hostname-or-ip] \
+     --gorak-root 'C:\Development\gorak'
+   ```
+
+   Run `remote install` again if `remote check` reports missing or outdated
+   helpers.
 
 4. Configure the project with `GORAK_BACKEND=remote` or pass `--backend remote`
    on commands that talk to OpenROAD.
