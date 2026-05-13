@@ -12,7 +12,7 @@ We recommend you install [`uv`](https://docs.astral.sh/uv/) for the best develop
 Clone the repo and install vendor packages:
 
 ```bash
-git clone git@github.com:dougwhite/gorak.git
+git clone https://github.com/dougwhite/gorak.git
 cd gorak
 uv sync
 ```
