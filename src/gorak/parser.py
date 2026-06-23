@@ -1,5 +1,6 @@
 """Parse a small, intentionally conservative subset of OpenROAD XML exports."""
 
+import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from html import escape
@@ -55,6 +56,48 @@ def parse_xml(tree: etree._ElementTree | etree._Element) -> Component:
     return parse_component_node(node)
 
 
+def parse_w4gl(text: str, name: str) -> Component:
+    """Parse Gorak .w4gl text into a component model."""
+
+    front_matter, script = split_w4gl(text)
+    metadata = tomllib.loads(front_matter)
+    component_type = first_table_name(metadata)
+    props = dict(metadata[component_type])
+    props.update(
+        {
+            key: value
+            for key, value in metadata.items()
+            if key != component_type and isinstance(value, dict)
+        }
+    )
+
+    return Component(
+        name=name,
+        type=component_type,
+        props=props,
+        script=script.strip() if script is not None else None,
+    )
+
+
+def split_w4gl(text: str) -> tuple[str, str | None]:
+    """Split TOML front matter from optional script body."""
+
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.strip() == "===":
+            return "".join(lines[:index]).strip(), "".join(lines[index + 1 :]).strip()
+
+    return text.strip(), None
+
+
+def first_table_name(metadata: dict[str, Any]) -> str:
+    for key, value in metadata.items():
+        if isinstance(value, dict):
+            return key
+
+    raise ValueError(".w4gl front matter must contain a component type table")
+
+
 def parse_components_xml(tree: etree._ElementTree | etree._Element) -> list[Component]:
     """Parse top-level components from an OpenROAD XML export."""
 
@@ -62,7 +105,9 @@ def parse_components_xml(tree: etree._ElementTree | etree._Element) -> list[Comp
     return [parse_component_node(node) for node in root.findall("./COMPONENT")]
 
 
-def parse_application_xml(tree: etree._ElementTree | etree._Element) -> ApplicationExport:
+def parse_application_xml(
+    tree: etree._ElementTree | etree._Element,
+) -> ApplicationExport:
     """Parse simple application metadata and top-level components."""
 
     root = xml_root(tree)
@@ -270,7 +315,9 @@ class MarkupDefaultsIndex:
     def from_defaults(cls, field_defaults: dict[str, Any]) -> "MarkupDefaultsIndex":
         container = field_defaults.get("common_model_container")
         common_model_properties: dict[str, Any] = {}
-        if isinstance(container, dict) and isinstance(container.get("properties"), dict):
+        if isinstance(container, dict) and isinstance(
+            container.get("properties"), dict
+        ):
             common_model_properties = cast(dict[str, Any], container["properties"])
 
         field_styles: dict[str, list[dict[str, Any]]] = {}
@@ -330,7 +377,10 @@ def serialize_wml(element: etree._Element, indent: int = 0) -> str:
             return "\n".join(
                 [
                     f"{padding}<{element.tag}",
-                    *[f"{padding}  {name}={quoted_xml_attr(value)}" for name, value in attrs],
+                    *[
+                        f"{padding}  {name}={quoted_xml_attr(value)}"
+                        for name, value in attrs
+                    ],
                     f"{padding}/>",
                 ]
             )

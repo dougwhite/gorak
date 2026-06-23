@@ -1,3 +1,4 @@
+from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -15,10 +16,13 @@ from gorak.parser import (
     extract_taggedvalues,
     join_segments,
     parse_application_xml,
+    parse_w4gl,
     parse_xml,
     toml_props,
 )
 from tests._helpers import _wrap_xml
+
+P4_EXAMPLE_PROCEDURE_W4GL = "tests/fixtures/p4_example_procedure.w4gl"
 
 
 @pytest.fixture
@@ -113,6 +117,29 @@ class TestParseXml:
             parse_xml(no_type)
 
         assert "<COMPONENT> node must have an xsi:type attribute" in str(ex.value)
+
+
+class TestParseW4gl:
+    """Tests for the `parse_w4gl()` function."""
+
+    def test_parses_procedure_fixture_to_component(self) -> None:
+        source = Path(P4_EXAMPLE_PROCEDURE_W4GL).read_text()
+
+        component = parse_w4gl(source, name="p4_example_procedure")
+
+        assert component.name == "p4_example_procedure"
+        assert component.type == "proc4glsource"
+        assert component.props == {"datatype": "integer"}
+        assert component.script is not None
+        assert "PROCEDURE p4_example_procedure" in component.script
+        assert "RETURN ER_OK;" in component.script
+
+    def test_parsed_procedure_fixture_round_trips_to_w4gl(self) -> None:
+        source = Path(P4_EXAMPLE_PROCEDURE_W4GL).read_text()
+
+        component = parse_w4gl(source, name="p4_example_procedure")
+
+        assert encode_w4gl(component) == source.strip()
 
     def test_frame_component_encodes_topform_as_wml_markup(self) -> None:
         xml = _wrap_xml("""
@@ -839,10 +866,13 @@ class TestWmlEncode:
             {"taggedvalues": {"db_name": "testdb", "db_tableprefix": ""}},
         )
 
-        assert encode_w4gl(component) == dedent("""
+        assert (
+            encode_w4gl(component)
+            == dedent("""
             [classsource]
             
             [taggedvalues]
             db_name = "testdb"
             db_tableprefix = ""
         """).strip()
+        )
