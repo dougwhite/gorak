@@ -404,7 +404,11 @@ def extract_attributes(node: etree._Element) -> dict[str, str]:
         name = row.findtext("displayname")
         datatype = row.findtext("datatype")
         if name is not None and datatype is not None:
-            attributes[name] = type_declaration(datatype, is_nullable(row))
+            attributes[name] = type_declaration(
+                datatype,
+                nullable=is_nullable(row),
+                array=is_array(row),
+            )
 
     return attributes
 
@@ -442,10 +446,12 @@ def first_text(node: etree._Element, *names: str) -> str:
     return ""
 
 
-def type_declaration(datatype: str, nullable: bool) -> str:
+def type_declaration(datatype: str, nullable: bool, array: bool = False) -> str:
     """Format an OpenROAD datatype declaration."""
 
     declaration = datatype.upper()
+    if array:
+        declaration = f"ARRAY OF {declaration}"
     if not nullable:
         declaration += " NOT NULL"
     return declaration
@@ -463,9 +469,22 @@ def method_declaration(row: etree._Element) -> str:
     datatype = row.findtext("datatype")
     if datatype is not None:
         parts.append("RETURNING")
-        parts.append(type_declaration(datatype, is_nullable(row)))
+        parts.append(
+            type_declaration(
+                datatype,
+                nullable=is_nullable(row),
+                array=is_array(row),
+            )
+        )
 
     return " ".join(parts)
+
+
+def is_array(row: etree._Element) -> bool:
+    """Return whether an OpenROAD metadata row is an array."""
+
+    value = row.findtext("isarray")
+    return bool(value == "1")
 
 
 def is_nullable(row: etree._Element) -> bool:

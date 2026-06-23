@@ -570,6 +570,20 @@ class TestExtractAttributes:
 
         assert extract_attributes(node) == {"nullable_prop": "VARCHAR(32)"}
 
+    def test_array_attributes_include_array_of(self) -> None:
+        node = etree.fromstring("""
+            <attributes>
+                <row>
+                    <displayname>items</displayname>
+                    <datatype>uc_item</datatype>
+                    <isarray>1</isarray>
+                    <isnullable>1</isnullable>
+                </row>
+            </attributes>
+        """)
+
+        assert extract_attributes(node) == {"items": "ARRAY OF UC_ITEM"}
+
 
 class TestExtractMethods:
     """Tests for the `extract_methods()` function"""
@@ -592,6 +606,22 @@ class TestExtractMethods:
         assert extract_methods(node) == {
             "ExampleMethod": "METHOD RETURNING INTEGER NOT NULL",
             "ObjectReturnMethod": "METHOD RETURNING STRINGOBJECT",
+        }
+
+    def test_array_return_methods_include_array_of(self) -> None:
+        node = etree.fromstring("""
+            <methods>
+                <row>
+                    <displayname>ListItems</displayname>
+                    <datatype>uc_item</datatype>
+                    <isarray>1</isarray>
+                    <isnullable>1</isnullable>
+                </row>
+            </methods>
+        """)
+
+        assert extract_methods(node) == {
+            "ListItems": "METHOD RETURNING ARRAY OF UC_ITEM",
         }
 
     def test_private_methods_are_marked_private(self) -> None:
