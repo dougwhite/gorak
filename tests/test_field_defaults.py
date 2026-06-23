@@ -152,30 +152,78 @@ def test_merge_defaults_applies_nested_overrides_without_mutating_parent() -> No
     assert parent["common_model_container"]["properties"]["bgcolor"] == "2"
 
 
+def test_merge_defaults_applies_field_style_property_overrides() -> None:
+    parent: dict[str, Any] = {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {
+                    "bgcolor": "70",
+                    "optionmenu": {"bgcolor": "2", "fgcolor": "1"},
+                },
+            }
+        ]
+    }
+    override: dict[str, Any] = {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {"optionmenu": {"bgcolor": "84"}},
+            }
+        ]
+    }
+
+    assert merge_defaults(parent, override) == {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {
+                    "bgcolor": "70",
+                    "optionmenu": {"bgcolor": "84", "fgcolor": "1"},
+                },
+            }
+        ]
+    }
+
+
 def test_diff_defaults_returns_only_values_that_differ_from_parent() -> None:
     parent: dict[str, Any] = {
         "common_model_container": {
             "properties": {"bgcolor": "2", "fgcolor": "1"}
-        }
+        },
+        "field_styles": [
+            {
+                "type": "entryfield",
+                "group": "entryfield",
+                "properties": {"bgcolor": "84", "fgcolor": "86"},
+            }
+        ],
     }
     child: dict[str, Any] = {
         "common_model_container": {
             "properties": {"bgcolor": "70", "fgcolor": "1"}
         },
         "field_styles": [
-            {"type": "entryfield", "group": "entryfield", "properties": {"bgcolor": "84"}}
+            {
+                "type": "entryfield",
+                "group": "entryfield",
+                "properties": {"bgcolor": "84", "fgcolor": "1"},
+            }
         ],
     }
 
     assert diff_defaults(parent, child) == {
         "common_model_container": {"properties": {"bgcolor": "70"}},
         "field_styles": [
-            {"type": "entryfield", "group": "entryfield", "properties": {"bgcolor": "84"}}
+            {"type": "entryfield", "group": "entryfield", "properties": {"fgcolor": "1"}}
         ],
     }
 
 
-def test_diff_defaults_preserves_changed_nested_subtrees() -> None:
+def test_diff_defaults_compacts_changed_nested_field_style_properties() -> None:
     parent: dict[str, Any] = {
         "field_styles": [
             {
@@ -191,6 +239,37 @@ def test_diff_defaults_preserves_changed_nested_subtrees() -> None:
                 "type": "controlbutton",
                 "group": "controlbutton",
                 "properties": {"optionmenu": {"bgcolor": "70", "fgcolor": "1"}},
+            }
+        ]
+    }
+
+    assert diff_defaults(parent, child) == {
+        "field_styles": [
+            {
+                "type": "controlbutton",
+                "group": "controlbutton",
+                "properties": {"optionmenu": {"bgcolor": "70"}},
+            }
+        ]
+    }
+
+
+def test_diff_defaults_keeps_whole_field_styles_when_rows_do_not_align() -> None:
+    parent: dict[str, Any] = {
+        "field_styles": [
+            {
+                "type": "entryfield",
+                "group": "entryfield",
+                "properties": {"bgcolor": "84"},
+            }
+        ]
+    }
+    child: dict[str, Any] = {
+        "field_styles": [
+            {
+                "type": "buttonfield",
+                "group": "buttonfield",
+                "properties": {"bgcolor": "70"},
             }
         ]
     }

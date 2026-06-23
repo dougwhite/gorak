@@ -142,6 +142,12 @@ def merge_defaults(parent: JsonObject, override: JsonObject) -> JsonObject:
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = merge_defaults(merged[key], value)
+        elif key == "field_styles" and isinstance(value, list):
+            parent_value = merged.get(key)
+            if isinstance(parent_value, list):
+                merged[key] = merge_field_styles(parent_value, value)
+            else:
+                merged[key] = deepcopy(value)
         else:
             merged[key] = deepcopy(value)
 
@@ -162,10 +168,107 @@ def diff_defaults(parent: JsonObject, child: JsonObject) -> JsonObject:
             nested_diff = diff_defaults(parent_value, child_value)
             if nested_diff:
                 diff[key] = nested_diff
+        elif key == "field_styles" and isinstance(parent_value, list) and isinstance(
+            child_value, list
+        ):
+            field_style_diff = diff_field_styles(parent_value, child_value)
+            if field_style_diff:
+                diff[key] = field_style_diff
         elif parent_value != child_value:
             diff[key] = deepcopy(child_value)
 
     return diff
+
+
+def merge_field_styles(
+    parent: list[Any],
+    override: list[Any],
+) -> list[Any]:
+    """Merge ordered field-style property overrides onto parent styles."""
+
+    if not all(is_field_style(style) for style in parent + override):
+        return deepcopy(override)
+
+    merged = deepcopy(parent)
+    search_start = 0
+    for override_style in override:
+        match_index = next_field_style_index(merged, override_style, search_start)
+        if match_index is None:
+            merged.append(deepcopy(override_style))
+            search_start = len(merged)
+            continue
+
+        parent_style = cast(JsonObject, merged[match_index])
+        override_properties = cast(JsonObject, override_style).get("properties", {})
+        if isinstance(override_properties, dict):
+            parent_properties = parent_style.get("properties", {})
+            if isinstance(parent_properties, dict):
+                parent_style["properties"] = merge_defaults(
+                    parent_properties,
+                    override_properties,
+                )
+            else:
+                parent_style["properties"] = deepcopy(override_properties)
+        search_start = match_index + 1
+
+    return merged
+
+
+def diff_field_styles(parent: list[Any], child: list[Any]) -> list[Any]:
+    """Return compact property diffs for aligned field-default style rows."""
+
+    if len(parent) != len(child):
+        return deepcopy(child)
+    if not all(is_field_style(style) for style in parent + child):
+        return deepcopy(child)
+
+    style_diffs: list[Any] = []
+    for parent_style, child_style in zip(parent, child, strict=True):
+        parent_object = cast(JsonObject, parent_style)
+        child_object = cast(JsonObject, child_style)
+        if not same_field_style(parent_object, child_object):
+            return deepcopy(child)
+
+        parent_properties = cast(JsonObject, parent_object["properties"])
+        child_properties = cast(JsonObject, child_object["properties"])
+        property_diff = diff_defaults(parent_properties, child_properties)
+        if property_diff:
+            style_diffs.append(
+                {
+                    "type": child_object["type"],
+                    "group": child_object["group"],
+                    "properties": property_diff,
+                }
+            )
+
+    return style_diffs
+
+
+def next_field_style_index(
+    styles: list[Any],
+    target: Any,
+    start: int,
+) -> int | None:
+    for index, style in enumerate(styles[start:], start=start):
+        if same_field_style(cast(JsonObject, style), cast(JsonObject, target)):
+            return index
+
+    return None
+
+
+def is_field_style(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("type"), str)
+        and isinstance(value.get("group"), str)
+        and isinstance(value.get("properties"), dict)
+    )
+
+
+def same_field_style(left: JsonObject, right: JsonObject) -> bool:
+    return left.get("type") == right.get("type") and left.get("group") == right.get(
+        "group"
+    )
 
 
 def flatten_app_defaults(root: Path) -> FlattenResult:

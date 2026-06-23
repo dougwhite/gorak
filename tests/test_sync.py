@@ -122,7 +122,6 @@ def test_sync_renames_existing_app_folder_and_state_to_database_casing(
     monkeypatch: MonkeyPatch,
 ) -> None:
     context = write_project(tmp_path)
-    old_app_dir = tmp_path / "sample_app"
     item = metadata()
     item = ComponentSyncMetadata(
         application_name="Sample_App",

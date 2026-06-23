@@ -490,7 +490,7 @@ def test_apply_field_default_inheritance_keeps_changed_nested_frame_overrides(
             {
                 "type": "controlbutton",
                 "group": "controlbutton",
-                "properties": {"optionmenu": {"bgcolor": "70", "fgcolor": "1"}},
+                "properties": {"optionmenu": {"bgcolor": "70"}},
             }
         ]
     }
