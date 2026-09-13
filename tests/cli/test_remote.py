@@ -165,6 +165,7 @@ class TestRemoteInstallCommand:
             "applist.sql",
             "backup-application.bat",
             "backup-component.bat",
+            "create-source.bat",
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
@@ -172,4 +173,5 @@ class TestRemoteInstallCommand:
             "gorak-helpers.json",
             "import-component.bat",
             "run-application.ps1",
+            "update-application.bat",
         ]

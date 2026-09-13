@@ -96,3 +96,82 @@ def test_rejects_remote_shell_metacharacters(
             tmp_path / "source.xml",
             tmp_path / "log",
         )
+
+
+def test_empty_application_creation_aborts_on_collision_without_compile(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    source = tmp_path / "source.xml"
+    source.write_text('<OPENROAD><APPLICATION name="example"/></OPENROAD>')
+    log = tmp_path / "import.log"
+    calls: list[list[str]] = []
+
+    def run(command: list[str]) -> str:
+        calls.append(command)
+        log.write_text("Application imported")
+        return ""
+
+    monkeypatch.setattr(local, "run_subprocess", run)
+    import_backend.import_component_xml(
+        OpenRoadConnection("local", "node", "demo", None),
+        "example",
+        "-",
+        source,
+        log,
+        create=True,
+    )
+    assert "-nabort" in calls[0]
+    assert "-nreplace" not in calls[0]
+    assert "-f" not in calls[0]
+    assert not any(arg.startswith("-c") for arg in calls[0])
+
+
+def test_remote_creation_uses_separate_helper(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str]) -> str:
+        calls.append(command)
+        return "GORAK_IMPORT_OK\n"
+
+    monkeypatch.setattr(remote, "run_subprocess", run)
+    import_backend.import_component_xml(
+        OpenRoadConnection(
+            "remote", "node", "demo", RemoteHost("user", "host", r"C:\gorak")
+        ),
+        "example",
+        "procedure",
+        tmp_path / "source.xml",
+        tmp_path / "log",
+        create=True,
+    )
+    assert "create-source.bat" in calls[1][-1]
+    assert calls[1][-1].endswith('"create"')
+
+
+def test_application_update_compiles_in_fresh_process(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    source = tmp_path / "source.xml"
+    source.write_text('<OPENROAD><APPLICATION name="example"/></OPENROAD>')
+    log = tmp_path / "import.log"
+    calls: list[list[str]] = []
+
+    def run(command: list[str]) -> str:
+        calls.append(command)
+        target = next(arg[2:] for arg in command if arg.startswith("-L"))
+        Path(target).write_text("Complete")
+        return ""
+
+    monkeypatch.setattr(local, "run_subprocess", run)
+    import_backend.import_component_xml(
+        OpenRoadConnection("local", "node", "demo", None),
+        "example",
+        "-",
+        source,
+        log,
+    )
+    assert calls[0][1] == "backupapp"
+    assert "-f" not in calls[0]
+    assert calls[1][1] == "compileapp"

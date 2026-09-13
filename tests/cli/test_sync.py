@@ -51,3 +51,25 @@ def test_sync_command_runs_project_sync(
         "Syncing from local\n"
         "Sync complete: checked 2, changed 1, exported 1 component\n"
     )
+
+
+def test_sync_push_routes_dry_run(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    from gorak import push
+
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    (tmp_path / ".env").write_text(
+        "GORAK_BACKEND=local\nGORAK_VNODE=node\nGORAK_DATABASE=source\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    calls: list[tuple[Path, bool]] = []
+
+    def fake_push(connection: OpenRoadConnection, root: Path, dry_run: bool) -> str:
+        calls.append((root, dry_run))
+        return "Prepared push"
+
+    monkeypatch.setattr(push, "push_project", fake_push)
+    cli.main(["sync", "--push", "--dry-run"])
+    assert calls == [(tmp_path, True)]
+    assert capsys.readouterr().out == "Prepared push\n"

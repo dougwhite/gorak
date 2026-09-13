@@ -16,6 +16,7 @@ from uuid import uuid4
 import pyodbc
 from sqlalchemy.exc import SQLAlchemyError
 
+from .app_scaffold import create_application
 from .audit import (
     audit_project_xml,
     audit_xml_file,
@@ -70,6 +71,8 @@ def build_parser() -> argparse.ArgumentParser:
     new_parser = subparsers.add_parser("new")
     new_parser.add_argument("--nogit", action="store_true")
     new_parser.add_argument("name")
+    new_parser.add_argument("application_name", nargs="?")
+    new_parser.add_argument("--test", action="store_true")
 
     config_parser = subparsers.add_parser("config")
     add_config_args(config_parser, require_values=False)
@@ -148,6 +151,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_parser = subparsers.add_parser("sync")
     add_openroad_connection_args(sync_parser)
+    sync_parser.add_argument("--push", action="store_true", help="Import disk changes")
+    sync_parser.add_argument(
+        "--dry-run", action="store_true", help="Prepare push XML without importing"
+    )
 
     debug_parser = subparsers.add_parser("debug")
     debug_subparsers = debug_parser.add_subparsers(dest="debug_command")
@@ -185,7 +192,9 @@ def add_openroad_connection_args(parser: argparse.ArgumentParser) -> None:
 
 
 def add_config_args(parser: argparse.ArgumentParser, require_values: bool) -> None:
-    parser.add_argument("--backend", choices=["remote", "local"], required=require_values)
+    parser.add_argument(
+        "--backend", choices=["remote", "local"], required=require_values
+    )
     parser.add_argument(
         "--sql-backend",
         choices=["remote", "local", "odbc"],
@@ -210,8 +219,18 @@ def add_remote_host_args(parser: argparse.ArgumentParser) -> None:
 
 
 def new_command(args: argparse.Namespace) -> str:
-    """Creates a new gorak project."""
+    """Create a project, or an application inside the current project."""
 
+    if args.application_name is not None:
+        if args.name != "app" or args.nogit:
+            raise ProjectError(
+                "Use gorak new app NAME [--test] to scaffold an application"
+            )
+        project = load_project(Path.cwd())
+        path = create_application(project, args.application_name, test=args.test)
+        return f"Created {path} (disk only; starting component and includes are not configured)"
+    if args.test:
+        raise ProjectError("--test requires gorak new app NAME")
     context = load_context(Path.cwd())
     if context.project is not None:
         raise ProjectError(
@@ -244,7 +263,9 @@ def config_remote_command(args: argparse.Namespace) -> str:
     project = load_project(Path.cwd())
     env_path = configure_project(
         project=project,
-        backend="remote" if args.config_command == "remote" else cast(str, args.backend),
+        backend="remote"
+        if args.config_command == "remote"
+        else cast(str, args.backend),
         vnode=cast(str, args.vnode),
         database=cast(str, args.database),
         host=cast(str | None, args.host),
@@ -353,7 +374,9 @@ def export_component_command(args: argparse.Namespace) -> str:
     connection = resolve_openroad_connection(args, context)
     app = cast(str, args.app)
     component = cast(str, args.component)
-    print(f"Exporting component {app}::{component} from {connection_source(connection)}")
+    print(
+        f"Exporting component {app}::{component} from {connection_source(connection)}"
+    )
     path = export_component(
         connection=connection,
         context=context,
@@ -362,7 +385,9 @@ def export_component_command(args: argparse.Namespace) -> str:
         output_path=cast(str | None, args.output),
         progress=print,
     )
-    return component_export_summary(path, context.project.root if context.project else None)
+    return component_export_summary(
+        path, context.project.root if context.project else None
+    )
 
 
 def app_export_command(args: argparse.Namespace) -> str:
@@ -396,7 +421,9 @@ def component_export_summary(path: Path, root: Path | None) -> str:
 def application_export_summary(root: Path, exported: ApplicationExport) -> str:
     paths = application_export_paths(root, exported.application.name)
     w4gl_count = len(exported.components)
-    wml_count = sum(1 for component in exported.components if component.markup is not None)
+    wml_count = sum(
+        1 for component in exported.components if component.markup is not None
+    )
     lines = [
         f"Wrote {display_path(root / exported.application.name / 'app.json', root)}",
         f"Wrote {display_path(paths.xml_path, root)}",
@@ -512,11 +539,18 @@ def run_command(args: argparse.Namespace) -> int:
             args.timeout if args.timeout is not None else configured.timeout_seconds,
         )
         artifacts = root / ".openroad" / "runs" / uuid4().hex
-        print(f"Running {suite.application} ({suite.timeout_seconds}s timeout)", flush=True)
+        print(
+            f"Running {suite.application} ({suite.timeout_seconds}s timeout)",
+            flush=True,
+        )
         try:
-            result = execute_application(connection, suite, context.env, artifacts, testing)
+            result = execute_application(
+                connection, suite, context.env, artifacts, testing
+            )
         except (OSError, subprocess.SubprocessError) as ex:
-            raise ProjectError(f"Application runner failed ({type(ex).__name__}); artifacts: {artifacts}") from ex
+            raise ProjectError(
+                f"Application runner failed ({type(ex).__name__}); artifacts: {artifacts}"
+            ) from ex
         if args.trace or not testing:
             print(result.trace)
             if result.output:
@@ -529,7 +563,9 @@ def run_command(args: argparse.Namespace) -> int:
         if testing:
             try:
                 summary = report_summary(result.report)
-                print(f"Tests: {summary.tests}, failures: {summary.failures}, errors: {summary.errors}, skipped: {summary.skipped}")
+                print(
+                    f"Tests: {summary.tests}, failures: {summary.failures}, errors: {summary.errors}, skipped: {summary.skipped}"
+                )
                 for message in summary.messages:
                     print(message)
                 if summary.failures or summary.errors:
@@ -605,6 +641,14 @@ def sync_command(args: argparse.Namespace) -> str:
 
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
+    if getattr(args, "push", False):
+        from .push import push_project
+
+        if context.project is None:
+            raise ProjectError("Push requires a gorak project")
+        return push_project(connection, context.project.root, args.dry_run)
+    if getattr(args, "dry_run", False):
+        raise ProjectError("--dry-run requires --push")
     print(f"Syncing from {connection_source(connection)}")
     result = sync_project(connection, context, progress=print)
     component_label = "component" if result.exported == 1 else "components"

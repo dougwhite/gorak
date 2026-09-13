@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
+from lxml import etree
+
 from . import local, remote
 from .connection import OpenRoadConnection, require_remote_host
 from .project import ProjectError
@@ -22,8 +24,15 @@ def import_component_xml(
     component: str,
     xml_path: Path,
     log_path: Path,
+    *,
+    create: bool = False,
 ) -> None:
     """Import only the named component; keep diagnostics even when execution fails."""
+    empty_app = (
+        create
+        and component == "-"
+        and not etree.parse(str(xml_path)).findall("COMPONENT")
+    )
     if connection.backend == "local":
         command = local.build_backup_component_command(
             connection.vnode,
@@ -33,8 +42,14 @@ def import_component_xml(
             xml_path,
             log_path,
         )
+        if component == "-":
+            command = local.build_backup_application_command(
+                connection.vnode, connection.database, app, xml_path, log_path
+            )
         command[2] = "in"
-        command.extend(["-nreplace", "-f"])
+        command.append("-nabort" if create else "-nreplace")
+        if not empty_app and not (component == "-" and not create):
+            command.append("-f")
         try:
             output = local.run_subprocess(command)
         except Exception as ex:
@@ -47,6 +62,22 @@ def import_component_xml(
                 "OpenROAD did not create a compilation log; inspect import.log"
             )
         checked_log(log_path.read_text(errors="replace"))
+        if component == "-" and not create:
+            compile_log = log_path.with_suffix(".compile.log")
+            local.run_subprocess(
+                [
+                    "w4gldev",
+                    "compileapp",
+                    local.build_database_target(connection.vnode, connection.database),
+                    app,
+                    "-nowindows",
+                    "-TALL,logonly",
+                    f"-L{local.command_path(compile_log)}",
+                ]
+            )
+            if not compile_log.is_file():
+                raise ProjectError("OpenROAD did not create a compilation log")
+            checked_log(compile_log.read_text(errors="replace"))
         return
 
     host = require_remote_host(connection)
@@ -65,14 +96,20 @@ def import_component_xml(
     destination = f"{host.gorak_root}\\import-{token}.xml"
     remote.run_subprocess(remote.build_upload_command(host, str(xml_path), destination))
     args = [f"{connection.vnode}::{connection.database}", app, component, destination]
+    if create:
+        args.append("create-empty" if empty_app else "create")
+    helper = (
+        "create-source.bat"
+        if create
+        else "update-application.bat"
+        if component == "-"
+        else "import-component.bat"
+    )
     command = [
         "ssh",
         "-T",
         host.ssh_target,
-        " ".join(
-            f'"{value}"'
-            for value in [f"{host.gorak_root}\\import-component.bat", *args]
-        ),
+        " ".join(f'"{value}"' for value in [f"{host.gorak_root}\\{helper}", *args]),
     ]
     try:
         output = remote.run_subprocess(command)

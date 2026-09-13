@@ -158,6 +158,11 @@ gorak component export salesapp main_frame
 
 ### `gorak sync`
 
+Use `gorak sync --push` to import disk changes into OpenROAD, or
+`gorak sync --push --dry-run` to validate and save generated XML without importing.
+See [Push source changes](push.md) for supported source types and conflict behavior.
+
+
 Checks out-of-date components and re-exports them to source files.
 
 Flags: none.
@@ -375,3 +380,23 @@ OpenROAD unit-test application and reads its XML results. With no `--app`,
 `gorak test` uses the `tests` array in `gorak.json`. Both accept `--component`,
 `--timeout`, `--trace`, and standard connection flags.
 See [Run and Test](run-test.md) for trace configuration and report handling.
+
+## `gorak new app`
+
+Inside an existing project, create an empty application folder:
+
+```sh
+gorak new app example_app
+gorak new app example_tests --test
+```
+
+The folder contains `app.json` with a blank starting component and description,
+and an empty included-applications list. `--test` also registers the application
+in the project manifest's `tests` array, preserving existing entries and avoiding
+case-insensitive duplicates. Run from any subdirectory of the project.
+
+This scaffolds disk files only: it does not create an OpenROAD database application,
+generate tests, select a framework, or configure includes. The test application
+cannot run until an entry point is supplied and it exists in OpenROAD. Existing
+paths, including case variants, are rejected. Application names must be identifiers
+of at most 32 characters. `gorak new NAME [--nogit]` still creates a whole project.
