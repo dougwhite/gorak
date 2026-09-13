@@ -298,3 +298,50 @@ Populated-history scale, concurrent live transactions and restore/reconnect
 acceptance remain unmeasured. Automated regressions cover late lower-ID commits,
 higher-ID commits, shrinking history, changed installation identity, a final-read
 disconnect and a full event batch; failure cases preserve the old pointer.
+
+### Restore and local rebootstrap
+
+After a known database restore/replacement, or when the journal reports a changed
+installation identity, use:
+
+```sh
+gorak install --check
+gorak journal --rebootstrap
+```
+
+Run this for **each affected checkout**, with source writers paused for the recovery
+comparison. Repair an incomplete tracking installation through the DBA first.
+Rebootstrap requires a healthy installation and an already verified source target
+binding; it does not authorize switching to a different server/database.
+
+Rebootstrap ignores previous observed XML and stages a new SQLite consumer with a
+new consumer UUID, no acknowledgments and the current installation identity. It
+performs full source exports and applies the same disk/installation/journal-window
+checks as selective verification. Differences and conflicts may be reported: this
+is an observation rebuild, not source reconciliation.
+
+On successful verification, it archives the old SQLite state and snapshot pointer
+under the operation's previous directory. It invalidates the old pointer, replaces
+the consumer, then publishes the new full-reference pointer. Exports and evidence
+failures before publication leave current state unchanged. An interruption during
+replacement can leave no pointer; retry rebootstrap after resolving the failure.
+Old XML evidence is retained. Do not restore an archived consumer after a database
+restore merely to suppress replay.
+
+No source files, common sync baselines, server tracking objects or server
+acknowledgments are reset. The fresh consumer sees all retained events again,
+including IDs previously acknowledged by this checkout. Other checkouts are
+unchanged. There is no automatic cleanup of old server consumer acknowledgments.
+SQLite sidecars block replacement; close other users and inspect recovery needs.
+A corrupt SQLite database that cannot be archived also requires manual inspection.
+
+A restore that retains the same installation UUID may not be detected automatically.
+The DBA/operator must notify checkout users to rebootstrap even if install --check
+passes. Rebootstrap does not create a database-wide restore generation, prove that
+all historical events survived, or enable incremental status. Coordinated restore
+generation and broader continuity acceptance remain future work.
+
+Automated acceptance covers a changed local binding, fresh consumer identity,
+archived acknowledgments, unchanged common baselines, export failure, interruption
+during consumer replacement, sidecar rejection and CLI mode exclusivity. This
+recovery command has not yet been exercised against a restored live database.

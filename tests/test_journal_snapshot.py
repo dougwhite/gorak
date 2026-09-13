@@ -289,3 +289,60 @@ def test_disconnect_at_final_observation_preserves_pointer(
         verify_selective_snapshot(connection, root)
     assert pointer.read_bytes() == original
     assert not list(pointer.parent.glob(".journal-snapshot-*.tmp"))
+
+
+@pytest.mark.parametrize("same_identity", [False, True])
+def test_rebootstrap_replaces_old_binding_and_preserves_acknowledgments_in_archive(
+    project: tuple[Any, ...],
+    same_identity: bool,
+) -> None:
+    from gorak.journal import acknowledgment_store, bind_store
+    from gorak.journal_server import consumer_identity
+
+    root, connection, _, _, exports = project
+    first = verify_selective_snapshot(connection, root)
+    baseline = (root / ".openroad/example/example.xml").read_bytes()
+    with acknowledgment_store(root / ".openroad/journal.sqlite3") as store:
+        bind_store(
+            store, str(first["installation_id"]) if same_identity else str(uuid4())
+        )
+        old_consumer = consumer_identity(store)
+        store.execute("insert into acknowledged values (42)")
+        store.commit()
+    exports.clear()
+    report = verify_selective_snapshot(connection, root, rebootstrap=True)
+    assert report["fallback_reason"] == "explicit_rebootstrap"
+    assert report["rebootstrapped"] is True
+    assert exports == ["example"]
+    with acknowledgment_store(root / ".openroad/journal.sqlite3") as store:
+        assert consumer_identity(store) != old_consumer
+        assert store.execute("select * from acknowledged").fetchall() == []
+        assert store.execute("select id from installation").fetchall() == [
+            (report["installation_id"],)
+        ]
+    with acknowledgment_store(
+        Path(str(report["previous_state"])) / "journal.sqlite3"
+    ) as store:
+        assert consumer_identity(store) == old_consumer
+        assert store.execute("select * from acknowledged").fetchall() == [(42,)]
+    assert (root / ".openroad/example/example.xml").read_bytes() == baseline
+
+
+def test_rebootstrap_export_failure_keeps_current_state(
+    project: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, connection, _, _, _ = project
+    verify_selective_snapshot(connection, root)
+    pointer = root / ".openroad/journal-snapshot.json"
+    journal = root / ".openroad/journal.sqlite3"
+    old_pointer, old_journal = pointer.read_bytes(), journal.read_bytes()
+
+    def fail(*args: Any) -> None:
+        raise ProjectError("export failed")
+
+    monkeypatch.setattr(sync_plan, "backup_application_xml", fail)
+    with pytest.raises(ProjectError, match="export failed"):
+        verify_selective_snapshot(connection, root, rebootstrap=True)
+    assert pointer.read_bytes() == old_pointer
+    assert journal.read_bytes() == old_journal

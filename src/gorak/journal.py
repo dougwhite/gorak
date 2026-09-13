@@ -75,7 +75,7 @@ def bind_store(store: sqlite3.Connection, installation_id: str) -> None:
         store.commit()
     elif rows != [(installation_id,)]:
         raise ProjectError(
-            "Journal installation identity changed; a verified full rebootstrap is required"
+            "Journal installation identity changed; run gorak journal --rebootstrap for a verified full observation"
         )
 
 

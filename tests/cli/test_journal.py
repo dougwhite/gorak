@@ -100,3 +100,35 @@ def test_selective_verification_dispatch(
     )
     cli.main(["journal", "--verify-selective"])
     assert json.loads(capsys.readouterr().out)["mode"] == "selective_verified"
+
+
+def test_rebootstrap_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gorak import journal_snapshot
+
+    (tmp_path / "gorak.json").write_text('{"name":"journal_demo"}')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *a: None)
+
+    def run(
+        connection: object, root: Path, limit: int, *, rebootstrap: bool
+    ) -> dict[str, object]:
+        assert root == tmp_path
+        assert rebootstrap is True
+        return {"rebootstrapped": True}
+
+    monkeypatch.setattr(journal_snapshot, "verify_selective_snapshot", run)
+    cli.main(["journal", "--rebootstrap"])
+    assert json.loads(capsys.readouterr().out)["rebootstrapped"] is True
+
+
+def test_rebootstrap_cannot_be_combined_with_reconcile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "gorak.json").write_text('{"name":"journal_demo"}')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *a: None)
+    with pytest.raises(SystemExit):
+        cli.main(["journal", "--rebootstrap", "--reconcile"])
+    assert "Choose one journal mode" in capsys.readouterr().err

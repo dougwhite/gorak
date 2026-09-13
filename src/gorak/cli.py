@@ -90,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     journal_parser.add_argument("--limit", type=int, default=100)
     journal_parser.add_argument(
+        "--rebootstrap",
+        action="store_true",
+        help="Rebuild journal observations with a fresh consumer and full exports",
+    )
+    journal_parser.add_argument(
         "--verify-selective",
         action="store_true",
         help="Verify selective snapshots against full exports",
@@ -843,16 +848,30 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 raise ProjectError("Journal inspection requires a gorak project")
             connection = resolve_openroad_connection(parsed, context)
             root = context.project.root
-            if sum((parsed.reconcile, parsed.map, parsed.verify_selective)) > 1:
-                raise ProjectError(
-                    "Choose one journal mode: --map, --reconcile, or --verify-selective"
+            if (
+                sum(
+                    (
+                        parsed.reconcile,
+                        parsed.map,
+                        parsed.verify_selective,
+                        parsed.rebootstrap,
+                    )
                 )
-            if parsed.verify_selective:
+                > 1
+            ):
+                raise ProjectError(
+                    "Choose one journal mode: --map, --reconcile, --verify-selective, or --rebootstrap"
+                )
+            if parsed.verify_selective or parsed.rebootstrap:
                 from .journal_snapshot import verify_selective_snapshot
 
                 print(
                     json.dumps(
-                        verify_selective_snapshot(connection, root, parsed.limit),
+                        verify_selective_snapshot(
+                            connection, root, parsed.limit, rebootstrap=True
+                        )
+                        if parsed.rebootstrap
+                        else verify_selective_snapshot(connection, root, parsed.limit),
                         indent=2,
                     )
                 )

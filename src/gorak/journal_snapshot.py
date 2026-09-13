@@ -11,10 +11,12 @@ from lxml import etree
 
 from .connection import OpenRoadConnection, require_odbc_settings
 from .installation_check import check_installation
-from .journal import acknowledgment_store, poll_journal
+from .journal import acknowledgment_store, bind_store, poll_journal
 from .journal_mapping import map_applications
 from .journal_observation import observe_journal
+from .journal_rebootstrap import publish_consumer
 from .journal_reconcile import flush_directory, persist_comparison
+from .journal_server import consumer_identity
 from .portable_source import read_document
 from .project import ProjectError
 from .project_lock import project_lock
@@ -87,7 +89,11 @@ def load_snapshot(
 
 
 def verify_selective_snapshot(
-    connection: OpenRoadConnection, root: Path, limit: int = 100
+    connection: OpenRoadConnection,
+    root: Path,
+    limit: int = 100,
+    *,
+    rebootstrap: bool = False,
 ) -> dict[str, object]:
     """Publish only full-reference snapshots; never acknowledge newly polled events."""
     settings = require_odbc_settings(connection)
@@ -116,16 +122,30 @@ def verify_selective_snapshot(
                 if not p.parent.name.startswith(".")
             }
         )
-        previous = load_snapshot(root, health.installation_id, connection, scope)
-        with acknowledgment_store(root / ".openroad/journal.sqlite3") as store:
+        operation = root / ".openroad/journal-snapshots" / uuid4().hex
+        operation.mkdir(parents=True)
+        previous = (
+            None
+            if rebootstrap
+            else load_snapshot(root, health.installation_id, connection, scope)
+        )
+        store_path = (
+            operation / "journal.sqlite3"
+            if rebootstrap
+            else root / ".openroad/journal.sqlite3"
+        )
+        with acknowledgment_store(store_path) as store:
+            if rebootstrap:
+                bind_store(store, health.installation_id)
+                consumer_identity(store)
             batch = poll_journal(settings, store, limit)
         if batch.installation_id != health.installation_id:
             raise ProjectError("Tracking identity changed during snapshot verification")
         mapping = map_applications(settings, batch)
-        operation = root / ".openroad/journal-snapshots" / uuid4().hex
-        operation.mkdir(parents=True)
         reason = (
-            "missing_or_invalid_snapshot"
+            "explicit_rebootstrap"
+            if rebootstrap
+            else "missing_or_invalid_snapshot"
             if previous is None
             else "event_batch_at_limit"
             if len(batch.events) >= limit
@@ -187,6 +207,8 @@ def verify_selective_snapshot(
             "incremental_ready": False,
             "journal_observation": before.as_dict(),
             "continuity_certified": False,
+            "rebootstrapped": rebootstrap,
+            "previous_state": str(operation / "previous") if rebootstrap else None,
         }
         persist_comparison(operation, report)
         pointer = {
@@ -211,6 +233,8 @@ def verify_selective_snapshot(
                 )
             if fingerprint(root) != initial:
                 raise ProjectError("Project changed before snapshot publication")
+            if rebootstrap:
+                publish_consumer(root, operation)
             temporary.replace(destination)
             flush_directory(destination.parent)
         finally:

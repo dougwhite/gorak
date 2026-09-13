@@ -130,6 +130,7 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Journal reconciliation persists full XML comparison evidence before exact-event acknowledgment, with disk-drift checks; common sync baselines remain unchanged.
 - [x] Selective observation refresh verified against mandatory full exports; corruption/unresolved mapping/mismatch use full fallback. Separate snapshots preserve common baselines.
 - [x] Guard diagnostic snapshot publication with before/after committed journal observations; full event batches disable reuse. Regression coverage includes late commits, identity changes and disconnects.
+- [x] Explicit local journal rebootstrap archives old state, creates a fresh consumer and verifies full exports without resetting source baselines. Restore notification remains an operator responsibility.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.
