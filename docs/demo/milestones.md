@@ -144,6 +144,7 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Isolated revision-token experiments establish transactional rollback/visibility but reject global writer contention and source-partition lock cycles; see [results](../research/revision-token-acceptance.md).
 - [x] Isolated writer-session counters pass MVCC concurrency, rollback and observed identity reuse; page locks still contend and online consolidation rejects a racing writer. See [session results](../research/session-revision-acceptance.md).
 - [x] Owner-defined counter rules preserve ordinary caller identity, deny direct counter updates, and support table-specific ROW initialization; actual CLI import/compile observe process-local ING_SET row locking. See [writer configuration](../research/writer-configuration-acceptance.md).
+- [x] Table-specific ROW startup passed actual OpenROAD import/compile with an unrelated counter row held; the default-lock control failed. Source-table settings were unchanged.
 - [ ] Complete writer initialization handling and actual Workbench save acceptance before enabling revision counters; initial bounded reads must fall back safely without online counter deletion.
 - [ ] Implement and validate the [compact checkpoint protocol](../research/checkpoint-protocol.md), including transaction closure and restore/retention contracts.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.

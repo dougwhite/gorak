@@ -76,6 +76,34 @@ The packaged Gorak helpers currently do not explicitly choose a lock level. They
 inherit their process environment. Gorak must not infer safe counter locking merely
 from a configured ODBC reader or successful tracking inventory check.
 
+## Table-specific initialization through real source writers
+
+A subsequent isolated experiment installed a temporary session-counter procedure
+behind scratch rules on ii_srcobj_encoded, then held an uncommitted ROW lock on
+one unrelated counter row from an ODBC connection. Only a disposable application
+was compiled/imported. A two-second timeout bounded the control failure.
+
+With only the timeout configured, compilation failed while that row remained
+locked. With this additional process-local initialization, compilation and then
+replacement import both succeeded while the same unrelated row remained locked:
+
+```sql
+set lockmode session where timeout=2;
+set lockmode on $ingres.session_probe_revisions where level=row;
+```
+
+The actual test used a randomly named scratch table. This is a behavioral check
+of the table-specific setting through OpenROAD, beyond reading a session default.
+The test did not change source-table lock levels or saved environment settings.
+The held transaction was rolled back, and temporary hooks, counter table,
+procedure and disposable application were removed. Existing tracking stayed healthy.
+
+This validates explicit table-specific statements in ING_SET. Combining arbitrary
+existing statements, database-specific startup settings and include files still
+needs implementation and acceptance; the test used controlled startup strings.
+A settings-only audit has been prepared separately for a user-driven Workbench
+save. That acceptance remains pending and must not be inferred from CLI results.
+
 ## Restart and identity boundary
 
 No server or VM was restarted. The earlier sequential reconnect test demonstrated
@@ -94,8 +122,8 @@ already described in the checkpoint design.
 
 1. Provide an explicit writer initialization contract. Preserve existing ING_SET
    statements and include-file configuration; do not silently replace custom shop
-   settings. Validate table-specific initialization through real writer operations
-   before preferring it over a session-wide setting.
+   settings. Table-specific initialization passed controlled real import/compile tests;
+   preserving arbitrary existing startup configuration remains unimplemented.
 2. Verify an actual Workbench save under that contract. The active user's session
    was not inspected or changed in this experiment.
 3. Certify identity composition, lengths, overflow and restart behavior. Do not add
