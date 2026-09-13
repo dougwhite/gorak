@@ -102,7 +102,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [ ] Production cursor/retention and real-source transaction acceptance; sequence allocation alone is not a safe
   committed-change cursor. Choose and prove a correct watermark/acknowledgment model.
 - [ ] Tombstones, per-checkout progress, retention, reconnect/offline consumers, rescan.
-- [ ] Detect disabled/missing rules, incomplete installation, database restore/replacement.
+- [x] Read-only ODBC installation inventory check: owner objects, rule targets, version, UUID, event read access.
+- [ ] Verify hook definitions/execution, complete table schema, and database restore/replacement; inventory alone is insufficient.
 - [ ] Transactional installation where supported; schema version, check, upgrade, and
   removal procedures that preserve source and define tracking-data consequences.
 - [ ] Measure rule overhead during large saves/imports/compilation and concurrent edits.

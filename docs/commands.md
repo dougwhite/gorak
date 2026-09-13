@@ -421,3 +421,10 @@ credentials, or database access is required. Existing output files are not repla
 The DBA applies it to an initialized source database under the required owner
 identity, locally or through an authorized vnode connection. See
 [installation instructions](installation.md) for error handling and current limits.
+
+### Tracking installation inventory
+
+`gorak install --check` reads the configured database through ODBC and returns a
+JSON installation inventory report. Exit 1 indicates missing/incompatible objects
+or inaccessible data. A successful capture-only check does not enable incremental
+sync. See [installation checks](installation.md#check-an-installation).

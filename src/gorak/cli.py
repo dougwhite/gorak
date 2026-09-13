@@ -70,12 +70,17 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     install_parser = subparsers.add_parser("install")
-    install_parser.add_argument(
+    install_action = install_parser.add_mutually_exclusive_group(required=True)
+    install_action.add_argument(
         "--export-sql",
-        required=True,
         metavar="PATH",
         help="Write DBA-reviewed source tracking SQL; use - for stdout",
     )
+
+    install_action.add_argument(
+        "--check", action="store_true", help="Check tracking inventory via ODBC"
+    )
+    add_openroad_connection_args(install_parser)
 
     recovery_parser = subparsers.add_parser("recover")
     recovery_parser.add_argument("operation", choices=["push"])
@@ -772,6 +777,16 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
         if parsed.command == "install":
             from .installation import export_installation_sql, installation_sql
 
+            if parsed.check:
+                from .connection import require_odbc_settings
+                from .installation_check import check_installation
+
+                connection = resolve_openroad_connection(
+                    parsed, load_context(Path.cwd())
+                )
+                report = check_installation(require_odbc_settings(connection))
+                print(json.dumps(report.as_dict(), indent=2))
+                raise SystemExit(1 if report.issues else 0)
             if parsed.export_sql == "-":
                 print(installation_sql(), end="")
             else:

@@ -1,0 +1,89 @@
+from typing import Any
+from unittest.mock import MagicMock
+from uuid import uuid4
+
+import pytest
+
+from gorak.database import OdbcSettings
+from gorak.installation_check import (
+    CATALOG_QUERIES,
+    EXPECTED_RULES,
+    EXPECTED_TABLES,
+    check_installation,
+)
+
+
+def fixture() -> tuple[MagicMock, dict[str, list[tuple[Any, ...]]]]:
+    rows: dict[str, list[tuple[Any, ...]]] = {
+        CATALOG_QUERIES["tables"]: [(name + " ",) for name in EXPECTED_TABLES],
+        CATALOG_QUERIES["rules"]: list(EXPECTED_RULES.items()),
+        CATALOG_QUERIES["procedures"]: [("gorak_record_change",)],
+        CATALOG_QUERIES["sequences"]: [("gorak_change_seq",)],
+        'select schema_version, installation_id, mode from "$ingres".gorak_tracking_install': [
+            (1, str(uuid4()), "capture_only")
+        ],
+    }
+    engine = MagicMock()
+    engine.connect.return_value.__enter__.return_value.execute.side_effect = (
+        lambda query: rows.get(str(query), [])
+    )
+    return engine, rows
+
+
+def run(engine: MagicMock) -> Any:
+    settings = OdbcSettings("driver", "host", "port", "source_db", "user", "secret")
+    return check_installation(settings, engine_factory=lambda _: engine)
+
+
+def test_complete_inventory_does_not_claim_incremental_readiness() -> None:
+    engine, _ = fixture()
+    report = run(engine)
+    assert not report.issues
+    assert report.status == "capture_only_inventory_present"
+    assert report.installation_id
+    assert report.incremental_ready is False
+    engine.dispose.assert_called_once()
+
+
+def test_missing_tables_does_not_query_marker() -> None:
+    engine, rows = fixture()
+    rows[CATALOG_QUERIES["tables"]] = []
+    assert len(run(engine).issues) == 2
+    queries = engine.connect.return_value.__enter__.return_value.execute.call_args_list
+    assert not any('from "$ingres"' in str(call.args[0]) for call in queries)
+
+
+def test_wrong_rule_target_and_missing_sequence_detected() -> None:
+    engine, rows = fixture()
+    rows[CATALOG_QUERIES["rules"]][0] = ("gorak_track_0_i", "wrong_table")
+    rows[CATALOG_QUERIES["sequences"]] = []
+    issues = run(engine).issues
+    assert len(issues) == 2
+    assert any("wrong-target" in issue for issue in issues)
+
+
+@pytest.mark.parametrize(
+    "records",
+    [
+        [],
+        [(1, str(uuid4()), "capture_only")] * 2,
+        [(2, str(uuid4()), "capture_only")],
+        [(1, "bad-uuid", "capture_only")],
+        [(1, str(uuid4()), "unknown")],
+    ],
+)
+def test_invalid_marker_fails_check(records: list[tuple[Any, ...]]) -> None:
+    engine, rows = fixture()
+    marker = next(key for key in rows if "schema_version" in key)
+    rows[marker] = records
+    assert run(engine).issues
+
+
+def test_permission_error_is_not_reported_as_success_and_disposes() -> None:
+    engine, _ = fixture()
+    engine.connect.return_value.__enter__.return_value.execute.side_effect = (
+        RuntimeError("permission denied")
+    )
+    with pytest.raises(RuntimeError, match="permission denied"):
+        run(engine)
+    engine.dispose.assert_called_once()

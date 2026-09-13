@@ -20,7 +20,7 @@ base/version relationships and chunk keys where available. It does not copy sour
 payloads into the journal.
 
 This is an initial installation artifact for validation, not a completed incremental
-sync feature. Consumers, retention/pruning, health-check automation, upgrades, and
+sync feature. Consumers, retention/pruning, full health certification, upgrades, and
 complete source-table coverage are not implemented. Events accumulate. Do not deploy
 indefinitely on a busy source database without an agreed lifecycle. Existing names
 cause installation to stop; the script never drops or replaces an installation.
@@ -72,7 +72,7 @@ On success, the final query displays one `gorak_tracking_install` record with ve
 1, a nonempty installation UUID, and mode `capture_only`. The DBA should inspect the
 log and verify the expected tables, procedure, sequence and all 24 rules exist. This
 record alone is not a future runtime health guarantee: missing/modified hooks must
-still be checked by the forthcoming health-check service.
+still be checked beyond the inventory diagnostic below.
 
 No grants are issued automatically. The DBA decides who can read tracking data;
 ordinary developers do not need the owner identity. Do not grant journal mutation
@@ -90,3 +90,38 @@ acceptance remain future work.
 
 [Actian documents](https://docs.actian.com/ingres/11.2/SysAdmin/II_TM_EXIT_ON_ERROR.htm)
 the relationship between `\nocontinue` and `II_TM_EXIT_ON_ERROR=rollback`.
+
+## Check an installation
+
+From a configured project using ODBC:
+
+```sh
+gorak install --check
+```
+
+The normal database/ODBC connection overrides are accepted. This command reads
+catalogs, the owner-qualified installation record, and checks read access to the
+event table without scanning events or source payloads. It makes no schema or source
+changes and disposes its connection after checking. Configure developer SELECT
+access through the DBA; owner impersonation is not performed by Gorak.
+
+JSON output lists missing tables, sequence, procedure and rules (including incorrect
+rule targets), unsupported version/mode, and invalid installation identity. Exit 1
+means a detected problem or database-access failure; exit 0 means the expected
+capture-only inventory and marker were found. Connection/permission errors use the
+normal CLI error reporting.
+
+A successful check reports `capture_only_inventory_present` and
+`incremental_ready: false`. It does **not** certify rule/procedure definitions,
+table column types, enabled-rule execution, complete source coverage, or continuity
+after a database restore. It is a point-in-time diagnostic, not permission to bypass
+a full source comparison. Same-named objects owned by a developer cannot satisfy
+the check. Source writes should remain quiescent while diagnosing an installation
+being changed by a DBA.
+
+The catalog fields follow the
+[Actian standard catalog reference](https://docs.actian.com/ingres/11.0/DatabaseAdmin/Standard_Catalogs_for_All_Databases.htm).
+The missing-installation path was also verified read-only against an isolated live
+source database: it reported both missing tables, the sequence, procedure, and all
+24 missing rules. Complete and damaged inventories are covered by automated tests;
+live complete-installation checking remains an acceptance item.
