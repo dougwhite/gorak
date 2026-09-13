@@ -86,6 +86,8 @@ gorak sync
 
 ## Full Documentation
 
+- [Community Demo and Roadmap](docs/demo/README.md) - Planned walkthrough, missing capabilities, and acceptance milestones
+
 - [Full Command List](docs/commands.md) - List of all commands and CLI parameters explained
 - [Configuration Guide](docs/config.md) - Customize how gorak communicates with OpenROAD / Ingres
 - [Run and Test](docs/run-test.md) - Execute applications and collect unit-test results
