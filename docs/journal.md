@@ -348,3 +348,42 @@ during consumer replacement, sidecar rejection and CLI mode exclusivity. Live ac
 a changed identity, and successful recovery and subsequent verification. See
 [recovery acceptance](research/journal-recovery-acceptance.md). No physical database
 restore has yet been exercised.
+
+### Historical entity ancestry in diagnostic snapshots
+
+Observation pointer format 2 adds a hash-checked ancestry.json beside the full XML
+reference. It records entity IDs, parent/base links, names and kinds from a bounded
+ODBC metadata read inside the same guarded observation window. It does not change
+the database tracking schema. Old format-1 pointers automatically take the full
+bootstrap path.
+
+The next selective verification gives the mapper this historical graph in addition
+to event tombstones and current database metadata. A deleted component/include ID
+can avoid fallback only when its previous ancestry resolves completely without
+using current rows to fill historical gaps. Historical and current application
+candidates are retained together, including when an ID now belongs to a different
+application. Shared storage still requires full comparison.
+
+A plain journal --map call has no snapshot context and retains its conservative
+behavior. Corrupt ancestry invalidates the entire observed snapshot. Rebootstrap
+never imports old ancestry. Evidence is flushed before the pointer is published;
+a metadata-read failure preserves the prior pointer.
+
+This prototype captures at most 100,000 entity rows across the source database.
+The SQL caps the result at that limit plus one. Exceeding the budget records no
+historical graph and preserves the existing full-reference behavior. No source
+payload is read by the ancestry query. Scoped/indexed ancestry and large-corpus
+cost remain future work; this scan is not the proposed final no-change path.
+
+A historical observation is not an event-time ownership certificate: incomplete
+batches, prior acknowledgments, intervening identity histories and restore
+continuity still need the wider consumer protocol. The full-export oracle and
+continuity_certified=false remain mandatory.
+
+Live isolated acceptance created a separate fixture application and bootstrapped a
+snapshot. Explicit compilation generated 77 events; deleting its include relationship
+generated one event. Both batches required fallback without history, resolved with
+the previous snapshot graph, and matched fresh full references. Compilation and
+direct SQL include deletion were used to exercise these histories autonomously;
+this was not another human Workbench save. The extra test application was removed;
+the existing Workbench acceptance app and tracking installation were preserved.

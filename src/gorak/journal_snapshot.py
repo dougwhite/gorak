@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,7 +13,8 @@ from lxml import etree
 from .connection import OpenRoadConnection, require_odbc_settings
 from .installation_check import check_installation
 from .journal import acknowledgment_store, bind_store, poll_journal
-from .journal_mapping import map_applications
+from .journal_ancestry import load_ancestry, read_ancestry, write_ancestry
+from .journal_mapping import Entity, map_applications
 from .journal_observation import observe_journal
 from .journal_rebootstrap import publish_consumer
 from .journal_reconcile import flush_directory, persist_comparison
@@ -49,14 +51,20 @@ def snapshot_files(directory: Path) -> dict[str, Path]:
     return result
 
 
+@dataclass(frozen=True)
+class Snapshot:
+    files: dict[str, Path]
+    entities: tuple[Entity, ...] | None
+
+
 def load_snapshot(
     root: Path, installation_id: str, connection: OpenRoadConnection, scope: list[str]
-) -> dict[str, Path] | None:
+) -> Snapshot | None:
     """Reject damaged/replaced/mismatched caches; callers fall back to full export."""
     try:
         pointer = json.loads((root / ".openroad/journal-snapshot.json").read_text())
         if (
-            pointer["version"] != 1
+            pointer["version"] != 2
             or pointer["installation_id"] != installation_id
             or pointer["target"] != target(connection)
             or pointer["scope"] != scope
@@ -75,7 +83,10 @@ def load_snapshot(
             if digest(path) != pointer["sha256"][app]:
                 return None
             xml_inventory(read_document(path), app)
-        return files
+        ancestry = directory.parent / "ancestry.json"
+        if ancestry.is_symlink() or digest(ancestry) != pointer["ancestry_sha256"]:
+            return None
+        return Snapshot(files, load_ancestry(ancestry))
     except (
         OSError,
         ValueError,
@@ -141,7 +152,11 @@ def verify_selective_snapshot(
             batch = poll_journal(settings, store, limit)
         if batch.installation_id != health.installation_id:
             raise ProjectError("Tracking identity changed during snapshot verification")
-        mapping = map_applications(settings, batch)
+        mapping = map_applications(
+            settings,
+            batch,
+            historical_entities=(previous.entities or ()) if previous else (),
+        )
         reason = (
             "explicit_rebootstrap"
             if rebootstrap
@@ -157,7 +172,7 @@ def verify_selective_snapshot(
         if not reason and previous is not None:
             reuse = {
                 app: path
-                for app, path in previous.items()
+                for app, path in previous.files.items()
                 if app not in mapping.applications
             }
         selective_files: dict[str, Path] | None = None
@@ -178,6 +193,8 @@ def verify_selective_snapshot(
             )
             if not matched:
                 reason = "selective_snapshot_differs_from_full_reference"
+        ancestry = read_ancestry(settings)
+        write_ancestry(operation / "ancestry.json", ancestry)
         after = check_installation(settings)
         if (
             after.issues
@@ -207,17 +224,20 @@ def verify_selective_snapshot(
             "incremental_ready": False,
             "journal_observation": before.as_dict(),
             "continuity_certified": False,
+            "historical_entities_used": len(previous.entities or ()) if previous else 0,
+            "captured_entities": len(ancestry) if ancestry is not None else None,
             "rebootstrapped": rebootstrap,
             "previous_state": str(operation / "previous") if rebootstrap else None,
         }
         persist_comparison(operation, report)
         pointer = {
-            "version": 1,
+            "version": 2,
             "installation_id": health.installation_id,
             "target": target(connection),
             "scope": scope,
             "operation": operation.name,
             "sha256": {app: digest(path) for app, path in reference.items()},
+            "ancestry_sha256": digest(operation / "ancestry.json"),
             "journal_observation": before.as_dict(),
         }
         destination = root / ".openroad/journal-snapshot.json"

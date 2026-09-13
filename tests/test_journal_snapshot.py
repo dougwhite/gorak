@@ -40,7 +40,10 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, ...]:
         lambda *a: JournalObservation(2, identity, 0, None),
     )
     mapping = [ApplicationCandidates((), False, (), 0)]
-    monkeypatch.setattr(journal_snapshot, "map_applications", lambda *a: mapping[0])
+    monkeypatch.setattr(
+        journal_snapshot, "map_applications", lambda *a, **kw: mapping[0]
+    )
+    monkeypatch.setattr(journal_snapshot, "read_ancestry", lambda *a: ())
     database = [xml()]
     exports: list[str] = []
 
@@ -346,3 +349,97 @@ def test_rebootstrap_export_failure_keeps_current_state(
         verify_selective_snapshot(connection, root, rebootstrap=True)
     assert pointer.read_bytes() == old_pointer
     assert journal.read_bytes() == old_journal
+
+
+def test_ancestry_corruption_discards_snapshot(project: tuple[Any, ...]) -> None:
+    root, connection, _, _, _ = project
+    verify_selective_snapshot(connection, root)
+    pointer = json.loads((root / ".openroad/journal-snapshot.json").read_text())
+    ancestry = (
+        root / ".openroad/journal-snapshots" / pointer["operation"] / "ancestry.json"
+    )
+    ancestry.write_text('[[1,0,0,"wrong","appsource"]]')
+    result = verify_selective_snapshot(connection, root)
+    assert result["fallback_reason"] == "missing_or_invalid_snapshot"
+    assert result["historical_entities_used"] == 0
+
+
+def test_rebootstrap_never_uses_old_ancestry(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak.journal_mapping import Entity
+
+    root, connection, _, _, _ = project
+    monkeypatch.setattr(
+        journal_snapshot,
+        "read_ancestry",
+        lambda *a: (Entity(1, 0, 0, "example", "appsource"),),
+    )
+    verify_selective_snapshot(connection, root)
+    result = verify_selective_snapshot(connection, root, rebootstrap=True)
+    assert result["historical_entities_used"] == 0
+    assert result["captured_entities"] == 1
+
+
+def test_ancestry_capture_failure_preserves_pointer(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, connection, _, _, _ = project
+    verify_selective_snapshot(connection, root)
+    pointer = root / ".openroad/journal-snapshot.json"
+    original = pointer.read_bytes()
+
+    def fail(*args: Any) -> None:
+        raise RuntimeError("metadata disconnected")
+
+    monkeypatch.setattr(journal_snapshot, "read_ancestry", fail)
+    with pytest.raises(RuntimeError, match="metadata disconnected"):
+        verify_selective_snapshot(connection, root)
+    assert pointer.read_bytes() == original
+
+
+def test_old_snapshot_format_rebuilds_history(project: tuple[Any, ...]) -> None:
+    root, connection, _, _, _ = project
+    verify_selective_snapshot(connection, root)
+    path = root / ".openroad/journal-snapshot.json"
+    pointer = json.loads(path.read_text())
+    pointer["version"] = 1
+    path.write_text(json.dumps(pointer))
+    result = verify_selective_snapshot(connection, root)
+    assert result["fallback_reason"] == "missing_or_invalid_snapshot"
+    assert json.loads(path.read_text())["version"] == 2
+
+
+def test_validated_ancestry_reaches_mapper(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak.journal_mapping import Entity
+
+    root, connection, _, _, _ = project
+    history = (Entity(1, 0, 0, "example", "appsource"),)
+    monkeypatch.setattr(journal_snapshot, "read_ancestry", lambda *a: history)
+    verify_selective_snapshot(connection, root)
+    received = []
+
+    def map_batch(
+        *args: Any, historical_entities: tuple[Entity, ...]
+    ) -> ApplicationCandidates:
+        received.append(historical_entities)
+        return ApplicationCandidates((), False, (), 0)
+
+    monkeypatch.setattr(journal_snapshot, "map_applications", map_batch)
+    result = verify_selective_snapshot(connection, root)
+    assert received == [history]
+    assert result["historical_entities_used"] == 1
+
+
+def test_over_budget_ancestry_does_not_block_full_observation(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, connection, _, _, _ = project
+    monkeypatch.setattr(journal_snapshot, "read_ancestry", lambda *a: None)
+    first = verify_selective_snapshot(connection, root)
+    second = verify_selective_snapshot(connection, root)
+    assert first["captured_entities"] is None
+    assert second["historical_entities_used"] == 0
+    assert second["incremental_ready"] is False

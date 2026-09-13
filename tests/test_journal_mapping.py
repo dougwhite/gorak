@@ -6,7 +6,7 @@ import pytest
 
 from gorak.database import OdbcSettings
 from gorak.journal import MARKER_SQL, JournalBatch, JournalEvent
-from gorak.journal_mapping import map_applications
+from gorak.journal_mapping import Entity, map_applications
 from gorak.project import ProjectError
 
 SETTINGS = OdbcSettings("driver", "host", "port", "source_db", "user", "secret")
@@ -25,7 +25,9 @@ def make_event(
 
 
 def run(
-    events: list[JournalEvent], rows: dict[int, tuple[Any, ...]]
+    events: list[JournalEvent],
+    rows: dict[int, tuple[Any, ...]],
+    historical: tuple[Entity, ...] = (),
 ) -> tuple[Any, MagicMock]:
     engine = MagicMock()
 
@@ -41,6 +43,7 @@ def run(
         SETTINGS,
         JournalBatch(IDENTITY, tuple(events), len(events)),
         engine_factory=lambda _: engine,
+        historical_entities=historical,
     )
     return result, engine
 
@@ -247,3 +250,38 @@ def test_installation_replaced_after_lookup_is_rejected() -> None:
             engine_factory=lambda _: engine,
         )
     engine.dispose.assert_called_once()
+
+
+@pytest.mark.parametrize("table,identity", [("ii_components", 3), ("ii_incl_apps", 1)])
+def test_snapshot_ancestry_resolves_delete_without_entity_event(
+    table: str,
+    identity: int,
+) -> None:
+    history = tuple(Entity(*row) for row in graph().values())
+    result, _ = run(
+        [make_event(table, "d", old={"object_id": identity})], graph(), history
+    )
+    assert result.applications == ("example",)
+    assert not result.full_comparison
+
+
+def test_reused_identity_keeps_historical_and_current_application() -> None:
+    history = tuple(Entity(*row) for row in graph().values())
+    current = graph()
+    current[1] = (1, 0, 0, "replacement", "appsource")
+    result, _ = run([make_event("ii_components", "d")], current, history)
+    assert result.applications == ("example", "replacement")
+    assert not result.full_comparison
+
+
+def test_current_parent_cannot_complete_partial_snapshot_history() -> None:
+    history = (Entity(3, 0, 2, "procedure", "proc4glsource"),)
+    result, _ = run([make_event("ii_components", "d")], graph(), history)
+    assert result.full_comparison
+
+
+def test_snapshot_history_cannot_narrow_shared_storage() -> None:
+    history = tuple(Entity(*row) for row in graph().values())
+    result, _ = run([make_event("ii_stored_strings", "d")], graph(), history)
+    assert result.full_comparison
+    assert not result.applications

@@ -102,6 +102,8 @@ def map_applications(
     settings: OdbcSettings,
     batch: JournalBatch,
     engine_factory: EngineFactory = create_odbc_engine,
+    *,
+    historical_entities: tuple[Entity, ...] = (),
 ) -> ApplicationCandidates:
     """Do not acknowledge events or authorize cached source reuse.
 
@@ -111,6 +113,12 @@ def map_applications(
     if not batch.events:
         return ApplicationCandidates((), False, (), 0)
     entities: dict[int, set[Entity]] = {}
+    historical: dict[int, set[Entity]] = {}
+    for entity in historical_entities:
+        historical.setdefault(entity.identity, set()).add(entity)
+        entities.setdefault(entity.identity, set()).add(entity)
+    # A current parent must never fill a gap in otherwise incomplete historical
+    # ownership: it may be a different object occupying the same numeric ID.
     requested: set[int] = set()
     historical_old_ids = {
         positive_id(event.old.get("object_id"))
@@ -125,12 +133,10 @@ def map_applications(
             if identity:
                 requested.add(identity)
             if event.source_table == "ii_entities":
-                historical = entity_from_side(side)
-                if historical is not None:
-                    entities.setdefault(historical.identity, set()).add(historical)
-                    requested.update(
-                        i for i in (historical.parent, historical.base) if i
-                    )
+                captured = entity_from_side(side)
+                if captured is not None:
+                    entities.setdefault(captured.identity, set()).add(captured)
+                    requested.update(i for i in (captured.parent, captured.base) if i)
 
     engine = engine_factory(settings)
     queries = 0
@@ -210,6 +216,7 @@ def map_applications(
                 event.action == "d"
                 and event.source_table != "ii_entities"
                 and positive_id(event.old.get("object_id")) not in historical_old_ids
+                and not resolve(positive_id(event.old.get("object_id")), historical)[1]
             ):
                 complete = False
             if not complete:
