@@ -87,7 +87,8 @@ and database agree. These do not constitute database transactions across command
 `gorak install --export-sql PATH` now exports a DBA-applied capture-only hook script.
 Direct installation now uses the configured execution backend with ODBC verification.
 A replayable local-acknowledgment consumer and journal preview are implemented;
-source processing, scalable polling, and retention remain pending. This capability
+v2 adds server-side pending selection and durable acknowledgment publication.
+Source processing, large-history performance, and retention remain pending. This capability
 is accepted in principle; exact schema, syntax, privileges, and installation targets
 must be explicit. Temporary rules and the generated script were validated in an isolated database
 and removed afterward. See [DBA installation](../installation.md).
@@ -113,7 +114,8 @@ and removed afterward. See [DBA installation](../installation.md).
 
 ## M2c: Incremental ODBC and server-side fingerprints
 
-- [ ] One small no-change query; candidate-only payload reads for changed objects.
+- [x] Schema v2 selects only unacknowledged event rows server-side, with bounded returned batches.
+- [ ] One small no-change query at scale; candidate-only payload reads for changed objects.
 - [ ] Verify Ingres hash functions, input limits, Unicode/binary handling, and collision
   policy. Hash ordered, length-delimited complete values; never truncate or hash only
   lengths/timestamps. Prefer post-commit dirty-object hashing over row-trigger hashing.

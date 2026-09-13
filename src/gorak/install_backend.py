@@ -47,7 +47,7 @@ def install_command(
 
 
 def install_tracking(
-    connection: OpenRoadConnection, artifact_root: Path
+    connection: OpenRoadConnection, artifact_root: Path, *, upgrade: bool = False
 ) -> InstallationCheck:
     settings = require_odbc_settings(connection)
     if settings.database != connection.database:
@@ -55,8 +55,15 @@ def install_tracking(
     # Validate access before mutation. Existing/partial installations require DBA review.
     before = check_installation(settings)
     if before.status == "capture_only_inventory_present":
-        return before
-    if before.tracking_objects_present:
+        if before.schema_version == 2:
+            return before
+        if not upgrade:
+            raise ProjectError(
+                "Tracking schema v1 is installed; run gorak install --upgrade"
+            )
+    elif upgrade:
+        raise ProjectError("Upgrade requires a complete version 1 installation")
+    elif before.tracking_objects_present:
         raise ProjectError(
             "Existing or partial tracking installation; ask the DBA to review it"
         )
@@ -68,12 +75,13 @@ def install_tracking(
     grants = (
         f'grant select on gorak_tracking_install to "{reader}";\n\\g\n'
         f'grant select on gorak_change_events to "{reader}";\n\\g\n'
+        f'grant select, insert on gorak_journal_acks to "{reader}";\n\\g\n'
     )
     script = (
-        installation_sql()
+        installation_sql(upgrade=upgrade)
         .replace(
             "-- No grants are issued. DBA controls read access; developers need no owner login.",
-            "-- Direct install grants the configured ODBC user SELECT on Gorak tables only.",
+            "-- Direct install grants tracking SELECT and acknowledgment INSERT to the ODBC user.",
         )
         .replace("commit;\n\\g\n", grants + "commit;\n\\g\n")
     )
@@ -114,7 +122,11 @@ def install_tracking(
         raise ProjectError(
             f"SQL finished but ODBC verification failed; installation may exist. Ask the DBA to check read grants. Artifacts: {artifacts}"
         ) from ex
-    if after.issues:
+    if (
+        after.issues
+        or after.schema_version != 2
+        or (upgrade and after.installation_id != before.installation_id)
+    ):
         raise ProjectError(
             f"Installation verification incomplete. Artifacts: {artifacts}"
         )

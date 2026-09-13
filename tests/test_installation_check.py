@@ -67,7 +67,7 @@ def test_wrong_rule_target_and_missing_sequence_detected() -> None:
     [
         [],
         [(1, str(uuid4()), "capture_only")] * 2,
-        [(2, str(uuid4()), "capture_only")],
+        [(3, str(uuid4()), "capture_only")],
         [(1, "bad-uuid", "capture_only")],
         [(1, str(uuid4()), "unknown")],
     ],
@@ -87,3 +87,14 @@ def test_permission_error_is_not_reported_as_success_and_disposes() -> None:
     with pytest.raises(RuntimeError, match="permission denied"):
         run(engine)
     engine.dispose.assert_called_once()
+
+
+def test_v2_requires_ack_table_and_reports_schema_version() -> None:
+    engine, rows = fixture()
+    marker = next(key for key in rows if "schema_version" in key)
+    rows[marker] = [(2, str(uuid4()), "capture_only")]
+    assert "Missing owner tables: gorak_journal_acks" in run(engine).issues
+    rows[CATALOG_QUERIES["tables"]].append(("gorak_journal_acks",))
+    report = run(engine)
+    assert not report.issues
+    assert report.schema_version == 2

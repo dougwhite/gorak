@@ -1,7 +1,7 @@
 """Replayable journal consumer prototype with checkout-local acknowledgments.
 
 This reads event metadata, not source payloads. It deliberately does not authorize
-incremental status: polling still scans retained journal history.
+incremental status. Schema v2 selects pending events on the database server.
 """
 
 import sqlite3
@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from .database import EngineFactory, OdbcSettings, create_odbc_engine
 from .installation import FIELDS, SCHEMA_VERSION, TABLES
+from .journal_server import consumer_identity, publish_acknowledgments
 from .project import ProjectError
 
 COLUMNS = ["event_id", "source_table", "action"] + [
@@ -98,7 +99,7 @@ def poll_journal(
             rows = list(connection.execute(text(MARKER_SQL)))
             if (
                 len(rows) != 1
-                or rows[0][0] != SCHEMA_VERSION
+                or rows[0][0] not in (1, SCHEMA_VERSION)
                 or str(rows[0][2]).strip() != "capture_only"
             ):
                 raise ProjectError("Unsupported journal installation record")
@@ -110,9 +111,27 @@ def poll_journal(
                 raise ProjectError("Invalid journal installation UUID") from ex
             installation_id = str(identity)
             bind_store(store, installation_id)
+            query = EVENT_SQL
+            params: dict[str, str] = {}
+            if rows[0][0] == 2:
+                consumer = consumer_identity(store)
+                publish_acknowledgments(connection, store, consumer)
+                # No high-water cursor: a lower ID can commit after a higher ID.
+                query = (
+                    f"select first {limit} "
+                    + ", ".join("e." + name for name in COLUMNS)
+                    + ' from "$ingres".gorak_change_events e where not exists ('
+                    + 'select 1 from "$ingres".gorak_journal_acks a '
+                    + "where a.consumer_id = :consumer and a.event_id = e.event_id)"
+                )
+                params = {"consumer": consumer}
             events: list[JournalEvent] = []
             scanned = 0
-            result = connection.execute(text(EVENT_SQL))
+            result = (
+                connection.execute(text(query), params)
+                if params
+                else connection.execute(text(query))
+            )
             try:
                 while len(events) < limit:
                     # Stream metadata; do not materialize a potentially huge journal.
@@ -176,8 +195,14 @@ def consume_journal(
     batch = poll_journal(settings, store, limit, engine_factory)
     for event in batch.events:
         process(event)
-        store.execute(
-            "insert or ignore into acknowledged values (?)", (event.event_id,)
-        )
-        store.commit()
+        with store:
+            store.execute(
+                "insert or ignore into acknowledged values (?)", (event.event_id,)
+            )
+            if store.execute(
+                "select 1 from sqlite_master where type = 'table' and name = 'ack_outbox'"
+            ).fetchone():
+                store.execute(
+                    "insert or ignore into ack_outbox values (?)", (event.event_id,)
+                )
     return batch

@@ -30,6 +30,7 @@ class InstallationCheck:
     issues: list[str]
     incremental_ready: bool = False
     tracking_objects_present: bool = True
+    schema_version: int | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -43,6 +44,7 @@ def check_installation(
     engine = engine_factory(settings)
     issues: list[str] = []
     installation_id = None
+    schema_version = None
     try:
         with engine.connect() as connection:
             # Bounded waiting; do not inherit a site's dirty-read configuration.
@@ -85,7 +87,8 @@ def check_installation(
                     issues.append("Expected exactly one installation record")
                 else:
                     version, identity, mode = rows[0]
-                    if version != SCHEMA_VERSION:
+                    schema_version = int(version)
+                    if version not in (1, SCHEMA_VERSION):
                         issues.append(f"Unsupported tracking schema version: {version}")
                     if str(mode).strip() != "capture_only":
                         issues.append("Unsupported tracking mode")
@@ -96,6 +99,15 @@ def check_installation(
                         installation_id = str(parsed)
                     except ValueError:
                         issues.append("Invalid installation UUID")
+            if schema_version == 2:
+                if "gorak_journal_acks" not in inventory["tables"]:
+                    issues.append("Missing owner tables: gorak_journal_acks")
+                else:
+                    connection.execute(
+                        text(
+                            'select consumer_id, event_id from "$ingres".gorak_journal_acks where 1 = 0'
+                        )
+                    )
             # Verify developer read permission without scanning accumulated events.
             if "gorak_change_events" in inventory["tables"]:
                 connection.execute(
@@ -109,8 +121,10 @@ def check_installation(
         "incomplete" if issues else "capture_only_inventory_present",
         installation_id,
         issues,
+        schema_version=schema_version,
         tracking_objects_present=bool(
-            inventory["tables"] & EXPECTED_TABLES
+            inventory["tables"]
+            & (EXPECTED_TABLES | {"gorak_journal_acks", "gorak_upgrade_guard"})
             or inventory["procedures"] & {"gorak_record_change"}
             or inventory["sequences"] & {"gorak_change_seq"}
             or {name for name, _ in rules} & EXPECTED_RULES.keys()

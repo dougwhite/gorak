@@ -53,7 +53,9 @@ def test_local_uses_argument_vector() -> None:
 def test_success_saves_script_log_and_checks_after(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ready = InstallationCheck("capture_only_inventory_present", "id", [])
+    ready = InstallationCheck(
+        "capture_only_inventory_present", "id", [], schema_version=2
+    )
     checks = MagicMock(
         side_effect=[
             InstallationCheck(
@@ -112,7 +114,9 @@ def test_partial_installation_is_not_overwritten(
 def test_existing_installation_is_noop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ready = InstallationCheck("capture_only_inventory_present", "id", [])
+    ready = InstallationCheck(
+        "capture_only_inventory_present", "id", [], schema_version=2
+    )
     monkeypatch.setattr(install_backend, "check_installation", lambda _: ready)
     assert install_tracking(connection(), tmp_path) == ready
     assert not list(tmp_path.iterdir())
@@ -147,3 +151,58 @@ def test_mismatched_database_rejected_before_connection(tmp_path: Path) -> None:
 
     with pytest.raises(ProjectError, match="targets differ"):
         install_tracking(replace(connection(), database="different_db"), tmp_path)
+
+
+def test_v1_requires_explicit_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ready = InstallationCheck(
+        "capture_only_inventory_present", "id", [], schema_version=1
+    )
+    monkeypatch.setattr(install_backend, "check_installation", lambda _: ready)
+    with pytest.raises(ProjectError, match="--upgrade"):
+        install_tracking(connection(), tmp_path)
+    assert not list(tmp_path.iterdir())
+
+
+def test_upgrade_applies_migration_and_ack_grants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        install_backend,
+        "check_installation",
+        MagicMock(
+            side_effect=[
+                InstallationCheck(
+                    "capture_only_inventory_present", "id", [], schema_version=1
+                ),
+                InstallationCheck(
+                    "capture_only_inventory_present", "id", [], schema_version=2
+                ),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess([], 0, "done", ""),
+    )
+    assert install_tracking(connection(), tmp_path, upgrade=True).schema_version == 2
+    sql = next(tmp_path.glob("*/install.sql")).read_text()
+    assert 'grant select, insert on gorak_journal_acks to "user"' in sql
+    assert "update gorak_tracking_install" in sql
+    assert "create rule gorak_track_" not in sql
+
+
+def test_upgrade_refuses_missing_installation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        install_backend,
+        "check_installation",
+        lambda _: InstallationCheck(
+            "incomplete", None, ["missing"], tracking_objects_present=False
+        ),
+    )
+    with pytest.raises(ProjectError, match="complete version 1"):
+        install_tracking(connection(), tmp_path, upgrade=True)

@@ -80,6 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
     install_action.add_argument(
         "--check", action="store_true", help="Check tracking inventory via ODBC"
     )
+    install_parser.add_argument(
+        "--upgrade", action="store_true", help="Upgrade tracking schema v1 to v2"
+    )
     add_openroad_connection_args(install_parser)
 
     journal_parser = subparsers.add_parser(
@@ -783,6 +786,8 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
         if parsed.command == "install":
             from .installation import export_installation_sql, installation_sql
 
+            if parsed.check and parsed.upgrade:
+                raise ProjectError("--check cannot be combined with --upgrade")
             if parsed.check:
                 from .connection import require_odbc_settings
                 from .installation_check import check_installation
@@ -801,14 +806,16 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                     raise ProjectError("Direct installation requires a gorak project")
                 connection = resolve_openroad_connection(parsed, context)
                 report = install_tracking(
-                    connection, context.project.root / ".openroad" / "installations"
+                    connection,
+                    context.project.root / ".openroad" / "installations",
+                    upgrade=parsed.upgrade,
                 )
                 print(json.dumps(report.as_dict(), indent=2))
                 return
             if parsed.export_sql == "-":
-                print(installation_sql(), end="")
+                print(installation_sql(upgrade=parsed.upgrade), end="")
             else:
-                export_installation_sql(Path(parsed.export_sql))
+                export_installation_sql(Path(parsed.export_sql), upgrade=parsed.upgrade)
                 print(
                     f"Exported capture-only installation SQL to {parsed.export_sql}; no database changes made"
                 )

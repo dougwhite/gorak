@@ -13,14 +13,14 @@ UUID is created separately in each target.
 
 ## Current scope
 
-This first script installs **capture-only schema version 1**: an installation record,
-a change-event table, a sequence, a procedure, and 24 rules on eight source-related
+This first script installs **capture-only schema version 2**: an installation record,
+a change-event table, a consumer acknowledgment table, a sequence, a procedure, and 24 rules on eight source-related
 tables. It preserves old/new identity context, including entity names and parent,
 base/version relationships and chunk keys where available. It does not copy source
 payloads into the journal.
 
 This is an initial installation artifact for validation, not a completed incremental
-sync feature. Source-processing integration, retention/pruning, full health certification, upgrades, and
+sync feature. Source-processing integration, retention/pruning, full health certification, general migrations, and
 complete source-table coverage are not implemented. Events accumulate. Do not deploy
 indefinitely on a busy source database without an agreed lifecycle. Existing names
 cause installation to stop; the script never drops or replaces an installation.
@@ -69,7 +69,7 @@ the exported file includes terminal-monitor commands and is not generic SQL-clie
 input.
 
 On success, the final query displays one `gorak_tracking_install` record with version
-1, a nonempty installation UUID, and mode `capture_only`. The DBA should inspect the
+2, a nonempty installation UUID, and mode `capture_only`. The DBA should inspect the
 log and verify the expected tables, procedure, sequence and all 24 rules exist. This
 record alone is not a future runtime health guarantee: missing/modified hooks must
 still be checked beyond the inventory diagnostic below.
@@ -141,13 +141,13 @@ stages a unique SQL file in the configured Gorak root, executes it through
 PowerShell and the Windows SQL client, and removes the remote file after execution.
 The remote root must already exist; existing remote helper installation provides it.
 
-Direct installation adds SELECT grants on the two Gorak tracking tables to the
-configured ODBC user, inside the installation transaction. It grants no source or
-journal write access. The standalone `--export-sql` artifact remains grant-free so
+Direct installation adds SELECT grants on the two capture tables and SELECT/INSERT
+on the consumer acknowledgment table for the configured ODBC user, inside the
+installation transaction. It grants no source or captured-event write access. The standalone `--export-sql` artifact remains grant-free so
 the DBA can choose site-specific permissions. SQL and logs are retained under
 `.openroad/installations/<operation>/`.
 
-A complete existing inventory is a no-op. Partial installations are refused rather
+A complete existing version 2 inventory is a no-op; version 1 requires explicit upgrade. Partial installations are refused rather
 than repaired or replaced. SQL errors, nonzero process exits, timeouts and failed
 postchecks do not report success. If verification fails after SQL completes, the
 installation may exist: inspect the retained log and permissions before retrying.
@@ -163,3 +163,35 @@ isolated source database.
 
 A [journal preview and replayable consumer primitive](journal.md) is now available.
 It does not yet process source changes or make status incremental.
+
+## Upgrade v1 to v2
+
+```sh
+gorak install --upgrade
+```
+
+This uses the same configured execution backend as installation, then verifies
+version 2 over ODBC. It preserves installation identity, events, capture rules,
+and procedure. Existing v1 journal consumers remain readable until upgraded.
+
+For DBA-managed execution:
+
+```sh
+gorak install --upgrade --export-sql gorak-upgrade.sql
+```
+
+Apply with the same owner identity and rollback/error-stop environment as the
+installation script. The export contains no grants. The DBA must grant the reader
+SELECT and INSERT on `gorak_journal_acks`; direct upgrade supplies those grants
+for the configured ODBC account. Other developer accounts need their own DBA grants.
+
+The SQL validates exactly one v1 capture-only marker through a temporary guard
+table with a CHECK constraint. A wrong version aborts and rolls back. It creates
+the acknowledgment table, updates the version, then drops its newly created guard
+table within the transaction. It never drops existing capture data or rules.
+Unknown/partial installations require DBA review. Quiesce source writes during
+schema administration.
+
+Live isolated acceptance verified v1-to-v2 identity preservation, populated
+consumer polling, rejection/rollback when the upgrade was applied to v2, and fresh
+v2 installation. Temporary tracking objects were removed afterward.

@@ -4,7 +4,8 @@ from pathlib import Path
 
 from .project import ProjectError
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+ACK_TABLE_SQL = "create table gorak_journal_acks (consumer_id char(36) not null, event_id bigint not null, primary key (consumer_id, event_id)) with page_size=8192"
 # Preserve identity context at deletion time; values are trusted schema identifiers.
 FIELDS: dict[str, str] = {
     "object_id": "integer",
@@ -88,6 +89,7 @@ def installation_statements() -> list[str]:
                 + ")"
             )
     statements += [
+        ACK_TABLE_SQL,
         f"insert into gorak_tracking_install values ({SCHEMA_VERSION}, uuid_to_char(uuid_create()), 'capture_only')",
         "commit",
         "select schema_version, installation_id, mode from gorak_tracking_install",
@@ -95,8 +97,22 @@ def installation_statements() -> list[str]:
     return statements
 
 
-def installation_sql() -> str:
-    header = """-- Gorak capture-only tracking schema v1, for DBA review.
+def upgrade_statements() -> list[str]:
+    return [
+        "set autocommit off",
+        "set session with on_error = rollback transaction",
+        "create table gorak_upgrade_guard (valid integer not null check (valid = 1))",
+        "insert into gorak_upgrade_guard select case when count(*) = 1 and min(schema_version) = 1 and min(mode) = 'capture_only' then 1 else 0 end from gorak_tracking_install",
+        ACK_TABLE_SQL,
+        "update gorak_tracking_install set schema_version = 2 where schema_version = 1",
+        "drop table gorak_upgrade_guard",
+        "commit",
+        "select schema_version, installation_id, mode from gorak_tracking_install",
+    ]
+
+
+def installation_sql(*, upgrade: bool = False) -> str:
+    header = """-- Gorak capture-only tracking schema v2, for DBA review.
 -- Run ONLY in an initialized OpenROAD source database as its $ingres owner.
 -- Ingres terminal-monitor script, not a database-creation or migration script.
 -- Set II_TM_EXIT_ON_ERROR=rollback in the invoking environment.
@@ -104,19 +120,24 @@ def installation_sql() -> str:
 -- Stop on any error; never infer success from the process exit code alone.
 -- Fresh installation only: existing Gorak names cause failure; nothing is dropped.
 -- No grants are issued. DBA controls read access; developers need no owner login.
--- Capture only: no fast-sync consumer, pruning, upgrades, or full coverage guarantee.
+-- Capture only: no source-processing fast path, pruning, or full coverage guarantee.
 -- Events grow until an explicit retention mechanism is implemented.
 -- Validate in a disposable database before deployment. See docs/installation.md.
 \\nocontinue
 """
-    return header + "\n".join(
-        statement + ";\n\\g\n" for statement in installation_statements()
-    )
+    if upgrade:
+        header = header.replace(
+            "-- Fresh installation only: existing Gorak names cause failure; nothing is dropped.",
+            "-- Upgrade v1 to v2 only; preserves installation identity, source, events and rules.\n"
+            "-- A transaction-local guard table is created and dropped; existing names abort.",
+        )
+    statements = upgrade_statements() if upgrade else installation_statements()
+    return header + "\n".join(statement + ";\n\\g\n" for statement in statements)
 
 
-def export_installation_sql(path: Path) -> None:
+def export_installation_sql(path: Path, *, upgrade: bool = False) -> None:
     try:
         with path.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(installation_sql())
+            stream.write(installation_sql(upgrade=upgrade))
     except FileExistsError as ex:
         raise ProjectError(f"Refusing to overwrite existing SQL file: {path}") from ex

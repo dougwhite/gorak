@@ -57,3 +57,13 @@ def test_install_actions_are_exclusive() -> None:
     with pytest.raises(SystemExit) as caught:
         cli.main(["install", "--check", "--export-sql", "-"])
     assert caught.value.code == 2
+
+
+def test_upgrade_sql_can_be_exported_without_connection(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli.main(["install", "--upgrade", "--export-sql", "-"])
+    sql = capsys.readouterr().out
+    assert "Upgrade v1 to v2 only" in sql
+    assert "create table gorak_journal_acks" in sql
+    assert "create rule gorak_track_" not in sql

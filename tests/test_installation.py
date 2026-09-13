@@ -58,3 +58,26 @@ def test_script_is_fresh_capture_only_installation_with_error_stop() -> None:
         for i, s in enumerate(statements)
         if s.startswith("insert into gorak_tracking_install")
     ) > max(i for i, s in enumerate(statements) if s.startswith("create rule"))
+
+
+def test_upgrade_preserves_source_events_identity_and_rules() -> None:
+    from gorak.installation import upgrade_statements
+
+    statements = upgrade_statements()
+    sql = "\n".join(statements)
+    assert "primary key (consumer_id, event_id)" in sql
+    assert "count(*) = 1 and min(schema_version) = 1" in sql
+    assert "update gorak_tracking_install set schema_version = 2" in sql
+    assert "uuid_create" not in sql
+    assert not any(
+        s.startswith(
+            ("delete ", "create rule", "drop rule", "drop table gorak_change_events")
+        )
+        for s in statements
+    )
+    assert statements.index("commit") > next(
+        i
+        for i, s in enumerate(statements)
+        if s.startswith("update gorak_tracking_install")
+    )
+    assert "Upgrade v1 to v2 only" in installation_sql(upgrade=True)

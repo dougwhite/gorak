@@ -439,3 +439,7 @@ SQL connection. See [direct installation](installation.md#direct-installation).
 `gorak journal [--limit N]` previews pending committed source-change events over
 ODBC, using a checkout-local acknowledgment store. It does not acknowledge events
 or enable incremental sync. See [journal consumer](journal.md).
+
+`gorak install --upgrade` upgrades capture schema v1 to v2 through the configured
+backend; `--upgrade --export-sql PATH` exports the guarded upgrade for the DBA.
+Version 2 enables server-side pending-event selection for `gorak journal`.
