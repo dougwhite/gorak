@@ -138,6 +138,7 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Isolated live acceptance: same-identity acknowledgment replay, changed-identity recovery, and rejection of a late lower-ID commit during export. See [recovery acceptance](../research/journal-recovery-acceptance.md).
 - [x] Hash-checked historical entity ancestry narrows diagnostic deletion mapping while retaining current candidates; live compile/include checks match full exports. Plain journal mapping and full-reference guards remain conservative.
 - [x] Bounded lookahead distinguishes an exhausted pending set from a truncated batch, without acknowledging the extra event; live exact/short-limit checks passed.
+- [x] Private observer progress is hash-bound and atomically published with full-reference snapshots; general reconciliation cannot hide observer events. Unpublished checkpoints replay, with live independent-consumer acceptance.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.

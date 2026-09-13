@@ -233,9 +233,9 @@ mismatch is reported.
 
 Output includes `mode` (`selective_verified` or `full_fallback`), the fallback
 reason, reused and selectively exported application names, the full-reference
-application list, and the existing three-way source differences. Newly previewed
-events are not acknowledged. Pending acknowledgment publication from previously
-completed work follows the normal journal polling behavior.
+application list, and the existing three-way source differences. General reconciliation acknowledgments are unchanged. A private observer
+checkpoints the inspected event IDs only alongside a successful full-reference
+snapshot; its publication protocol is described below.
 
 Evidence is stored in `.openroad/journal-snapshots/<operation>/`. A local
 `.openroad/journal-snapshot.json` pointer records installation identity, configured
@@ -269,7 +269,8 @@ before polling and again immediately before publishing its snapshot pointer.
 Each read uses a fresh ODBC connection and one aggregate statement containing the
 installation marker. A change in identity, schema version, count or maximum rejects
 publication and preserves the previous pointer. Connection failure also aborts
-publication. No new events are acknowledged.
+publication. No new general-consumer events are acknowledged; private observer
+progress is published with successful snapshot evidence.
 
 This uses the entire retained journal, independent of consumer acknowledgments.
 A count increase detects a lower event ID that commits late even when the maximum
@@ -353,10 +354,10 @@ restore has yet been exercised.
 
 ### Historical entity ancestry in diagnostic snapshots
 
-Observation pointer format 2 adds a hash-checked ancestry.json beside the full XML
+Observation pointers include a hash-checked ancestry.json beside the full XML
 reference. It records entity IDs, parent/base links, names and kinds from a bounded
 ODBC metadata read inside the same guarded observation window. It does not change
-the database tracking schema. Old format-1 pointers automatically take the full
+the database tracking schema. Older pointer formats automatically take the full
 bootstrap path.
 
 The next selective verification gives the mapper this historical graph in addition
@@ -409,3 +410,47 @@ Live read-only acceptance used 447 retained events and a fresh temporary consume
 A limit of 447 reported complete; 446 reported incomplete and transferred only the
 one additional event needed to establish it. The journal stayed unchanged and no
 events were acknowledged.
+
+
+### Private observer checkpoints
+
+Snapshot pointer format 3 binds full XML, ancestry and an observer.sqlite3 progress
+file through hashes and one atomic pointer replacement. Routine verification no
+longer reads or advances the general journal.sqlite3 consumer used by preview and
+reconciliation. General acknowledgments cannot hide events from the observer.
+
+Each operation stages a copy of the previous observer database (or creates a new
+consumer on bootstrap). Polling that copy can publish previously verified outbox
+entries. After the full reference and stability checks, it records only the returned
+event IDs in the staged observer's acknowledgments and outbox. The lookahead event
+remains pending. XML, ancestry, SQLite state and report are flushed before pointer
+publication. A later operation publishes those new observer IDs to the server only
+after loading the successful checkpoint.
+
+An unpublished operation's new progress is never used for subsequent polling. A
+failed reference, metadata read, receipt flush or publication preserves the previous
+published observation (or leaves no pointer during explicit rebootstrap recovery).
+The previous observer database is never opened for mutation.
+
+Reports retain acknowledged=false for general reconciliation and add
+observer_consumer_id, observer_checkpointed_events and general_consumer_unchanged.
+These private acknowledgments mean "included in a full observed comparison", not
+"disk and database agree" or "imported". Differences/conflicts may remain in the
+report; common source baselines never advance.
+
+Rebootstrap resets the general consumer as before and independently creates a fresh
+observer. Older format-1/2 pointers rebuild through a full reference and a new
+observer, replaying retained events. Missing or corrupted observer files invalidate
+the entire snapshot. Old observer/server acknowledgment retention is not implemented.
+
+Live isolated acceptance acknowledged real compile and include-delete events through
+the general consumer before verification. The private observer still saw all 77
+compile events and the include deletion, and both selective passes matched full
+references. A following quiet pass checkpointed zero new events. The temporary app
+was removed and existing manual acceptance tracking was retained.
+
+This is still a diagnostic protocol. Restoring an older valid local snapshot pointer
+can disagree with already-published server receipts; deliberate local/database
+restores require rebootstrap. Physical restore detection, complete larger event
+windows, retention, scalable receipt validation and removal of the full oracle remain
+open. Do not use these checkpoints to authorize incremental status/sync yet.

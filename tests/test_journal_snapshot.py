@@ -25,6 +25,10 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, ...]:
         sql_backend="odbc",
         odbc_settings=OdbcSettings("driver", "host", "port", "db", "user", "secret"),
     )
+    from gorak.journal import acknowledgment_store
+
+    with acknowledgment_store(tmp_path / ".openroad/journal.sqlite3"):
+        pass
     identity = str(uuid4())
     health = InstallationCheck(
         "capture_only_inventory_present", identity, [], schema_version=2
@@ -407,7 +411,7 @@ def test_old_snapshot_format_rebuilds_history(project: tuple[Any, ...]) -> None:
     path.write_text(json.dumps(pointer))
     result = verify_selective_snapshot(connection, root)
     assert result["fallback_reason"] == "missing_or_invalid_snapshot"
-    assert json.loads(path.read_text())["version"] == 2
+    assert json.loads(path.read_text())["version"] == 3
 
 
 def test_validated_ancestry_reaches_mapper(
@@ -464,3 +468,72 @@ def test_exact_limit_with_proven_exhaustion_can_verify_selectively(
     assert result["pending_set_complete"] is True
     assert result["mode"] == "selective_verified"
     assert result["selective_matches_reference"] is True
+
+
+def test_routine_snapshot_keeps_general_consumer_unchanged(
+    project: tuple[Any, ...],
+) -> None:
+    root, connection, _, _, _ = project
+    general = root / ".openroad/journal.sqlite3"
+    before = general.read_bytes()
+    first = verify_selective_snapshot(connection, root)
+    second = verify_selective_snapshot(connection, root)
+    assert general.read_bytes() == before
+    assert second["general_consumer_unchanged"] is True
+    assert first["observer_consumer_id"] == second["observer_consumer_id"]
+
+
+def test_observer_corruption_rebuilds_full_snapshot(project: tuple[Any, ...]) -> None:
+    root, connection, _, _, _ = project
+    first = verify_selective_snapshot(connection, root)
+    pointer = json.loads((root / ".openroad/journal-snapshot.json").read_text())
+    observer = (
+        root / ".openroad/journal-snapshots" / pointer["operation"] / "observer.sqlite3"
+    )
+    observer.write_bytes(b"corrupt")
+    second = verify_selective_snapshot(connection, root)
+    assert second["fallback_reason"] == "missing_or_invalid_snapshot"
+    assert second["observer_consumer_id"] != first["observer_consumer_id"]
+
+
+def test_unpublished_observer_checkpoint_replays_on_snapshot_retry(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak.journal import poll_journal
+    from tests.test_journal_server import Server
+
+    root, connection, _, _, _ = project
+    server = Server()
+    identity = str(verify_selective_snapshot(connection, root)["installation_id"])
+    server.db.execute(
+        'update "$ingres".gorak_tracking_install set installation_id=?', (identity,)
+    )
+    server.db.commit()
+    monkeypatch.setattr(
+        journal_snapshot,
+        "poll_journal",
+        lambda settings, store, limit, **kw: poll_journal(
+            settings, store, limit, server.factory, **kw
+        ),
+    )
+    verify_selective_snapshot(connection, root)
+    pointer = root / ".openroad/journal-snapshot.json"
+    original = pointer.read_bytes()
+    server.add(1)
+    from gorak.journal_reconcile import persist_comparison as persist
+
+    def fail(*args: Any) -> None:
+        raise OSError("receipt flush failed")
+
+    monkeypatch.setattr(journal_snapshot, "persist_comparison", fail)
+    with pytest.raises(OSError, match="receipt flush failed"):
+        verify_selective_snapshot(connection, root)
+    assert pointer.read_bytes() == original
+    assert server.db.execute(
+        'select count(*) from "$ingres".gorak_journal_acks'
+    ).fetchone() == (0,)
+    monkeypatch.setattr(journal_snapshot, "persist_comparison", persist)
+    retry = verify_selective_snapshot(connection, root)
+    assert retry["observer_checkpointed_events"] == 1
+    following = verify_selective_snapshot(connection, root)
+    assert following["observer_checkpointed_events"] == 0

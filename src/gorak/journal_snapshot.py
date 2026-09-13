@@ -16,6 +16,7 @@ from .journal import acknowledgment_store, bind_store, poll_journal
 from .journal_ancestry import load_ancestry, read_ancestry, write_ancestry
 from .journal_mapping import Entity, map_applications
 from .journal_observation import observe_journal
+from .journal_observer import checkpoint_observer, stage_observer
 from .journal_rebootstrap import publish_consumer
 from .journal_reconcile import flush_directory, persist_comparison
 from .journal_server import consumer_identity
@@ -55,6 +56,7 @@ def snapshot_files(directory: Path) -> dict[str, Path]:
 class Snapshot:
     files: dict[str, Path]
     entities: tuple[Entity, ...] | None
+    observer: Path
 
 
 def load_snapshot(
@@ -64,7 +66,7 @@ def load_snapshot(
     try:
         pointer = json.loads((root / ".openroad/journal-snapshot.json").read_text())
         if (
-            pointer["version"] != 2
+            pointer["version"] != 3
             or pointer["installation_id"] != installation_id
             or pointer["target"] != target(connection)
             or pointer["scope"] != scope
@@ -86,7 +88,10 @@ def load_snapshot(
         ancestry = directory.parent / "ancestry.json"
         if ancestry.is_symlink() or digest(ancestry) != pointer["ancestry_sha256"]:
             return None
-        return Snapshot(files, load_ancestry(ancestry))
+        observer = directory.parent / "observer.sqlite3"
+        if observer.is_symlink() or digest(observer) != pointer["observer_sha256"]:
+            return None
+        return Snapshot(files, load_ancestry(ancestry), observer)
     except (
         OSError,
         ValueError,
@@ -106,7 +111,7 @@ def verify_selective_snapshot(
     *,
     rebootstrap: bool = False,
 ) -> dict[str, object]:
-    """Publish only full-reference snapshots; never acknowledge newly polled events."""
+    """Publish full references with private observer progress, never reconciliation."""
     settings = require_odbc_settings(connection)
     if settings.database != connection.database:
         raise ProjectError("Snapshot SQL and ODBC database targets differ")
@@ -140,15 +145,19 @@ def verify_selective_snapshot(
             if rebootstrap
             else load_snapshot(root, health.installation_id, connection, scope)
         )
-        store_path = (
-            operation / "journal.sqlite3"
-            if rebootstrap
-            else root / ".openroad/journal.sqlite3"
-        )
-        with acknowledgment_store(store_path) as store:
-            if rebootstrap:
+        # Rebootstrap still resets the general consumer as explicitly requested.
+        # Routine observations never read or modify that consumer.
+        if rebootstrap:
+            with acknowledgment_store(operation / "journal.sqlite3") as store:
                 bind_store(store, health.installation_id)
                 consumer_identity(store)
+        observer_path = operation / "observer.sqlite3"
+        observer_id = stage_observer(
+            observer_path,
+            health.installation_id,
+            previous.observer if previous is not None else None,
+        )
+        with acknowledgment_store(observer_path) as store:
             batch = poll_journal(settings, store, limit, verify_complete=True)
         if batch.installation_id != health.installation_id:
             raise ProjectError("Tracking identity changed during snapshot verification")
@@ -222,6 +231,9 @@ def verify_selective_snapshot(
             ),
             "changes": format_plan(changes),
             "acknowledged": False,
+            "observer_consumer_id": observer_id,
+            "observer_checkpointed_events": len(batch.events),
+            "general_consumer_unchanged": not rebootstrap,
             "pending_set_complete": batch.complete,
             "incremental_ready": False,
             "journal_observation": before.as_dict(),
@@ -231,15 +243,17 @@ def verify_selective_snapshot(
             "rebootstrapped": rebootstrap,
             "previous_state": str(operation / "previous") if rebootstrap else None,
         }
+        checkpoint_observer(observer_path, batch.events)
         persist_comparison(operation, report)
         pointer = {
-            "version": 2,
+            "version": 3,
             "installation_id": health.installation_id,
             "target": target(connection),
             "scope": scope,
             "operation": operation.name,
             "sha256": {app: digest(path) for app, path in reference.items()},
             "ancestry_sha256": digest(operation / "ancestry.json"),
+            "observer_sha256": digest(observer_path),
             "journal_observation": before.as_dict(),
         }
         destination = root / ".openroad/journal-snapshot.json"
