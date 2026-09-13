@@ -96,3 +96,12 @@ cleanup for an initial implementation; storage maintenance remains explicit.
 This work does not require another manual Workbench action for the initial protocol
 experiments. Cross-application moves, version restoration/purge and physical restore
 acceptance remain separate coverage gates before broader claims.
+
+
+### Writer configuration progress
+
+[Owner-rule and actual OpenROAD CLI experiments](writer-configuration-acceptance.md)
+confirmed caller identity/permissions and process-local row-lock initialization at
+import/compile source mutations. Active Workbench settings, table-specific startup
+integration, multi-server/restart identity and bounded observation remain gates.
+No global defaults, installed tracking or normal source-command behavior changed.
