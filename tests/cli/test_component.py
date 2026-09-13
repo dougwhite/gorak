@@ -7,7 +7,7 @@ from pytest import CaptureFixture, MonkeyPatch
 from gorak import cli
 from gorak import export as export_module
 from gorak.database import OdbcSettings
-from gorak.domain import ComponentInfo
+from gorak.domain import Application, ComponentInfo
 from gorak.remote import RemoteHost
 
 FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "fm_example_frame.xml"
@@ -22,9 +22,7 @@ def write_project(root: Path, env: str) -> None:
 def write_local_project(root: Path) -> None:
     write_project(
         root,
-        "GORAK_BACKEND=local\n"
-        "GORAK_VNODE=project-vnode\n"
-        "GORAK_DATABASE=project-db\n",
+        "GORAK_BACKEND=local\nGORAK_VNODE=project-vnode\nGORAK_DATABASE=project-db\n",
     )
 
 
@@ -58,6 +56,9 @@ class TestComponentExport:
         tmp_path: Path,
         capsys: CaptureFixture[str],
     ) -> None:
+        monkeypatch.setattr(
+            export_module, "read_applications", lambda c: [Application("app", "", "")]
+        )
         calls: list[object] = []
         project_root = tmp_path / "my_project"
         write_remote_project(project_root)
@@ -127,6 +128,9 @@ class TestComponentExport:
         tmp_path: Path,
         capsys: CaptureFixture[str],
     ) -> None:
+        monkeypatch.setattr(
+            export_module, "read_applications", lambda c: [Application("app", "", "")]
+        )
         project_root = tmp_path / "my_project"
         xml_path = project_root / ".openroad" / "app" / "component.xml"
         w4gl_path = project_root / "app" / "fm_example_frame.w4gl"
@@ -326,6 +330,9 @@ class TestComponentExport:
         tmp_path: Path,
         capsys: CaptureFixture[str],
     ) -> None:
+        monkeypatch.setattr(
+            export_module, "read_applications", lambda c: [Application("app", "", "")]
+        )
         calls: list[object] = []
         project_root = tmp_path / "my_project"
         write_local_project(project_root)
