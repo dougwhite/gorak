@@ -41,7 +41,7 @@ and [sync behavior and timing](../synchronization.md).
 | M0 | Preserve baseline and document demo | Complete; roadmap updated | Walkthrough, decisions, gaps, and evidence retained |
 | M1 | Portable source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Cache-free clone restores equivalent source and runnable sample; broader types remain open |
 | M2a | Complete sync correctness and recovery | Substantial partial implementation | Both directions handle edits/additions/deletions; conflicts, branch switches, interruptions preserve work |
-| M2b | Install database change tracking | Research/design | Transaction-safe journal covers all source changes with bounded save overhead |
+| M2b | Install database change tracking | Transaction prototype passed; installer/coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
 | M2c | Incremental ODBC status and fingerprinting | Research | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
 | M2d | Direct source decoding | Research | ODBC → Gorak source matches reference exports across supported types without w4gldev |
 | M2e | Direct source encoding and saving | Not started | Disk → DB → Workbench/run round trip preserves source and repository invariants |
@@ -92,7 +92,9 @@ must be explicit. No rules have been installed by the research work.
   probes: script, metadata, include, frame, image, rename, version, deletion, no-op save.
 - [ ] Minimal rule work: mark dirty identities or record small events, not repeatedly
   hash/rebuild an entire object on every chunk update.
-- [ ] Rollback and out-of-order commit tests; sequence allocation alone is not a safe
+- [x] Synthetic rule prototype: rollback, reverse commit, MVCC committed reads,
+  independent consumers, updates and deletion events. See [journal research](../research/change-journal.md).
+- [ ] Production cursor/retention and real-source transaction acceptance; sequence allocation alone is not a safe
   committed-change cursor. Choose and prove a correct watermark/acknowledgment model.
 - [ ] Tombstones, per-checkout progress, retention, reconnect/offline consumers, rescan.
 - [ ] Detect disabled/missing rules, incomplete installation, database restore/replacement.

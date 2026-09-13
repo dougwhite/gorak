@@ -165,3 +165,17 @@ concurrent disk/database changes, failed installation, and deferred script cache
 Validation: 412 tests, Ruff, and strict mypy pass. No live OpenROAD acceptance was
 run for this slice. Partial database writes still need deliberate reconciliation;
 recovery does not overwrite either source side or implement database rollback.
+
+
+## M2b transactional journal prototype, 2026-09-13
+
+Live ODBC tests on disposable source/journal/acknowledgment tables verified rollback,
+reverse commit order, independent consumers, update and deletion capture. MVCC let a
+reader observe a higher committed event while a lower event was still uncommitted;
+explicit per-event acknowledgments preserved discovery of the late lower event.
+Ordinary locking timed out rather than exposing the uncommitted row. An initial
+writer-side journal scan caused contention and was removed from the probe.
+
+This is transaction-mechanics evidence only: no production source rules, installer,
+retention implementation, source coverage, or large-save performance acceptance.
+Details and limitations: [journal research](../research/change-journal.md).
