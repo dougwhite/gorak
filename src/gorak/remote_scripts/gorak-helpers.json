@@ -1,9 +1,11 @@
 {
-  "version": "1",
+  "version": "3",
   "files": [
     "applist.sql",
     "backup-application.bat",
     "backup-component.bat",
+    "import-component.bat",
+    "run-application.ps1",
     "get-app-list.bat",
     "get-component-list.bat",
     "get-component-sync-metadata.bat",

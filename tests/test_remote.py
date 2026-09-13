@@ -103,11 +103,13 @@ COMPONENT_SYNC_METADATA_OUTPUT = """
 REMOTE_MANIFEST_OUTPUT = dedent(
     """
         {
-          "version": "1",
+          "version": "3",
           "files": [
             "applist.sql",
             "backup-application.bat",
             "backup-component.bat",
+            "import-component.bat",
+            "run-application.ps1",
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
@@ -316,6 +318,8 @@ class TestVerifyRemoteHelpers:
             "applist.sql",
             "backup-application.bat",
             "backup-component.bat",
+            "import-component.bat",
+            "run-application.ps1",
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
@@ -345,7 +349,7 @@ class TestVerifyRemoteHelpers:
         with pytest.raises(RemoteCommandError) as ex:
             verify_remote_helpers(
                 REMOTE_HOST,
-                run_cmd=lambda command: '{"version": "1", "files": []}',
+                run_cmd=lambda command: '{"version": "3", "files": []}',
             )
 
         assert "missing or outdated" in str(ex.value)

@@ -61,6 +61,8 @@ do not pay an extra SSH round trip.
 | --- | --- |
 | `backup-application.bat` | export one full application XML |
 | `backup-component.bat` | export one component XML |
+| `import-component.bat` | import and compile one existing component XML |
+| `run-application.ps1` | run applications/tests with timeout and captured reports |
 | `get-app-list.bat` | list OpenROAD applications |
 | `get-component-list.bat` | list components in one application |
 | `get-component-sync-metadata.bat` | read sync change markers for all components |

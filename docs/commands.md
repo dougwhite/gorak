@@ -355,3 +355,23 @@ gorak component list salesapp \
   --db-user ingres \
   --db-password secret
 ```
+
+## `gorak component import`
+
+Import an existing procedure or class script from the current project:
+
+```sh
+gorak component import example_app example_procedure --dry-run
+gorak component import example_app example_procedure
+```
+
+Accepts the standard connection flags. See [Component Import](import.md) for
+supported edits, conflict checks, helper installation and recovery.
+
+## Run and test
+
+`gorak run APP` runs a database application; `gorak test --app APP` runs an
+OpenROAD unit-test application and reads its XML results. With no `--app`,
+`gorak test` uses the `tests` array in `gorak.json`. Both accept `--component`,
+`--timeout`, `--trace`, and standard connection flags.
+See [Run and Test](run-test.md) for trace configuration and report handling.

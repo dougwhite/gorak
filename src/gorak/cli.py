@@ -2,6 +2,7 @@ import argparse
 import csv
 import io
 import json
+import subprocess
 import sys
 from collections.abc import Sequence
 from contextlib import ExitStack
@@ -10,6 +11,7 @@ from importlib.resources import as_file, files
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import pyodbc
 from sqlalchemy.exc import SQLAlchemyError
@@ -37,6 +39,7 @@ from .export import (
     read_includes,
 )
 from .field_defaults import flatten_app_defaults
+from .importer import import_component
 from .local import LocalCommandError
 from .project import (
     ProjectError,
@@ -51,6 +54,8 @@ from .remote import (
     install_remote_helpers,
     verify_remote_helpers,
 )
+from .run_backend import execute_application
+from .runner import TestApplication, report_summary, test_applications
 from .sync import sync_project
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
@@ -124,6 +129,12 @@ def build_parser() -> argparse.ArgumentParser:
     export_component.add_argument("component")
     export_component.add_argument("--output")
 
+    component_import = component_subparsers.add_parser("import")
+    add_openroad_connection_args(component_import)
+    component_import.add_argument("app")
+    component_import.add_argument("component")
+    component_import.add_argument("--dry-run", action="store_true")
+
     includes_parser = subparsers.add_parser("includes")
     includes_subparsers = includes_parser.add_subparsers(dest="includes_command")
 
@@ -146,6 +157,16 @@ def build_parser() -> argparse.ArgumentParser:
     debug_audit.add_argument("--all", action="store_true")
     debug_audit.add_argument("--missing-only", action="store_true")
 
+    for name in ["run", "test"]:
+        run_parser = subparsers.add_parser(name)
+        add_openroad_connection_args(run_parser)
+        if name == "run":
+            run_parser.add_argument("app")
+        else:
+            run_parser.add_argument("--app")
+        run_parser.add_argument("--component")
+        run_parser.add_argument("--timeout", type=int)
+        run_parser.add_argument("--trace", action="store_true")
     return parser
 
 
@@ -472,6 +493,81 @@ def app_list_command(args: argparse.Namespace) -> str:
     return applications_to_json(applications)
 
 
+def run_command(args: argparse.Namespace) -> int:
+    context = load_context(Path.cwd())
+    connection = resolve_openroad_connection(args, context)
+    root = context.project.root if context.project else Path.cwd()
+    testing = args.command == "test"
+    if args.app:
+        suites = [TestApplication(args.app)]
+    elif context.project:
+        suites = test_applications(root)
+    else:
+        raise ProjectError("Test requires a project tests configuration or --app")
+    exit_code = 0
+    for configured in suites:
+        suite = TestApplication(
+            configured.application,
+            args.component or configured.component,
+            args.timeout if args.timeout is not None else configured.timeout_seconds,
+        )
+        artifacts = root / ".openroad" / "runs" / uuid4().hex
+        print(f"Running {suite.application} ({suite.timeout_seconds}s timeout)", flush=True)
+        try:
+            result = execute_application(connection, suite, context.env, artifacts, testing)
+        except (OSError, subprocess.SubprocessError) as ex:
+            raise ProjectError(f"Application runner failed ({type(ex).__name__}); artifacts: {artifacts}") from ex
+        if args.trace or not testing:
+            print(result.trace)
+            if result.output:
+                print(result.output)
+        print(f"Artifacts: {artifacts}")
+        if result.timed_out:
+            print("ERROR: Application timed out", file=sys.stderr)
+            exit_code = 1
+        process_failed = result.exit_code != 0
+        if testing:
+            try:
+                summary = report_summary(result.report)
+                print(f"Tests: {summary.tests}, failures: {summary.failures}, errors: {summary.errors}, skipped: {summary.skipped}")
+                for message in summary.messages:
+                    print(message)
+                if summary.failures or summary.errors:
+                    exit_code = 1
+                elif result.exit_code == 2 and summary.skipped > 0:
+                    # Actian's framework reserves 2 for suites with skipped tests.
+                    process_failed = False
+            except ProjectError as ex:
+                print(str(ex), file=sys.stderr)
+                if not args.trace:
+                    print(result.trace[-4000:], file=sys.stderr)
+                exit_code = 1
+        if result.exit_code:
+            suffix = " (framework reports skipped tests)" if not process_failed else ""
+            print(f"OpenROAD process exit code: {result.exit_code}{suffix}")
+        if process_failed:
+            exit_code = 1
+    return exit_code
+
+
+def component_import_command(args: argparse.Namespace) -> str:
+    context = load_context(Path.cwd())
+    if context.project is None:
+        raise ProjectError("Import requires a gorak project")
+    connection = resolve_openroad_connection(args, context)
+    operation = import_component(
+        connection,
+        context.project.root,
+        args.app,
+        args.component,
+        args.dry_run,
+    )
+    outcome = (
+        "Import preview prepared" if args.dry_run else "Import compiled and verified"
+    )
+    return f"{outcome}. Artifacts: {operation}"
+
+
 def component_list_command(args: argparse.Namespace) -> str:
     """Reads OpenROAD component metadata and formats it for stdout."""
 
@@ -599,9 +695,15 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(sync_command(parsed))
             return
 
+        if parsed.command == "component" and parsed.component_command == "import":
+            print(component_import_command(parsed))
+            return
+
         if parsed.command == "debug" and parsed.debug_command == "audit":
             print(debug_audit_command(parsed))
             return
+        if parsed.command in {"run", "test"}:
+            raise SystemExit(run_command(parsed))
     except ProjectError as ex:
         print(format_cli_error(ex), file=sys.stderr)
         raise SystemExit(1) from ex

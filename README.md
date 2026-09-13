@@ -88,6 +88,8 @@ gorak sync
 
 - [Full Command List](docs/commands.md) - List of all commands and CLI parameters explained
 - [Configuration Guide](docs/config.md) - Customize how gorak communicates with OpenROAD / Ingres
+- [Run and Test](docs/run-test.md) - Execute applications and collect unit-test results
+- [Component Import](docs/import.md) - Import existing procedure and class script edits
 - [Files And Formats](docs/files.md) - Overview of the file formats and project layouts gorak uses
 - [Remote Helpers](docs/remote.md) - How to use gorak with a remote Windows OpenROAD host
 - [Development Guide](docs/development.md) - Guide to contributing to the gorak project
