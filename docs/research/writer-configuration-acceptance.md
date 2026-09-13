@@ -101,8 +101,37 @@ procedure and disposable application were removed. Existing tracking stayed heal
 This validates explicit table-specific statements in ING_SET. Combining arbitrary
 existing statements, database-specific startup settings and include files still
 needs implementation and acceptance; the test used controlled startup strings.
-A settings-only audit has been prepared separately for a user-driven Workbench
-save. That acceptance remains pending and must not be inferred from CLI results.
+A settings-only audit subsequently captured a user-driven Workbench save; see
+the results below. Configured table-specific ROW acceptance in Workbench remains
+separate from these baseline settings.
+
+## Actual Workbench save: baseline settings
+
+The user changed a button label in the retained isolated test application's simple
+frame, saved it, and closed the frame editor using the existing Workbench session.
+A fresh application export verified the requested label change. The temporary audit
+recorded 29 source writes, all with these reported settings:
+
+| Setting | Value |
+| --- | --- |
+| session_locklevel | default |
+| session_readlock | Nolock |
+| session_isolation | serializable |
+
+This differs from the fresh CLI session's shared-read setting. It confirms why
+Gorak cannot use its own connection settings as evidence for Workbench writers.
+`Nolock` describes reads; it does not establish row-level write locking. Likewise,
+`default` does not reveal every effective table-specific setting.
+
+The settings-only audit rules, procedure and table were removed after the fresh
+export check, and existing tracking remained healthy. The intentional label edit
+remains in the isolated test app. No counter rules or startup configuration were
+installed into the user's Workbench session by this test.
+
+Next acceptance must explicitly configure the proposed table-specific ROW startup
+and verify a Workbench save under that configuration. The baseline save above is
+not that acceptance and does not authorize enabling revision counters for all
+existing Workbench sessions.
 
 ## Restart and identity boundary
 
@@ -124,8 +153,9 @@ already described in the checkpoint design.
    statements and include-file configuration; do not silently replace custom shop
    settings. Table-specific initialization passed controlled real import/compile tests;
    preserving arbitrary existing startup configuration remains unimplemented.
-2. Verify an actual Workbench save under that contract. The active user's session
-   was not inspected or changed in this experiment.
+2. Verify a Workbench save under the explicit table-specific initialization
+   contract. Its existing-session baseline is now captured above; its configuration
+   was not changed.
 3. Certify identity composition, lengths, overflow and restart behavior. Do not add
    online counter deletion: the previous race rejected a writer.
 4. Implement bounded revision observation and safe full-comparison fallback behind
