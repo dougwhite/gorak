@@ -140,6 +140,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Bounded lookahead distinguishes an exhausted pending set from a truncated batch, without acknowledging the extra event; live exact/short-limit checks passed.
 - [x] Private observer progress is hash-bound and atomically published with full-reference snapshots; general reconciliation cannot hide observer events. Unpublished checkpoints replay, with live independent-consumer acceptance.
 - [x] Exact private-observer receipt checks detect older local checkpoints and lost server receipts, preserving uncertain-commit retries. Live isolated fault checks passed; this O(history) diagnostic still needs a scalable replacement.
+- [x] Collect bounded multi-chunk pending windows without intermediate acknowledgments; automated later-chunk failure, publication replay and late lower-ID coverage. Live multi-chunk and scale acceptance pending.
+- [ ] Implement and validate the [compact checkpoint protocol](../research/checkpoint-protocol.md), including transaction closure and restore/retention contracts.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.

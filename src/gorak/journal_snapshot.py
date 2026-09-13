@@ -159,7 +159,12 @@ def verify_selective_snapshot(
         )
         with acknowledgment_store(observer_path) as store:
             batch = poll_journal(
-                settings, store, limit, verify_complete=True, verify_receipts=True
+                settings,
+                store,
+                limit,
+                verify_complete=True,
+                verify_receipts=True,
+                max_pending=100000,
             )
         if batch.installation_id != health.installation_id:
             raise ProjectError("Tracking identity changed during snapshot verification")
@@ -237,6 +242,8 @@ def verify_selective_snapshot(
             "observer_checkpointed_events": len(batch.events),
             "general_consumer_unchanged": not rebootstrap,
             "pending_set_complete": batch.complete,
+            "pending_event_budget": 100000,
+            "pending_fetch_size": min(limit, 256),
             "incremental_ready": False,
             "journal_observation": before.as_dict(),
             "continuity_certified": False,

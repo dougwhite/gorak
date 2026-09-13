@@ -92,15 +92,25 @@ def poll_journal(
     *,
     verify_complete: bool = False,
     verify_receipts: bool = False,
+    max_pending: int | None = None,
 ) -> JournalBatch:
     """Return pending events, optionally reading one extra to establish exhaustion.
 
     Completeness concerns this query only, not future commits or hook coverage.
     The lookahead event is never acknowledged or included in returned events.
+    max_pending enables a bounded multi-chunk window from one result cursor;
+    limit then controls fetch size. No newly read event is acknowledged here.
     """
     if not 1 <= limit <= 10000:
         raise ProjectError("Journal limit must be between 1 and 10000")
-    query_limit = limit + int(verify_complete)
+    event_limit = limit if max_pending is None else max_pending
+    if max_pending is not None and (
+        not verify_complete or not limit <= max_pending <= 100000
+    ):
+        raise ProjectError(
+            "Pending window requires completeness checking and a budget between limit and 100000"
+        )
+    query_limit = event_limit + int(verify_complete)
     engine = engine_factory(settings)
     try:
         with engine.connect() as connection:
@@ -142,6 +152,7 @@ def poll_journal(
                 params = {"consumer": consumer}
             events: list[JournalEvent] = []
             scanned = 0
+            seen: set[int] = set()
             result = (
                 connection.execute(text(query), params)
                 if params
@@ -150,7 +161,7 @@ def poll_journal(
             try:
                 while len(events) < query_limit:
                     # Stream metadata; do not materialize a potentially huge journal.
-                    chunk = result.fetchmany(min(256, query_limit - len(events)))
+                    chunk = result.fetchmany(min(limit, 256, query_limit - len(events)))
                     if not chunk:
                         break
                     for row in chunk:
@@ -160,6 +171,11 @@ def poll_journal(
                             "select 1 from acknowledged where event_id = ?", (event_id,)
                         ).fetchone():
                             continue
+                        if event_id in seen:
+                            raise ProjectError(
+                                "Duplicate source journal event identity"
+                            )
+                        seen.add(event_id)
                         table, action = str(row[1]).strip(), str(row[2]).strip()
                         if (
                             event_id <= 0
@@ -188,9 +204,9 @@ def poll_journal(
                 result.close()
             return JournalBatch(
                 installation_id,
-                tuple(events[:limit]),
+                tuple(events[:event_limit]),
                 scanned,
-                len(events) <= limit if verify_complete else None,
+                len(events) <= event_limit if verify_complete else None,
             )
     except (ValueError, TypeError, IndexError) as ex:
         raise ProjectError(

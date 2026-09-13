@@ -1,0 +1,80 @@
+# Compact checkpoint protocol: requirements and decision gates
+
+Status: design requirements, not an implemented protocol. The current diagnostic
+retains exact event receipts, full-history observations and a full-export oracle.
+The next implementation must replace those costs without weakening their guarantees.
+
+## Required meaning
+
+A checkpoint must identify the source database generation, consumer, verified
+source snapshot and a closed set of committed changes. It must distinguish an
+empty pending set from a gap in retained history. A monotonically allocated event
+ID is not a commit position: an older transaction may commit after a newer one.
+
+The current multi-chunk reader deliberately uses one pending-event query and no
+intermediate acknowledgment. It solves collection across fetch boundaries only.
+Its before/after count check is still a diagnostic, and receipt membership still
+costs work proportional to retained history.
+
+## Contracts to establish before choosing a schema
+
+1. **Transactional capture.** Source mutation and captured invalidation must commit
+   or roll back together. Test failed capture, deadlocks, disconnected writers and
+   multi-statement Workbench operations. An operation may span several transactions;
+   do not describe such an operation as atomic without evidence.
+2. **Closed observation.** A reusable source snapshot needs a validation token that
+   changes when any relevant committed mutation becomes visible. Test a writer
+   that starts before observation and commits during or after it, including lower
+   allocated event IDs. If validation fails, discard staged progress and retry.
+3. **Checkpoint publication.** Publish local source evidence before making new
+   progress eligible for server acknowledgment. Retries after uncertain server
+   commits must be idempotent. Restoring an older checkout must not silently adopt
+   newer server progress.
+4. **Generation and restore.** Database-resident tokens alone cannot distinguish a
+   physical restore that restores those same tokens. Define an explicit DBA restore
+   generation-change procedure, or an independently persisted authority, and test
+   it. A documented operator contract is acceptable; claiming automatic detection
+   without that authority is not.
+5. **Retention.** Pruning needs a supported consumer lifetime and a retained-history
+   boundary. A consumer behind that boundary must rebootstrap, never infer that an
+   empty query means no changes. Abandoned consumers must not retain history forever.
+6. **Bounded cost.** A quiet check must avoid whole-history scans, source payload
+   downloads and per-event receipt transfer. Measure writer overhead as well as
+   reader latency. Bound memory, lock duration and reconnect work explicitly.
+
+## Candidate to investigate first
+
+Prototype a transactionally updated database revision alongside existing event
+capture in a disposable database. Its purpose is to test a cheap committed-change
+validation token, not to replace event identity or act as a sequence watermark.
+A global row is the simplest candidate to reason about, but may serialize writers
+for their entire transaction. Long transactions and concurrent writers are therefore
+acceptance gates, not later tuning. Do not deploy it to ordinary source databases
+until those effects are measured.
+
+If that cost is unacceptable, evaluate partitioned revisions or a separate sealing
+protocol. Those alternatives need proofs/tests for transactions touching multiple
+partitions, lock ordering, concurrent observation and late commits. Do not assume
+that adding shards preserves correctness or removes contention.
+
+Keep event enumeration and source validation separate: a revision token can detect
+change without providing the identities needed to refresh affected applications.
+Receipt compaction and pruning need their own transition protocol; neither follows
+merely from adding a revision counter.
+
+## Next acceptance sequence
+
+- Confirm supported Ingres transaction/locking behavior from primary documentation
+  and a minimal isolated two-connection experiment.
+- Measure the global revision candidate with rollback, late commit, a long-held
+  writer, concurrent writers, and read-only observation.
+- Specify the checkpoint state machine and failure transitions from those results.
+- Test local publication failure, server commit uncertainty, restored local state,
+  changed database generation, expiry and pruning before integrating source reads.
+- Compare selective results to full exports throughout live acceptance.
+- Enable normal status only after continuity and invalidation are certified; add
+  push conflict-check integration afterward.
+
+This work does not require another manual Workbench action for the initial protocol
+experiments. Cross-application moves, version restoration/purge and physical restore
+acceptance remain separate coverage gates before broader claims.

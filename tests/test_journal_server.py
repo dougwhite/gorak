@@ -197,3 +197,123 @@ def test_late_commit_remains_visible_after_complete_query(tmp_path: Path) -> Non
         later = poll_journal(SETTINGS, store, 1, server.factory, verify_complete=True)
         assert later.complete is False
         assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("count,complete", [(5, True), (6, True), (7, False)])
+def test_pending_window_spans_chunks_without_acknowledging(
+    tmp_path: Path, count: int, complete: bool
+) -> None:
+    server = Server()
+    for identity in range(1, count + 1):
+        server.add(identity)
+    with acknowledgment_store(tmp_path / "window.sqlite3") as store:
+        batch = poll_journal(
+            SETTINGS,
+            store,
+            limit=2,
+            engine_factory=server.factory,
+            verify_complete=True,
+            max_pending=6,
+        )
+        assert len(batch.events) == min(count, 6)
+        assert batch.complete is complete
+        assert batch.scanned_events == count
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+        assert server.db.execute(
+            'select count(*) from "$ingres".gorak_journal_acks'
+        ).fetchone() == (0,)
+        assert (
+            poll_journal(
+                SETTINGS,
+                store,
+                limit=2,
+                engine_factory=server.factory,
+                verify_complete=True,
+                max_pending=6,
+            )
+            == batch
+        )
+
+
+def test_invalid_later_chunk_discards_entire_window(tmp_path: Path) -> None:
+    from gorak.project import ProjectError
+
+    server = Server()
+    for identity in range(1, 6):
+        server.add(identity)
+    server.db.execute(
+        'update "$ingres".gorak_change_events set action="bad" where event_id=5'
+    )
+    with acknowledgment_store(tmp_path / "window.sqlite3") as store:
+        with pytest.raises(ProjectError, match="Invalid source journal event"):
+            poll_journal(
+                SETTINGS,
+                store,
+                limit=2,
+                engine_factory=server.factory,
+                verify_complete=True,
+                max_pending=6,
+            )
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+        server.db.execute(
+            'update "$ingres".gorak_change_events set action="u" where event_id=5'
+        )
+        assert (
+            len(
+                poll_journal(
+                    SETTINGS,
+                    store,
+                    limit=2,
+                    engine_factory=server.factory,
+                    verify_complete=True,
+                    max_pending=6,
+                ).events
+            )
+            == 5
+        )
+
+
+@pytest.mark.parametrize("budget", [1, 100001])
+def test_pending_window_rejects_invalid_budget(tmp_path: Path, budget: int) -> None:
+    from gorak.project import ProjectError
+
+    with acknowledgment_store(tmp_path / "window.sqlite3") as store:
+        with pytest.raises(ProjectError, match="Pending window"):
+            poll_journal(
+                SETTINGS, store, limit=2, verify_complete=True, max_pending=budget
+            )
+
+
+def test_pending_window_does_not_skip_lower_id_committed_after_checkpoint(
+    tmp_path: Path,
+) -> None:
+    from gorak.journal_observer import checkpoint_observer
+
+    server = Server()
+    for identity in (2, 3, 4, 5, 6):
+        server.add(identity)
+    path = tmp_path / "window.sqlite3"
+    with acknowledgment_store(path) as store:
+        batch = poll_journal(
+            SETTINGS,
+            store,
+            limit=2,
+            engine_factory=server.factory,
+            verify_complete=True,
+            max_pending=6,
+        )
+        assert batch.complete is True
+    checkpoint_observer(path, batch.events)
+    server.add(1)
+    with acknowledgment_store(path) as store:
+        later = poll_journal(
+            SETTINGS,
+            store,
+            limit=2,
+            engine_factory=server.factory,
+            verify_complete=True,
+            verify_receipts=True,
+            max_pending=6,
+        )
+        assert [event.event_id for event in later.events] == [1]
+        assert later.complete is True

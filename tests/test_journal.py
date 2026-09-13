@@ -224,3 +224,19 @@ def test_malformed_lookahead_is_not_silently_ignored(tmp_path: Path) -> None:
         with pytest.raises(ProjectError, match="Invalid source journal data"):
             poll_journal(SETTINGS, store, 1, db.factory, verify_complete=True)
         assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+
+
+def test_duplicate_identity_in_later_chunk_rejects_window(tmp_path: Path) -> None:
+    db = Database()
+    db.events = [event(1), event(2), event(3), event(1)]
+    with acknowledgment_store(tmp_path / "window.sqlite3") as store:
+        with pytest.raises(ProjectError, match="Duplicate source journal event"):
+            poll_journal(
+                SETTINGS,
+                store,
+                limit=2,
+                engine_factory=db.factory,
+                verify_complete=True,
+                max_pending=6,
+            )
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)

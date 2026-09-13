@@ -504,7 +504,9 @@ def test_unpublished_observer_checkpoint_replays_on_snapshot_retry(
 
     root, connection, _, _, _ = project
     server = Server()
-    identity = str(verify_selective_snapshot(connection, root)["installation_id"])
+    identity = str(
+        verify_selective_snapshot(connection, root, limit=2)["installation_id"]
+    )
     server.db.execute(
         'update "$ingres".gorak_tracking_install set installation_id=?', (identity,)
     )
@@ -516,10 +518,11 @@ def test_unpublished_observer_checkpoint_replays_on_snapshot_retry(
             settings, store, limit, server.factory, **kw
         ),
     )
-    verify_selective_snapshot(connection, root)
+    verify_selective_snapshot(connection, root, limit=2)
     pointer = root / ".openroad/journal-snapshot.json"
     original = pointer.read_bytes()
-    server.add(1)
+    for event_id in range(1, 6):
+        server.add(event_id)
     from gorak.journal_reconcile import persist_comparison as persist
 
     def fail(*args: Any) -> None:
@@ -527,13 +530,13 @@ def test_unpublished_observer_checkpoint_replays_on_snapshot_retry(
 
     monkeypatch.setattr(journal_snapshot, "persist_comparison", fail)
     with pytest.raises(OSError, match="receipt flush failed"):
-        verify_selective_snapshot(connection, root)
+        verify_selective_snapshot(connection, root, limit=2)
     assert pointer.read_bytes() == original
     assert server.db.execute(
         'select count(*) from "$ingres".gorak_journal_acks'
     ).fetchone() == (0,)
     monkeypatch.setattr(journal_snapshot, "persist_comparison", persist)
-    retry = verify_selective_snapshot(connection, root)
-    assert retry["observer_checkpointed_events"] == 1
-    following = verify_selective_snapshot(connection, root)
+    retry = verify_selective_snapshot(connection, root, limit=2)
+    assert retry["observer_checkpointed_events"] == 5
+    following = verify_selective_snapshot(connection, root, limit=2)
     assert following["observer_checkpointed_events"] == 0

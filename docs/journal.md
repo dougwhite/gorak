@@ -278,11 +278,11 @@ does not change. The aggregate may scan retained history: it is a diagnostic gua
 not the intended scalable no-change query or a high-watermark cursor.
 
 Selective verification now reads at most one extra pending event to test whether
-the query is exhausted. More events than the requested limit use full fallback
+the query is exhausted. More events than the 100,000-event observation budget use full fallback
 with reason event_batch_at_limit; the lookahead event is not processed or
-acknowledged. An exactly-limit batch can proceed only when exhaustion is established.
+acknowledged. An exactly-budget window can proceed only when exhaustion is established.
 Unknown completeness retains the previous conservative fallback. Transactions
-spanning the limit still cannot justify selective reuse.
+spanning a truncated window still cannot justify selective reuse.
 
 Reports and pointers record journal_observation. Reports explicitly retain
 continuity_certified=false and incremental_ready=false. The mandatory full XML
@@ -395,18 +395,20 @@ the existing Workbench acceptance app and tracking installation were preserved.
 ### Bounded pending-set completeness
 
 The snapshot report includes pending_set_complete, measured at the event query.
-Schema v2 applies FIRST limit+1 server-side for this diagnostic; ordinary preview
-and consumer polling retain their existing limit. Schema v1 can still scan
-acknowledged history locally. Both return at most limit events to the caller and
+Schema v2 applies FIRST 100001 server-side for this diagnostic. The --limit
+argument controls fetch chunk size (capped at 256 rows per fetch); ordinary preview
+and consumer polling retain their existing event limit. Schema v1 can still scan
+acknowledged history locally. Observations retain at most 100,000 events and
 acknowledge none as a consequence of lookahead. Invalid lookahead data fails the
 read rather than being silently ignored.
 
 A complete query is not a transaction cursor or a guarantee about future commits.
 The before/after journal observation, full-reference comparison and conservative
-mapping guards remain. This does not collect arbitrary-size pending windows;
-larger sets still fall back and can be investigated with a larger limit.
+mapping guards remain. One query cursor supplies all chunks without intermediate acknowledgments, offsets
+or sequence watermarks. Larger sets still fall back. This bounds returned event
+memory, not total SQL work, retained history or mapping cost.
 
-Live read-only acceptance used 447 retained events and a fresh temporary consumer.
+Before multi-chunk windows were introduced, live read-only acceptance used 447 retained events and a fresh temporary consumer.
 A limit of 447 reported complete; 446 reported incomplete and transferred only the
 one additional event needed to establish it. The journal stayed unchanged and no
 events were acknowledged.
@@ -487,3 +489,24 @@ It rejected an old observer after newer receipts had been published, then reject
 the newer observer after its server receipts were removed. Only that test consumer's
 receipt rows were deleted; source and other consumers were unchanged. Regression
 tests additionally cover same-count/different-ID history and uncertain commits.
+
+
+### Multi-chunk observation windows
+
+A snapshot observation can now collect more pending events than --limit in one
+cursor, up to the fixed 100,000-event budget plus one lookahead. All returned
+chunks are mapped together. No newly read IDs enter either local acknowledgments
+or server receipts during collection. Only the successfully verified full
+reference can publish the staged observer checkpoint. An invalid later chunk or
+failed publication leaves earlier chunks replayable. Reports include
+pending_event_budget and pending_fetch_size; the existing event_batch_at_limit
+fallback name is retained for an exhausted budget.
+
+Automated server-boundary tests cover multiple chunks, exact/overflow budgets,
+later-chunk invalid data, and a lower ID arriving after checkpoint publication.
+The snapshot failure test spans multiple chunks and verifies replay with the old
+pointer unchanged and no new server receipts. These tests use a SQLite SQL adapter;
+live Ingres multi-chunk acceptance and large-corpus measurements remain pending.
+
+See [checkpoint protocol requirements](research/checkpoint-protocol.md) for the
+next infrastructure gate. Normal status and sync still use their existing paths.

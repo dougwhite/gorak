@@ -88,7 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
     journal_parser = subparsers.add_parser(
         "journal", help="Preview pending source journal events"
     )
-    journal_parser.add_argument("--limit", type=int, default=100)
+    journal_parser.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Event limit; with --verify-selective or --rebootstrap, fetch chunk size (window budget: 100000)",
+    )
     journal_parser.add_argument(
         "--rebootstrap",
         action="store_true",
