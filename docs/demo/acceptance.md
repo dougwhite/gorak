@@ -141,3 +141,13 @@ Full validation: 400 tests, Ruff, and strict mypy pass.
 The lock coordinates a single checkout. External editors, Workbench, other
 checkouts, and direct Python calls remain outside its scope. Push snapshot
 revalidation and deletion execution remain open.
+
+## M2 push snapshot and recovery slice, 2026-09-13
+
+Automated checks cover files added during preflight, a database application appearing
+before creation, and a disk edit during import. The latter retains returned XML,
+leaves creation caches unadvanced, and blocks retry with a recovery marker. Existing
+creation, metadata update, portable restoration, and script-import tests also pass.
+Validation: 404 tests, Ruff, and strict mypy. No live acceptance was run for this
+slice; database-write atomicity, complete baseline staging for script imports, and
+automatic recovery remain open.

@@ -27,9 +27,11 @@ def project_lock(root: Path, operation: str) -> Iterator[None]:
         with handle:
             handle.write(json.dumps({"pid": os.getpid(), "operation": operation}))
             handle.flush()
-            for name in ("pull.lock", "pull-pending.json"):
+            for name in ("pull.lock", "pull-pending.json", "push-pending.json"):
                 if (directory / name).exists():
-                    raise ProjectError(f"Unfinished pull; inspect {directory / name}")
+                    raise ProjectError(
+                        f"Unfinished source operation; inspect {directory / name}"
+                    )
             yield
     finally:
         lock.unlink()

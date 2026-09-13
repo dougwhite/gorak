@@ -25,12 +25,14 @@ def test_lock_excludes_another_operation_and_releases_after_failure(
     assert not (tmp_path / ".openroad/mutation.lock").exists()
 
 
-@pytest.mark.parametrize("marker", ["pull.lock", "pull-pending.json"])
+@pytest.mark.parametrize(
+    "marker", ["pull.lock", "pull-pending.json", "push-pending.json"]
+)
 def test_unfinished_pull_blocks_mutations(tmp_path: Path, marker: str) -> None:
     directory = tmp_path / ".openroad"
     directory.mkdir()
     (directory / marker).write_text("retained recovery marker")
-    with pytest.raises(ProjectError, match="Unfinished pull"):
+    with pytest.raises(ProjectError, match="Unfinished source operation"):
         with project_lock(tmp_path, "export"):
             pytest.fail("Recovery marker was ignored")
     assert (directory / marker).exists()

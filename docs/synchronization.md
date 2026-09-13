@@ -84,3 +84,27 @@ and direct Python orchestration calls do not participate. Commands outside a Gor
 project have no checkout lock, including explicit output paths into another project.
 Status remains read-only and can observe a concurrent mutation. Stronger push
 validation and database-side deletion execution remain M2 work.
+
+## Push snapshots and interrupted operations
+
+Push fingerprints the project before preflight and rechecks it before each import
+and after verification. Added and removed files count as changes, as do edits to
+existing files. Verification compares imported components with the submitted XML,
+not a potentially changed disk file. Creation paths recheck database names just
+before import to detect objects that appeared after planning. Application metadata
+updates retain their full-application drift check; script imports retain their
+component baseline comparison.
+
+Before execution, push retains a plan and copies of cached baselines under
+`.openroad/pushes/OPERATION`. A `.openroad/push-pending.json` marker blocks later
+mutations and status/sync comparison if execution does not finish successfully.
+Inspect the plan, submitted/returned XML, import logs, and retained baselines before
+reconciling the database and local cache. Do not blindly retry a failed remote call:
+the database may have accepted it even if its response was lost.
+
+Creation/application-update caches are installed after all imports and source checks
+succeed. Existing script imports still advance their individual verified caches;
+a later failure can therefore leave partial baseline advancement. Retained baseline
+copies and the pending marker make that state explicit. There is no automatic
+rollback of database writes or automatic recovery command. Snapshot checks remain
+optimistic and cannot exclude a Workbench change between a check and an import.

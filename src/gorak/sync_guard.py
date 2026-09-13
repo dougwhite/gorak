@@ -26,6 +26,10 @@ def binding_status(connection: OpenRoadConnection, root: Path) -> str:
         raise ProjectError(
             "An interrupted pull requires recovery; inspect .openroad/pull-pending.json and its before-images before continuing"
         )
+    if (root / ".openroad/push-pending.json").exists():
+        raise ProjectError(
+            "An interrupted push requires recovery; inspect .openroad/push-pending.json"
+        )
     path = root / ".openroad/sync-target.json"
     if not path.exists():
         return "unbound"

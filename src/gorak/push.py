@@ -1,5 +1,6 @@
 """Explicit disk-to-database sync with preflight and retained import artifacts."""
 
+import json
 import tomllib
 from pathlib import Path
 from uuid import uuid4
@@ -26,12 +27,17 @@ from .parser import (
 )
 from .portable_source import restore_application, restore_component
 from .project import ProjectError
+from .safe_pull import fingerprint
 from .xml_writer import document, new_application, new_component
 
 
 def push_project(
     connection: OpenRoadConnection, root: Path, dry_run: bool = False
 ) -> str:
+    if (root / ".openroad/push-pending.json").exists():
+        raise ProjectError(
+            "An interrupted push requires recovery; inspect .openroad/push-pending.json"
+        )
     directory = root / ".openroad" / "pushes"
     directory.mkdir(parents=True, exist_ok=True)
     lock = directory / "push.lock"
@@ -52,6 +58,20 @@ def _push_project(
     """Preflight every disk component before creating or updating database objects."""
     operation = root / ".openroad" / "pushes" / uuid4().hex
     operation.mkdir(parents=True)
+    initial = fingerprint(root)
+    source_snapshot = {
+        k: v for k, v in initial.items() if not k.startswith(".openroad/")
+    }
+
+    def check_source() -> None:
+        current = {
+            k: v for k, v in fingerprint(root).items() if not k.startswith(".openroad/")
+        }
+        if current != source_snapshot:
+            raise ProjectError(
+                "Local project changed during push; reconcile before retrying"
+            )
+
     known = {app.name.casefold() for app in read_applications(connection)}
     creations: dict[str, tuple[str, bytes, list[Path]]] = {}
     edits: list[tuple[str, str]] = []
@@ -293,13 +313,30 @@ def _push_project(
                 available.add(key.casefold())
     for index, key in enumerate(ordered):
         (operation / f"{index}-submitted.xml").write_bytes(creations[key][1])
+    check_source()
     if dry_run:
         return f"Push dry run: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} script updates. XML: {operation}"
     for path, content in snapshots.items():
         if path.read_bytes() != content:
             raise ProjectError(f"Local source changed during push preflight: {path}")
+    if not ordered and not edits:
+        return f"Push complete: no changes. Artifacts: {operation}"
+    # Retain the baseline before any database mutation. Failed pushes are not retried
+    # automatically: a remote command can succeed even when its response is lost.
+    for relative in initial:
+        if relative.startswith(".openroad/"):
+            backup = operation / "baseline" / relative
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            backup.write_bytes((root / relative).read_bytes())
+    (operation / "plan.json").write_text(
+        json.dumps({"creations_or_updates": ordered, "script_updates": edits}, indent=2)
+    )
+    pending_marker = root / ".openroad/push-pending.json"
+    pending_marker.write_text(json.dumps({"operation": str(operation)}))
+    cache_updates: dict[Path, bytes] = {}
     try:
         for index, key in enumerate(ordered):
+            check_source()
             component, _, sources = creations[key]
             app = key.split("/")[0]
             submitted = operation / f"{index}-submitted.xml"
@@ -312,6 +349,22 @@ def _push_project(
                     raise ProjectError(
                         f"Database application changed during push: {app}"
                     )
+            else:
+                latest_apps = {a.name.casefold() for a in read_applications(connection)}
+                if component == "-" and app.casefold() in latest_apps:
+                    raise ProjectError(f"Application appeared during push: {app}")
+                if component != "-":
+                    if app.casefold() not in latest_apps:
+                        raise ProjectError(
+                            f"Application disappeared during push: {app}"
+                        )
+                    if component.casefold() in {
+                        c.name.casefold() for c in read_components(connection, app)
+                    }:
+                        raise ProjectError(
+                            f"Component appeared during push: {app}/{component}"
+                        )
+            check_source()
             import_component_xml(
                 connection,
                 app,
@@ -345,7 +398,7 @@ def _push_project(
                         )
             for source in sources:
                 actual_node = component_tree(after, source.stem)
-                expected_node = restore_component(source)
+                expected_node = component_tree(submitted, source.stem)
                 if (
                     source.parent
                     / ".gorak-source"
@@ -369,9 +422,19 @@ def _push_project(
             cache = root / ".openroad" / app
             cache.mkdir(exist_ok=True)
             target = cache / f"{app if component == '-' else component}.xml"
-            target.write_bytes(after.read_bytes())
+            cache_updates[target] = after.read_bytes()
         for app, name in edits:
+            check_source()
             import_component(connection, root, app, name)
+        check_source()
+        for target, content in cache_updates.items():
+            replacement = target.with_name(f".{target.name}-{uuid4().hex}.tmp")
+            replacement.write_bytes(content)
+            replacement.replace(target)
+        (operation / "verified").write_text(
+            "Push imports and source snapshot verified\n"
+        )
+        pending_marker.unlink()
     except Exception as ex:
         raise ProjectError(
             f"Push stopped; earlier operations may have succeeded. Artifacts: {operation}\n{ex}"

@@ -246,3 +246,64 @@ def test_fresh_push_restores_exported_frame_without_cache(
     restored = etree.fromstring(imported[0]).find("COMPONENT")
     assert restored is not None
     assert signature(restored) == signature(node)
+
+
+def test_new_disk_file_during_preflight_prevents_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = app(tmp_path, "example")
+
+    def inventory(c: Any) -> list[Application]:
+        (folder / "late.w4gl").write_text("[proc4glsource]\n===\nPROCEDURE late() = {}")
+        return []
+
+    monkeypatch.setattr(push, "read_applications", inventory)
+    monkeypatch.setattr(
+        push,
+        "import_component_xml",
+        lambda *a, **k: pytest.fail("Imported changed project"),
+    )
+    with pytest.raises(ProjectError, match="Local project changed"):
+        push.push_project(connection(), tmp_path)
+    assert not (tmp_path / ".openroad/push-pending.json").exists()
+
+
+def test_application_appearing_after_preflight_prevents_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app(tmp_path, "example")
+    inventories = iter([[], [Application("example", "", "")]])
+    monkeypatch.setattr(push, "read_applications", lambda c: next(inventories))
+    monkeypatch.setattr(
+        push,
+        "import_component_xml",
+        lambda *a, **k: pytest.fail("Overwrote new database application"),
+    )
+    with pytest.raises(ProjectError, match="Application appeared"):
+        push.push_project(connection(), tmp_path)
+
+
+def test_late_disk_edit_keeps_cache_unadvanced_and_blocks_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = app(tmp_path, "example")
+    original = document([new_application(folder)])
+    monkeypatch.setattr(push, "read_applications", lambda c: [])
+
+    def importing(*args: Any, **kwargs: Any) -> None:
+        (folder / "notes.txt").write_text("concurrent edit")
+
+    monkeypatch.setattr(push, "import_component_xml", importing)
+    monkeypatch.setattr(
+        push, "backup_application_xml", lambda c, a, p: p.write_bytes(original)
+    )
+    with pytest.raises(ProjectError, match="Local project changed"):
+        push.push_project(connection(), tmp_path)
+    assert not (tmp_path / ".openroad/example/example.xml").exists()
+    marker = tmp_path / ".openroad/push-pending.json"
+    operation = Path(json.loads(marker.read_text())["operation"])
+    assert (operation / "plan.json").exists()
+    assert (operation / "0-after.xml").exists()
+    with pytest.raises(ProjectError, match="interrupted push"):
+        push.push_project(connection(), tmp_path)
+    assert (folder / "notes.txt").read_text() == "concurrent edit"
