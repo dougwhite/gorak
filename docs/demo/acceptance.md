@@ -41,7 +41,7 @@ For each milestone record:
 
 ## M1: Cache-free reconstruction, 2026-09-13
 
-CLI acceptance passed; manual frame visual acceptance remains pending.
+CLI acceptance passed; owner-confirmed visual acceptance passed for the two demo frames.
 
 - Exported four demo applications, 30 components, and two frame markup files into
   a separate source checkout. Coverage includes an empty app, source/image includes,
@@ -70,6 +70,17 @@ matching incorrectly treated `Error` and `AssertionFailedError` component names 
 errors; diagnostics distinguish these names from error messages. Component export
 filename casing is respected when writing companions.
 
-No Workbench UI inspection was performed. Frame rendering, broad binary/opaque
-structure coverage beyond the sample, format migrations beyond rejecting unknown
-versions, deletion handling, and target-bound synchronization safety remain open.
+The owner subsequently opened both reconstructed demo frames in Workbench and
+reported that they worked perfectly, supplying a screenshot showing the simple
+frame and `fm_complex_frame`. This completes the representative visual check;
+it is owner-performed acceptance, not an automated UI test. Exhaustive event and
+interaction behavior was not separately enumerated.
+
+Connection-profile setup initially used a truncated database name after a qualified
+connection string was pasted into the database field. Using the full unqualified
+database name resolved it. Demo instructions should present node and database
+values separately and use short disposable names.
+
+Broad binary/opaque structure coverage beyond the sample, format migrations beyond
+rejecting unknown versions, deletion handling, and target-bound synchronization
+safety remain open.

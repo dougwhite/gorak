@@ -8,7 +8,7 @@ live acceptance, and presenter acceptance separate.
 | ID | Milestone | State | Acceptance gate |
 | --- | --- | --- | --- |
 | M0 | Preserve baseline and document demo | Complete | Existing work committed; walkthrough, decisions, gaps, evidence linked |
-| M1 | Self-contained source and fresh-clone reconstruction | CLI acceptance passed; visual acceptance pending | Clone without cache → empty DB → equivalent export, runnable app/tests |
+| M1 | Self-contained source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Clone without cache → empty DB → equivalent export, runnable app/tests |
 | M2 | Safe shared sync planner and status | Not started | One-sided edits/additions/deletions work; divergent changes never overwrite silently |
 | M3 | Onboarding and dependency-aware export | Not started | Multiple apps exported with source include closure and clear external-image requirements |
 | M4 | Locked Git dependencies | Not started | Clean checkout restores identical dependency sources; explicit updates alter lock |
@@ -30,7 +30,8 @@ live acceptance, and presenter acceptance separate.
   for the representative acceptance source (broader compatibility remains unproven).
 - [ ] Distinguish source equality from destination-specific IDs and timestamps.
 - [x] Restore a real representative application into an independent empty target.
-- [ ] Verify frame rendering and interaction separately from XML equality.
+- [x] Owner verified the two reconstructed demo frames visually in Workbench.
+- [ ] Broader frame interaction/event acceptance beyond the demonstrated sample.
 
 ## M2: Synchronization correctness
 
