@@ -29,6 +29,7 @@ class InstallationCheck:
     installation_id: str | None
     issues: list[str]
     incremental_ready: bool = False
+    tracking_objects_present: bool = True
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -108,4 +109,10 @@ def check_installation(
         "incomplete" if issues else "capture_only_inventory_present",
         installation_id,
         issues,
+        tracking_objects_present=bool(
+            inventory["tables"] & EXPECTED_TABLES
+            or inventory["procedures"] & {"gorak_record_change"}
+            or inventory["sequences"] & {"gorak_change_seq"}
+            or {name for name, _ in rules} & EXPECTED_RULES.keys()
+        ),
     )

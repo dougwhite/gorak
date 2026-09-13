@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     install_parser = subparsers.add_parser("install")
-    install_action = install_parser.add_mutually_exclusive_group(required=True)
+    install_action = install_parser.add_mutually_exclusive_group()
     install_action.add_argument(
         "--export-sql",
         metavar="PATH",
@@ -787,6 +787,18 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 report = check_installation(require_odbc_settings(connection))
                 print(json.dumps(report.as_dict(), indent=2))
                 raise SystemExit(1 if report.issues else 0)
+            if parsed.export_sql is None:
+                from .install_backend import install_tracking
+
+                context = load_context(Path.cwd())
+                if context.project is None:
+                    raise ProjectError("Direct installation requires a gorak project")
+                connection = resolve_openroad_connection(parsed, context)
+                report = install_tracking(
+                    connection, context.project.root / ".openroad" / "installations"
+                )
+                print(json.dumps(report.as_dict(), indent=2))
+                return
             if parsed.export_sql == "-":
                 print(installation_sql(), end="")
             else:

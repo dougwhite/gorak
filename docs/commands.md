@@ -428,3 +428,8 @@ identity, locally or through an authorized vnode connection. See
 JSON installation inventory report. Exit 1 indicates missing/incompatible objects
 or inaccessible data. A successful capture-only check does not enable incremental
 sync. See [installation checks](installation.md#check-an-installation).
+
+`gorak install` applies tracking SQL through the configured local/remote execution
+backend, grants the configured ODBC user read access to Gorak tracking tables, and
+checks the result through ODBC. It requires a project and an authorized source-owner
+SQL connection. See [direct installation](installation.md#direct-installation).

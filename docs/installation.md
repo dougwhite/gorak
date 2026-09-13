@@ -85,7 +85,7 @@ See [real source-rule coverage](research/source-rule-coverage.md) and
 [transaction/MVCC probes](research/change-journal.md). The exported script was applied
 through the Windows SQL client to an isolated target, then removed. A deliberately
 invalid rule target was used to check rollback of partially created installation
-objects. Automatic installation, migration/removal commands, and production-scale
+objects. Migration/removal commands and production-scale
 acceptance remain future work.
 
 [Actian documents](https://docs.actian.com/ingres/11.2/SysAdmin/II_TM_EXIT_ON_ERROR.htm)
@@ -125,3 +125,38 @@ The missing-installation path was also verified read-only against an isolated li
 source database: it reported both missing tables, the sequence, procedure, and all
 24 missing rules. Complete and damaged inventories are covered by automated tests;
 live complete-installation checking remains an acceptance item.
+
+## Direct installation
+
+Run `gorak install` from a configured project to apply the schema. ODBC settings
+are required for preflight and post-install checks. Execution follows
+`GORAK_BACKEND` / `--backend`: remote uses the configured Windows SSH host;
+local invokes `sql` from the local environment. Finding a local SQL executable
+never overrides a remote backend. A failed remote operation never falls back to
+local execution.
+
+The SQL session requests `-u$ingres`; the authenticated connection must already
+permit this identity. No credentials are passed to SQL or SSH. Remote installation
+stages a unique SQL file in the configured Gorak root, executes it through
+PowerShell and the Windows SQL client, and removes the remote file after execution.
+The remote root must already exist; existing remote helper installation provides it.
+
+Direct installation adds SELECT grants on the two Gorak tracking tables to the
+configured ODBC user, inside the installation transaction. It grants no source or
+journal write access. The standalone `--export-sql` artifact remains grant-free so
+the DBA can choose site-specific permissions. SQL and logs are retained under
+`.openroad/installations/<operation>/`.
+
+A complete existing inventory is a no-op. Partial installations are refused rather
+than repaired or replaced. SQL errors, nonzero process exits, timeouts and failed
+postchecks do not report success. If verification fails after SQL completes, the
+installation may exist: inspect the retained log and permissions before retrying.
+Timeouts/disconnections can leave remote work or a staged file behind; this command
+does not automatically drop objects or retry an uncertain installation.
+
+The execution target database and ODBC database must match. The operator must also
+ensure the SQL vnode and ODBC host refer to the same server; this initial version
+does not prove server identity across transports. Installation remains capture-only
+and should occur with source writes quiescent. Local execution is covered by
+automated transport tests; remote execution is additionally tested against an
+isolated source database.

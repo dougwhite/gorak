@@ -85,7 +85,8 @@ and database agree. These do not constitute database transactions across command
 ## M2b: Versioned database installer and journal
 
 `gorak install --export-sql PATH` now exports a DBA-applied capture-only hook script.
-Automatic installation and the incremental consumer remain unimplemented. This capability
+Direct installation now uses the configured execution backend with ODBC verification.
+The incremental consumer remains unimplemented. This capability
 is accepted in principle; exact schema, syntax, privileges, and installation targets
 must be explicit. Temporary rules and the generated script were validated in an isolated database
 and removed afterward. See [DBA installation](../installation.md).
