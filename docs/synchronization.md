@@ -71,8 +71,16 @@ implemented. A stale `.openroad/pull.lock` likewise requires checking that no pu
 process is still active before removal.
 
 File replacement is atomic per file, not across the whole project. Revalidation is
-optimistic: external Workbench/file writes can still race the final checks. The pull
-lock serializes pulls only; do not run other modifying Gorak commands concurrently.
-Direct calls to legacy Python orchestration functions bypass the CLI safety gates.
-Shared locking across commands, stronger push validation, and database-side deletion
-execution remain M2 work.
+optimistic: external Workbench/file writes can still race the final checks. CLI source commands within a project now share `.openroad/mutation.lock`, held
+across planning, backend calls, and local installation. This includes sync/bind,
+component import, app/component export, scaffolding, configuration, defaults
+flattening, and encoding. An overlapping command fails immediately. The lock records
+its process ID and operation; an ordinary exception releases it. After a killed
+process, confirm that the recorded operation has stopped before removing its lock.
+Do not remove recovery markers merely to bypass this check.
+
+This is a checkout lock, not a database lock. Other checkouts, Workbench, editors,
+and direct Python orchestration calls do not participate. Commands outside a Gorak
+project have no checkout lock, including explicit output paths into another project.
+Status remains read-only and can observe a concurrent mutation. Stronger push
+validation and database-side deletion execution remain M2 work.

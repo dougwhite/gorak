@@ -128,3 +128,16 @@ Live acceptance used a disposable probe application in the retained isolated tar
 Database-side deletion pushes, shared mutation locking, automatic crash recovery,
 and broader compatibility acceptance remain open. The previous first-slice limits
 above describe the earlier checkpoint rather than current pull capability.
+
+
+## M2 shared checkout lock, 2026-09-13
+
+CLI source mutations now acquire a common exclusive lock before planning or backend
+work. Automated checks cover contention, release after failure, unfinished pull
+markers, and each guarded command entry point. The existing external-service test
+guard remained enabled: no live database or SSH calls were needed for this slice.
+Full validation: 400 tests, Ruff, and strict mypy pass.
+
+The lock coordinates a single checkout. External editors, Workbench, other
+checkouts, and direct Python calls remain outside its scope. Push snapshot
+revalidation and deletion execution remain open.

@@ -49,6 +49,7 @@ from .project import (
     load_context,
     load_project,
 )
+from .project_lock import locked_command
 from .remote import (
     RemoteCommandError,
     RemoteHost,
@@ -226,6 +227,7 @@ def add_remote_host_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--gorak-root")
 
 
+@locked_command
 def new_command(args: argparse.Namespace) -> str:
     """Create a project, or an application inside the current project."""
 
@@ -250,6 +252,7 @@ def new_command(args: argparse.Namespace) -> str:
     return str(project.root)
 
 
+@locked_command
 def encode_command(args: argparse.Namespace) -> str:
     """Encodes an OpenROAD XML export to .w4gl text."""
 
@@ -264,6 +267,7 @@ def encode_command(args: argparse.Namespace) -> str:
     return output_path
 
 
+@locked_command
 def config_remote_command(args: argparse.Namespace) -> str:
     """Configures OpenROAD access for the current project."""
 
@@ -375,6 +379,7 @@ def remote_script_resources() -> list[Traversable]:
     )
 
 
+@locked_command
 def export_component_command(args: argparse.Namespace) -> str:
     """Exports an OpenROAD component to local .w4gl source."""
 
@@ -402,6 +407,7 @@ def export_component_command(args: argparse.Namespace) -> str:
     )
 
 
+@locked_command
 def app_export_command(args: argparse.Namespace) -> str:
     """Exports all components in one OpenROAD application."""
 
@@ -602,6 +608,7 @@ def run_command(args: argparse.Namespace) -> int:
     return exit_code
 
 
+@locked_command
 def component_import_command(args: argparse.Namespace) -> str:
     context = load_context(Path.cwd())
     if context.project is None:
@@ -643,6 +650,7 @@ def includes_list_command(args: argparse.Namespace) -> str:
     return includes_to_json(read_includes(connection, cast(str, args.app)))
 
 
+@locked_command
 def defaults_flatten_command(args: argparse.Namespace) -> str:
     """Flatten shared app-level field defaults into the project defaults."""
 
@@ -656,6 +664,7 @@ def defaults_flatten_command(args: argparse.Namespace) -> str:
     )
 
 
+@locked_command
 def sync_command(args: argparse.Namespace) -> str:
     """Export locally tracked components that changed in OpenROAD."""
 
