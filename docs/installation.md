@@ -106,21 +106,27 @@ changes and disposes its connection after checking. Configure developer SELECT
 access through the DBA; owner impersonation is not performed by Gorak.
 
 JSON output lists missing tables, sequence, procedure and rules (including incorrect
-rule targets), missing or modified rule/procedure SQL definitions, unsupported
+rule targets), missing or modified rule/procedure SQL definitions and tracking column layouts, unsupported
 version/mode, and invalid installation identity. Exit 1
 means a detected problem or database-access failure; exit 0 means the expected
 capture-only inventory, definitions and marker were found. Connection/permission errors use the
 normal CLI error reporting.
 
 A successful check reports `capture_only_inventory_present` and
-`definitions_verified: true` and `incremental_ready: false`. Catalog SQL segments
+`definitions_verified: true`, `columns_verified: true` and
+`incremental_ready: false`. Catalog SQL segments
 are reassembled and compared with Gorak’s generated definitions, allowing keyword
 case, whitespace, and the source owner qualification added by Ingres. String
 literals and quoted identifiers remain significant. Missing or modified definitions
 make the check incomplete; no schema upgrade is needed for this check.
 
-It does **not** certify table column types, extra constraints, enabled-rule
-execution, complete source coverage, or continuity
+The column check compares ordered names, data types, widths, numeric scale and
+nullability for the marker, event and (on v2) acknowledgment tables. Positional
+layout matters because the capture procedure inserts event values in that order.
+Missing, additional or changed columns make the check incomplete.
+
+It does **not** certify keys/indexes, sequence configuration, defaults, extra
+constraints, enabled-rule execution, complete source coverage, or continuity
 after a database restore. It is a point-in-time diagnostic, not permission to bypass
 a full source comparison. Same-named objects owned by a developer cannot satisfy
 the check. Source writes should remain quiescent while diagnosing an installation
@@ -202,3 +208,16 @@ schema administration.
 Live isolated acceptance verified v1-to-v2 identity preservation, populated
 consumer polling, rejection/rollback when the upgrade was applied to v2, and fresh
 v2 installation. Temporary tracking objects were removed afterward.
+
+
+### Column-layout acceptance
+
+The live schema-v2 installation passed catalog column validation. A separate
+scratch table with the event layout but a narrowed 32-bit event ID was then checked
+using its catalog rows against the expected event-table schema. It was rejected.
+The scratch table was removed; the active tracking installation was unchanged.
+Automated regressions also cover column order, width, datatype, nullability, scale,
+missing/additional columns and missing catalog visibility.
+
+This adds a read-only health check; no schema upgrade is needed. A healthy column
+layout remains only one prerequisite for eventual incremental readiness.

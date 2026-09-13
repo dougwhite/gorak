@@ -8,6 +8,7 @@ from sqlalchemy import text
 from .database import EngineFactory, OdbcSettings, create_odbc_engine
 from .installation import SCHEMA_VERSION, TABLES
 from .installation_definitions import definition_issues
+from .installation_schema import column_issues
 
 # Owner filtering prevents a same-named developer object from satisfying a check.
 CATALOG_QUERIES = {
@@ -33,6 +34,7 @@ class InstallationCheck:
     tracking_objects_present: bool = True
     schema_version: int | None = None
     definitions_verified: bool = False
+    columns_verified: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -110,6 +112,12 @@ def check_installation(
                             'select consumer_id, event_id from "$ingres".gorak_journal_acks where 1 = 0'
                         )
                     )
+            columns = column_issues(connection, inventory["tables"])
+            issues.extend(columns)
+            required_tables = EXPECTED_TABLES | (
+                {"gorak_journal_acks"} if schema_version == 2 else set()
+            )
+            columns_verified = required_tables <= inventory["tables"] and not columns
             present_rules = {name for name, _ in rules} & EXPECTED_RULES.keys()
             procedure_present = "gorak_record_change" in inventory["procedures"]
             definitions = definition_issues(
@@ -136,6 +144,7 @@ def check_installation(
         issues,
         schema_version=schema_version,
         definitions_verified=definitions_verified,
+        columns_verified=columns_verified,
         tracking_objects_present=bool(
             inventory["tables"]
             & (EXPECTED_TABLES | {"gorak_journal_acks", "gorak_upgrade_guard"})

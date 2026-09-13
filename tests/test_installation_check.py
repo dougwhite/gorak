@@ -16,6 +16,7 @@ from gorak.installation_definitions import (
     PROCEDURE_DEFINITION_SQL,
     RULE_DEFINITIONS_SQL,
 )
+from gorak.installation_schema import COLUMN_SQL, expected_columns
 
 
 def fixture() -> tuple[MagicMock, dict[str, list[tuple[Any, ...]]]]:
@@ -28,6 +29,19 @@ def fixture() -> tuple[MagicMock, dict[str, list[tuple[Any, ...]]]]:
             (1, str(uuid4()), "capture_only")
         ],
     }
+    rows[COLUMN_SQL] = [
+        (
+            table,
+            column.name,
+            column.datatype,
+            column.length,
+            "Y" if column.nullable else "N",
+            i,
+            0,
+        )
+        for table, columns in expected_columns().items()
+        for i, column in enumerate(columns, 1)
+    ]
     statements = installation_statements()
     rows[RULE_DEFINITIONS_SQL] = [
         (s.split()[2], 1, s) for s in statements if s.startswith("create rule ")
@@ -55,6 +69,7 @@ def test_complete_inventory_does_not_claim_incremental_readiness() -> None:
     assert report.installation_id
     assert report.incremental_ready is False
     assert report.definitions_verified is True
+    assert report.columns_verified is True
     engine.dispose.assert_called_once()
 
 
@@ -134,3 +149,13 @@ def test_missing_catalog_definition_fails_closed() -> None:
     assert report.status == "incomplete"
     assert report.definitions_verified is False
     assert any("procedure definition" in issue for issue in report.issues)
+
+
+def test_modified_column_layout_makes_inventory_incomplete() -> None:
+    engine, rows = fixture()
+    rows[COLUMN_SQL] = [row for row in rows[COLUMN_SQL] if row[1] != "source_table"]
+    report = run(engine)
+    assert report.status == "incomplete"
+    assert report.definitions_verified is True
+    assert report.columns_verified is False
+    assert any("column layout: gorak_change_events" in issue for issue in report.issues)

@@ -111,7 +111,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Read-only ODBC installation inventory check: owner objects, rule targets, version, UUID, event read access.
 - [x] Compare catalog rule/procedure definitions with generated SQL; live altered-rule detection and restoration verified.
 - [x] Real synthetic-app create/edit/compile/include/delete capture and bounded capture-failure acceptance. See [change acceptance](../research/journal-change-acceptance.md).
-- [ ] Verify broader hook execution, complete table schema, and database restore/replacement; definition checks alone are insufficient.
+- [x] Validate tracking column names/order, datatypes, widths, scale and nullability; live narrowed-event-ID catalog probe rejected.
+- [ ] Verify keys/indexes, sequence configuration, broader hook execution and database restore/replacement; definition/column checks alone are insufficient.
 - [ ] Transactional installation where supported; schema version, check, upgrade, and
   removal procedures that preserve source and define tracking-data consequences.
 - [ ] Measure rule overhead during large saves/imports/compilation and concurrent edits.
