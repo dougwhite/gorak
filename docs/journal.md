@@ -506,7 +506,9 @@ Automated server-boundary tests cover multiple chunks, exact/overflow budgets,
 later-chunk invalid data, and a lower ID arriving after checkpoint publication.
 The snapshot failure test spans multiple chunks and verifies replay with the old
 pointer unchanged and no new server receipts. These tests use a SQLite SQL adapter;
-live Ingres multi-chunk acceptance and large-corpus measurements remain pending.
+live Ingres multi-chunk acceptance subsequently passed against 704 retained events.
+See [live results](research/revision-token-acceptance.md). Large-corpus measurements
+remain pending.
 
 See [checkpoint protocol requirements](research/checkpoint-protocol.md) for the
 next infrastructure gate. Normal status and sync still use their existing paths.

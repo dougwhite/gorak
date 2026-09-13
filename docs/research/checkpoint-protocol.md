@@ -1,6 +1,8 @@
 # Compact checkpoint protocol: requirements and decision gates
 
-Status: design requirements, not an implemented protocol. The current diagnostic
+Status: design requirements, not an implemented protocol. The first live
+experiments rejected naive global and source-partitioned revision rows; see
+[revision-token acceptance](revision-token-acceptance.md). The current diagnostic
 retains exact event receipts, full-history observations and a full-export oracle.
 The next implementation must replace those costs without weakening their guarantees.
 
@@ -42,9 +44,9 @@ costs work proportional to retained history.
    downloads and per-event receipt transfer. Measure writer overhead as well as
    reader latency. Bound memory, lock duration and reconnect work explicitly.
 
-## Candidate to investigate first
+## Initial candidate and experimental decision
 
-Prototype a transactionally updated database revision alongside existing event
+The initial experiment prototyped a transactionally updated database revision alongside existing event
 capture in a disposable database. Its purpose is to test a cheap committed-change
 validation token, not to replace event identity or act as a sequence watermark.
 A global row is the simplest candidate to reason about, but may serialize writers
@@ -62,12 +64,19 @@ change without providing the identities needed to refresh affected applications.
 Receipt compaction and pruning need their own transition protocol; neither follows
 merely from adding a revision counter.
 
+The isolated experiments confirmed global contention and an opposite-order
+partition deadlock on disjoint source rows. The next investigation is writer-specific
+lanes with stable assignment throughout a transaction. Identity, restart/reuse,
+initialization and compaction must be established before adopting that design.
+Neither initial candidate was installed into ordinary tracking.
+
 ## Next acceptance sequence
 
-- Confirm supported Ingres transaction/locking behavior from primary documentation
-  and a minimal isolated two-connection experiment.
-- Measure the global revision candidate with rollback, late commit, a long-held
-  writer, concurrent writers, and read-only observation.
+- Completed initial primary-documentation review and isolated multi-connection
+  experiments; preserve the observed contention/deadlock results.
+- Completed initial global revision rollback, held-writer, concurrent writer and
+  reader checks, plus a source-partitioned reverse-commit/deadlock experiment.
+- Investigate writer-specific lane identity and lifecycle before schema integration.
 - Specify the checkpoint state machine and failure transitions from those results.
 - Test local publication failure, server commit uncertainty, restored local state,
   changed database generation, expiry and pruning before integrating source reads.
