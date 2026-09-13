@@ -50,9 +50,11 @@ vnode remapping or database replacement under the same name.
 - Push still blocks pending deletions.
 - Existing push metadata/type restrictions continue to apply.
 
-Older projects without source companions may report invalid/unsupported disk
-projections. Reconcile edits and export applications to the current portable format
-before using this workflow; do not assume a re-export preserves uncommitted edits.
+Older projects without source companions use their cached XML to reconstruct existing
+components and application metadata for comparison. This preserves opaque metadata
+and distinguishes unchanged legacy exports from genuinely new components. The cache
+is still required for those checkouts; portable, cache-free reconstruction requires
+source companions. Re-exporting is not required just to inspect legacy source.
 
 ## Staged pulls and recovery
 

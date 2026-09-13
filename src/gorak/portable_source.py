@@ -53,20 +53,46 @@ def write_companions(xml: Path, folder: Path) -> None:
         )
 
 
+def cached_node(folder: Path, tag: str, name: str) -> etree._Element | None:
+    """Read an older checkout baseline without mistaking exported source for new source."""
+    cache = folder.parent / ".openroad" / folder.name
+    files = sorted(
+        cache.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns, reverse=True
+    )
+    for path in files:
+        root = read_document(path)
+        matches = [
+            n
+            for n in root.findall(tag)
+            if n.get("name", "").casefold() == name.casefold()
+        ]
+        if len(matches) > 1:
+            raise ProjectError(f"Ambiguous cached source: {path}")
+        if matches:
+            return matches[0]
+        # A newer full export authoritatively records component absence.
+        if tag == "COMPONENT" and root.find("APPLICATION") is not None:
+            return None
+    return None
+
+
 def restore_component(path: Path) -> etree._Element:
     """Overlay script edits; refuse unimplemented changes to metadata or frame UI."""
     from .xml_writer import new_component
 
     companion = path.parent / DIRECTORY / "components" / f"{path.stem}.xml"
-    if not companion.is_file():
-        return new_component(path)
-    if (companion.parent.parent / "format").read_text().strip() != "1":
-        raise ProjectError("Unsupported portable source format")
-    root = read_document(companion)
-    nodes = root.findall("COMPONENT")
-    if len(nodes) != 1 or nodes[0].get("name") != path.stem:
-        raise ProjectError(f"Invalid component companion: {companion}")
-    node = nodes[0]
+    if companion.is_file():
+        if (companion.parent.parent / "format").read_text().strip() != "1":
+            raise ProjectError("Unsupported portable source format")
+        nodes = read_document(companion).findall("COMPONENT")
+        if len(nodes) != 1 or nodes[0].get("name") != path.stem:
+            raise ProjectError(f"Invalid component companion: {companion}")
+        node = nodes[0]
+    else:
+        baseline = cached_node(path.parent, "COMPONENT", path.stem)
+        if baseline is None:
+            return new_component(path)
+        node = baseline
     original = parse_component_node(node)
     text = path.read_text()
     edited = parse_w4gl(text, path.stem)
@@ -111,14 +137,18 @@ def restore_application(folder: Path) -> etree._Element:
 
     edited = new_application(folder)
     companion = folder / DIRECTORY / "application.xml"
-    if not companion.is_file():
-        return edited
-    if (companion.parent / "format").read_text().strip() != "1":
-        raise ProjectError("Unsupported portable source format")
-    nodes = read_document(companion).findall("APPLICATION")
-    if len(nodes) != 1 or nodes[0].get("name") != folder.name:
-        raise ProjectError(f"Invalid application companion: {companion}")
-    node = nodes[0]
+    if companion.is_file():
+        if (companion.parent / "format").read_text().strip() != "1":
+            raise ProjectError("Unsupported portable source format")
+        nodes = read_document(companion).findall("APPLICATION")
+        if len(nodes) != 1 or nodes[0].get("name") != folder.name:
+            raise ProjectError(f"Invalid application companion: {companion}")
+        node = nodes[0]
+    else:
+        baseline = cached_node(folder, "APPLICATION", folder.name)
+        if baseline is None:
+            return edited
+        node = baseline
     managed = {
         "versshortremarks",
         "included_apps",

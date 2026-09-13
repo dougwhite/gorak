@@ -10,7 +10,10 @@ from gorak.portable_source import restore_component, write_companions
 from gorak.project import ProjectError
 
 
-def test_frame_reconstruction_needs_no_export_cache(tmp_path: Path) -> None:
+@pytest.mark.parametrize("legacy", [False, True])
+def test_frame_reconstruction_from_companion_or_legacy_cache(
+    tmp_path: Path, legacy: bool
+) -> None:
     folder = tmp_path / "example"
     folder.mkdir()
     xml = Path("tests/fixtures/fm_example_frame.xml")
@@ -23,8 +26,13 @@ def test_frame_reconstruction_needs_no_export_cache(tmp_path: Path) -> None:
     source = folder / f"{component.name}.w4gl"
     source.write_text(encode_w4gl(component))
     source.with_suffix(".wml").write_text(encode_wml(component) or "")
-    write_companions(xml, folder)
-    assert not (tmp_path / ".openroad").exists()
+    if legacy:
+        cache = tmp_path / ".openroad/example"
+        cache.mkdir(parents=True)
+        (cache / "example.xml").write_bytes(xml.read_bytes())
+    else:
+        write_companions(xml, folder)
+        assert not (tmp_path / ".openroad").exists()
     assert signature(restore_component(source)) == signature(original)
     source.with_suffix(".wml").write_text("<frame />")
     with pytest.raises(ProjectError, match="markup edits"):
@@ -82,3 +90,46 @@ def test_unknown_top_level_xml_is_rejected(tmp_path: Path) -> None:
     xml.write_text("<OPENROAD><UNKNOWN>must not disappear</UNKNOWN></OPENROAD>")
     with pytest.raises(ProjectError, match="top-level"):
         write_companions(xml, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["classsource", "globsource", "proc3glsource", "scriptsource", "ghostsource"],
+)
+def test_legacy_scriptless_exports_are_not_new_components(
+    tmp_path: Path, kind: str
+) -> None:
+    folder = tmp_path / "example"
+    folder.mkdir()
+    cache = tmp_path / ".openroad/example"
+    cache.mkdir(parents=True)
+    xml = cache / "item.xml"
+    xml.write_text(
+        f'<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><COMPONENT name="item" xsi:type="{kind}"><extension><opaque>preserve</opaque></extension></COMPONENT></OPENROAD>'
+    )
+    original = etree.parse(str(xml)).find("COMPONENT")
+    assert original is not None
+    source = folder / "item.w4gl"
+    source.write_text(encode_w4gl(parse_component_node(original)))
+    assert signature(restore_component(source)) == signature(original)
+    assert not (folder / ".gorak-source").exists()
+
+
+def test_legacy_cache_keeps_real_script_changes(tmp_path: Path) -> None:
+    folder = tmp_path / "example"
+    folder.mkdir()
+    cache = tmp_path / ".openroad/example"
+    cache.mkdir(parents=True)
+    xml = cache / "item.xml"
+    xml.write_text(
+        '<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><COMPONENT name="item" xsi:type="proc4glsource"><script>PROCEDURE item() = { RETURN 1; }</script><extension><opaque>keep</opaque></extension></COMPONENT></OPENROAD>'
+    )
+    original = etree.parse(str(xml)).find("COMPONENT")
+    assert original is not None
+    source = folder / "item.w4gl"
+    source.write_text(
+        encode_w4gl(parse_component_node(original)).replace("RETURN 1", "RETURN 2")
+    )
+    actual = restore_component(source)
+    assert "RETURN 2" in actual.findtext("script", "")
+    assert actual.findtext("extension/opaque") == "keep"
