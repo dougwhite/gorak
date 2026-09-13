@@ -99,3 +99,7 @@ The [2026-09-14 change and failure acceptance](journal-change-acceptance.md) tes
 the generated installation and mapper, including capture failure during a SQL
 update and an OpenROAD replacement import. It addresses consequence 4 for those
 specific operations; broader save-path and transaction acceptance remains open.
+
+The [frame and long-source probe](frame-journal-acceptance.md) extends coverage to
+the complex fixture application. Its embedded image used encoded-object events;
+separate stored-string/Unicode/bitmap paths and direct Workbench saves remain open.
