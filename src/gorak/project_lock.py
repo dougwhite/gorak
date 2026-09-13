@@ -12,7 +12,9 @@ from .project import ProjectError, load_context
 
 
 @contextmanager
-def project_lock(root: Path, operation: str) -> Iterator[None]:
+def project_lock(
+    root: Path, operation: str, *, recover_push: bool = False
+) -> Iterator[None]:
     directory = root / ".openroad"
     directory.mkdir(parents=True, exist_ok=True)
     lock = directory / "mutation.lock"
@@ -28,6 +30,8 @@ def project_lock(root: Path, operation: str) -> Iterator[None]:
             handle.write(json.dumps({"pid": os.getpid(), "operation": operation}))
             handle.flush()
             for name in ("pull.lock", "pull-pending.json", "push-pending.json"):
+                if name == "push-pending.json" and recover_push:
+                    continue
                 if (directory / name).exists():
                     raise ProjectError(
                         f"Unfinished source operation; inspect {directory / name}"

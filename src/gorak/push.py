@@ -27,7 +27,7 @@ from .parser import (
 )
 from .portable_source import restore_application, restore_component
 from .project import ProjectError
-from .safe_pull import fingerprint
+from .safe_pull import apply_files, fingerprint
 from .xml_writer import document, new_application, new_component
 
 
@@ -425,12 +425,14 @@ def _push_project(
             cache_updates[target] = after.read_bytes()
         for app, name in edits:
             check_source()
-            import_component(connection, root, app, name)
+            imported = import_component(
+                connection, root, app, name, advance_cache=False
+            )
+            cache_updates[root / ".openroad" / app / f"{name}.xml"] = (
+                imported / "after.xml"
+            ).read_bytes()
         check_source()
-        for target, content in cache_updates.items():
-            replacement = target.with_name(f".{target.name}-{uuid4().hex}.tmp")
-            replacement.write_bytes(content)
-            replacement.replace(target)
+        apply_files(root, dict(cache_updates), operation, initial)
         (operation / "verified").write_text(
             "Push imports and source snapshot verified\n"
         )

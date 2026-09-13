@@ -102,9 +102,23 @@ Inspect the plan, submitted/returned XML, import logs, and retained baselines be
 reconciling the database and local cache. Do not blindly retry a failed remote call:
 the database may have accepted it even if its response was lost.
 
-Creation/application-update caches are installed after all imports and source checks
-succeed. Existing script imports still advance their individual verified caches;
-a later failure can therefore leave partial baseline advancement. Retained baseline
-copies and the pending marker make that state explicit. There is no automatic
-rollback of database writes or automatic recovery command. Snapshot checks remain
+All push caches, including existing script imports, are staged until imports and
+source checks succeed. Cache installation uses before-images and attempts rollback
+on write failure, while preserving subsequent external edits. It is not a multi-file
+filesystem transaction; a killed process can still leave partial cache installation.
+The pending marker remains until installation completes. Snapshot checks remain
 optimistic and cannot exclude a Workbench change between a check and an import.
+
+### Verify and finish an interrupted push
+
+Run `gorak recover push` in the affected project. It takes the checkout lock, requires
+the original verified target binding, and compares disk with fresh database exports.
+If both sides agree, it stages fresh baseline XML, rechecks the project and database,
+installs those baselines, and clears the pending push marker. Recovery artifacts and
+the original marker are retained under `.openroad/pushes/recovery-OPERATION`.
+
+Recovery never imports database source or rewrites readable disk source. If disk and
+database differ, it stops with the marker intact. A partially successful push still
+requires deliberate reconciliation; this command does not choose a winning side or
+roll back database writes. Pull recovery is still manual. A stale mutation/push lock
+from a killed process must be inspected separately before running recovery.

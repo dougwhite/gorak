@@ -69,6 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gorak")
     subparsers = parser.add_subparsers(dest="command")
 
+    recovery_parser = subparsers.add_parser("recover")
+    recovery_parser.add_argument("operation", choices=["push"])
+    add_openroad_connection_args(recovery_parser)
+
     new_parser = subparsers.add_parser("new")
     new_parser.add_argument("--nogit", action="store_true")
     new_parser.add_argument("name")
@@ -739,6 +743,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     parsed = parser.parse_args(args)
 
     try:
+        if parsed.command == "recover":
+            from .recovery import recover_push
+
+            context = load_context(Path.cwd())
+            if context.project is None:
+                raise ProjectError("Recovery requires a gorak project")
+            print(
+                recover_push(
+                    resolve_openroad_connection(parsed, context), context.project.root
+                )
+            )
+            return
         if parsed.command == "new":
             print(new_command(parsed))
             return

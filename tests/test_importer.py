@@ -25,8 +25,9 @@ def project(root: Path) -> Path:
     return source
 
 
+@pytest.mark.parametrize("advance_cache", [False, True])
 def test_import_preserves_opaque_xml_and_verifies(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, advance_cache: bool
 ) -> None:
     source = project(tmp_path)
     uploaded: list[bytes] = []
@@ -44,11 +45,16 @@ def test_import_preserves_opaque_xml_and_verifies(
 
     monkeypatch.setattr(importer, "backup_component_xml", export)
     monkeypatch.setattr(importer, "import_component_xml", push)
-    result = importer.import_component(CONNECTION, tmp_path, "app", "example")
+    result = importer.import_component(
+        CONNECTION, tmp_path, "app", "example", advance_cache=advance_cache
+    )
     assert b"RETURN 1" in uploaded[0]
     assert b'<opaque value="keep"/>' in uploaded[0]
     assert (result / "before.xml").read_bytes() == XML
-    assert (tmp_path / ".openroad/app/example.xml").read_bytes() == uploaded[0]
+    assert (tmp_path / ".openroad/app/example.xml").read_bytes() == (
+        uploaded[0] if advance_cache else XML
+    )
+    assert (result / "after.xml").read_bytes() == uploaded[0]
     assert "RETURN 1" in source.read_text()
 
 

@@ -21,12 +21,14 @@ def target(connection: OpenRoadConnection) -> dict[str, str]:
     }
 
 
-def binding_status(connection: OpenRoadConnection, root: Path) -> str:
+def binding_status(
+    connection: OpenRoadConnection, root: Path, *, recover_push: bool = False
+) -> str:
     if (root / ".openroad/pull-pending.json").exists():
         raise ProjectError(
             "An interrupted pull requires recovery; inspect .openroad/pull-pending.json and its before-images before continuing"
         )
-    if (root / ".openroad/push-pending.json").exists():
+    if not recover_push and (root / ".openroad/push-pending.json").exists():
         raise ProjectError(
             "An interrupted push requires recovery; inspect .openroad/push-pending.json"
         )

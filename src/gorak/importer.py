@@ -54,6 +54,8 @@ def import_component(
     app: str,
     component: str,
     dry_run: bool = False,
+    *,
+    advance_cache: bool = True,
 ) -> Path:
     """Validate, compare, import, and verify one script; retain recovery artifacts."""
     validate_name(app)
@@ -139,10 +141,11 @@ def import_component(
                     "Post-import verification failed; database may have changed"
                 )
             # Do not advance other components' sync metadata or rewrite edited source.
-            destination = cache / f"{component}.xml"
-            replacement = cache / f".{component}-{uuid4().hex}.xml"
-            replacement.write_bytes(after.read_bytes())
-            replacement.replace(destination)
+            if advance_cache:
+                destination = cache / f"{component}.xml"
+                replacement = cache / f".{component}-{uuid4().hex}.xml"
+                replacement.write_bytes(after.read_bytes())
+                replacement.replace(destination)
             (operation / "verified").write_text(
                 "Import and XML verification succeeded\n"
             )

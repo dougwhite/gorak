@@ -151,3 +151,17 @@ creation, metadata update, portable restoration, and script-import tests also pa
 Validation: 404 tests, Ruff, and strict mypy. No live acceptance was run for this
 slice; database-write atomicity, complete baseline staging for script imports, and
 automatic recovery remain open.
+
+
+## M2 staged script baselines and verified push recovery, 2026-09-13
+
+Push defers script-import cache updates until all database operations and source
+checks succeed, then installs caches through the before-image/rollback helper.
+Standalone component imports retain their existing immediate verified-cache behavior.
+
+`gorak recover push` can finish an interrupted operation when disk and database agree.
+Tests cover successful baseline recovery, mismatched targets, divergent source,
+concurrent disk/database changes, failed installation, and deferred script caches.
+Validation: 412 tests, Ruff, and strict mypy pass. No live OpenROAD acceptance was
+run for this slice. Partial database writes still need deliberate reconciliation;
+recovery does not overwrite either source side or implement database rollback.
