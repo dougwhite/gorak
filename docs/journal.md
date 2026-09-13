@@ -294,8 +294,9 @@ These guards must not be used to authorize fast status/sync or event pruning.
 
 The aggregate query was verified read-only against a live schema-v2 installation
 with an empty journal (about 0.047 seconds for connection plus query in one run).
-Populated-history scale, concurrent live transactions and restore/reconnect
-acceptance remain unmeasured. Automated regressions cover late lower-ID commits,
+A later [live acceptance probe](research/journal-recovery-acceptance.md) verified
+a lower-ID transaction committing during export. Populated-history scale, physical
+restores and broader reconnect acceptance remain unmeasured. Automated regressions cover late lower-ID commits,
 higher-ID commits, shrinking history, changed installation identity, a final-read
 disconnect and a full event batch; failure cases preserve the old pointer.
 
@@ -343,5 +344,7 @@ generation and broader continuity acceptance remain future work.
 
 Automated acceptance covers a changed local binding, fresh consumer identity,
 archived acknowledgments, unchanged common baselines, export failure, interruption
-during consumer replacement, sidecar rejection and CLI mode exclusivity. This
-recovery command has not yet been exercised against a restored live database.
+during consumer replacement, sidecar rejection and CLI mode exclusivity. Live acceptance also verified replay after same-identity rebootstrap, rejection of
+a changed identity, and successful recovery and subsequent verification. See
+[recovery acceptance](research/journal-recovery-acceptance.md). No physical database
+restore has yet been exercised.
