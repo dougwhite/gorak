@@ -133,6 +133,40 @@ and verify a Workbench save under that configuration. The baseline save above is
 not that acceptance and does not authorize enabling revision counters for all
 existing Workbench sessions.
 
+## Configured Workbench save with another counter row locked
+
+The user's actual launcher was copied privately. Its existing inline ING_SET
+readlock and timeout statement was retained, with only a ROW override for the
+randomly named scratch counter table appended. The original launcher was unchanged.
+This validates that specific inline configuration; it is not yet a general merger
+for arbitrary startup strings or include files.
+
+Temporary owner-defined counter rules were installed in the isolated source
+database. A separate ODBC transaction held a ROW lock on an unrelated counter row.
+The user opened Workbench with the copied launcher, changed the simple frame's
+button label, saved and closed the frame editor.
+
+An independent NOWAIT update confirmed that the unrelated row was still locked.
+A fresh OpenROAD export then verified the requested label while that holder was
+still running. After releasing the holder, the reader obtained 29 counter
+increments. Recorded session settings remained default/Nolock/serializable,
+consistent with preserving the existing session settings and applying a
+counter-table-specific override.
+
+**Writer acceptance passed:** the changed source was visible through a fresh export
+while the unrelated counter row remained locked. The lock was released, temporary
+rules/procedure/table were removed, and existing tracking remained healthy. The
+copied launcher was removed to prevent reuse after its scratch table was dropped.
+The intentional label edit remains in the isolated application.
+
+**Reader issue remains open:** the initial SQLAlchemy counter query with MVCC/shared
+reads timed out while the holder was active. Disabling ODBC pooling and explicitly
+setting table-level MVCC did not resolve it. The counters were read only after
+holder release; do not describe this as successful nonblocking counter observation.
+The cause needs an isolated reproduction covering reader isolation, table access
+and the mixed ROW-writer/MVCC-reader combination before the revision fast path is
+enabled. No specific cause has been established by this test.
+
 ## Restart and identity boundary
 
 No server or VM was restarted. The earlier sequential reconnect test demonstrated
@@ -153,9 +187,8 @@ already described in the checkpoint design.
    statements and include-file configuration; do not silently replace custom shop
    settings. Table-specific initialization passed controlled real import/compile tests;
    preserving arbitrary existing startup configuration remains unimplemented.
-2. Verify a Workbench save under the explicit table-specific initialization
-   contract. Its existing-session baseline is now captured above; its configuration
-   was not changed.
+2. The controlled table-specific Workbench writer check now passes. Resolve
+   the counter-reader timeout before certifying nonblocking revision observation.
 3. Certify identity composition, lengths, overflow and restart behavior. Do not add
    online counter deletion: the previous race rejected a writer.
 4. Implement bounded revision observation and safe full-comparison fallback behind

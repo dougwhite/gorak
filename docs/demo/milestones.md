@@ -146,7 +146,9 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Owner-defined counter rules preserve ordinary caller identity, deny direct counter updates, and support table-specific ROW initialization; actual CLI import/compile observe process-local ING_SET row locking. See [writer configuration](../research/writer-configuration-acceptance.md).
 - [x] Table-specific ROW startup passed actual OpenROAD import/compile with an unrelated counter row held; the default-lock control failed. Source-table settings were unchanged.
 - [x] Actual Workbench frame save captured 29 source writes with default/Nolock/serializable settings; fresh export verified the edit and temporary audit was removed. Explicit ROW-configured Workbench acceptance remains pending.
-- [ ] Complete writer initialization handling and actual Workbench save acceptance before enabling revision counters; initial bounded reads must fall back safely without online counter deletion.
+- [x] Configured Workbench save verified via fresh export while an unrelated counter row remained locked; existing read settings preserved and 29 counter increments collected after holder release. Temporary hooks/launcher removed.
+- [ ] Reproduce and resolve the MVCC counter-reader timeout observed during that held-row test; writer acceptance does not certify nonblocking observation.
+- [ ] Complete general writer initialization handling before enabling revision counters; initial bounded reads must fall back safely without online counter deletion.
 - [ ] Implement and validate the [compact checkpoint protocol](../research/checkpoint-protocol.md), including transaction closure and restore/retention contracts.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
