@@ -125,6 +125,7 @@ and removed afterward. See [DBA installation](../installation.md).
   lengths/timestamps. Prefer post-commit dirty-object hashing over row-trigger hashing.
 - [x] Diagnostic event-to-application mapping follows current and historical parent/base relationships; uncertain/deleted/shared-storage cases request full comparison.
 - [x] Isolated complex-frame replacement, label edit, long script, embedded-image removal and deletion map to the affected app. See [frame acceptance](../research/frame-journal-acceptance.md).
+- [x] Live runtime StringObject/BitmapObject insert/update/delete capture, including explicit nstring storage, retains shared-ownership full fallback. See [API acceptance](../research/shared-storage-api-acceptance.md).
 - [ ] Complete source metadata, includes, referenced strings/images, deletion inventory, Workbench saves and live move/rename coverage before selective cache reuse.
 - [ ] Associate fingerprints with verified semantic baselines and database identity.
 - [ ] Treat compile-only byte changes as candidates for comparison, not source edits.

@@ -66,3 +66,9 @@ The temporary application and tracking tables/rules/procedure/sequence were
 removed. Installation checks confirmed no test tracking objects remained. Raw
 JSON event summaries, input/output XML and logs were retained locally outside
 version control.
+
+## Follow-up
+
+[Shared-storage API acceptance](shared-storage-api-acceptance.md) subsequently
+exercised all three storage tables through runtime OpenROAD methods. Workbench
+persistence, source ownership and Unicode fidelity remain distinct open gates.
