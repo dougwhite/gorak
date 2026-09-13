@@ -138,3 +138,20 @@ guarantee. Almost all measured time was in SSH/SCP subprocesses; local processin
 was about 0.1 seconds in the first sample. Export execution and transport startup
 are combined in the SSH timings. Metadata-based change detection and batching
 remain future work; ODBC alone does not remove full XML exports.
+
+The full comparison now exports up to four independent applications concurrently.
+Results are consumed deterministically, and an export failure aborts comparison;
+workers finish before temporary files are removed. On POSIX clients, CLI operations
+reuse SSH/SCP connections through a private per-invocation control-socket directory.
+The short-lived master expires after ten idle seconds. Windows clients retain their
+normal SSH behavior; no persistent SSH configuration is edited.
+
+A further seven-application live sample measured 5.4 seconds sequentially after
+reducing unrelated VM load, 3.2 seconds with concurrent exports, and approximately
+2.1 seconds with connection reuse. Two/four/eight export concurrency measurements
+were approximately 2.2/2.1/2.1 seconds with reuse; four limits VM contention without
+losing observed performance. These runs still compare fresh full XML. Sub-second
+push is not achieved, and changed-source import/compilation timing has not been
+established by these no-change samples. A future fast change token must cover
+application metadata, includes, component changes, additions, and deletions before
+it can safely replace full exports.

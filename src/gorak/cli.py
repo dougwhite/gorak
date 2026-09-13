@@ -748,6 +748,13 @@ def debug_audit_command(args: argparse.Namespace) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    from .remote import ssh_session
+
+    with ssh_session():
+        dispatch(argv)
+
+
+def dispatch(argv: Sequence[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
 
     parser = build_parser()

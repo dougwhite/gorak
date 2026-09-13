@@ -1,10 +1,13 @@
 """SSH/SCP wrappers for running Gorak helper scripts on a Windows host."""
 
 import json
+import os
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from .database import ComponentSyncMetadata
 from .domain import Application, ComponentInfo, IncludedApplication
@@ -14,6 +17,38 @@ from .sql_output import (
     parse_component_sync_metadata_output,
     parse_include_list_output,
 )
+
+_control_path: str | None = None
+
+
+@contextmanager
+def ssh_session() -> Iterator[None]:
+    """Reuse one authenticated transport within a CLI invocation on POSIX hosts."""
+    global _control_path
+    if os.name != "posix" or _control_path is not None:
+        yield
+        return
+    with TemporaryDirectory(prefix="gorak-ssh-") as directory:
+        _control_path = str(Path(directory) / "%C")
+        try:
+            yield
+        finally:
+            _control_path = None
+
+
+def session_command(command: list[str]) -> list[str]:
+    if _control_path is None or not command or command[0] not in {"ssh", "scp"}:
+        return command
+    return [
+        command[0],
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPersist=10",
+        "-o",
+        f"ControlPath={_control_path}",
+        *command[1:],
+    ]
 
 
 @dataclass(frozen=True)
@@ -111,7 +146,7 @@ def run_subprocess(command: list[str]) -> str:
 
     try:
         result = subprocess.run(
-            command,
+            session_command(command),
             check=True,
             capture_output=True,
             text=True,

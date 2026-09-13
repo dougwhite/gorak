@@ -1,6 +1,7 @@
 """Read-only three-way source comparison shared by synchronization commands."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -135,12 +136,19 @@ def plan_project(connection: OpenRoadConnection, root: Path) -> list[Change]:
     available = {app.name.casefold(): app.name for app in read_applications(connection)}
     database: dict[str, object] = {}
     with TemporaryDirectory(prefix="gorak-status-") as temporary:
-        for index, name in enumerate(sorted({app.casefold() for app in apps})):
-            if name not in available:
-                continue
+        names = sorted({app.casefold() for app in apps} & available.keys())
+
+        def export_one(item: tuple[int, str]) -> dict[str, object]:
+            index, name = item
             path = Path(temporary) / f"{index}.xml"
             backup_application_xml(connection, available[name], path)
-            database.update(xml_inventory(read_document(path), name))
+            return xml_inventory(read_document(path), name)
+
+        # Independent applications have separate export paths. Consume in sorted
+        # order and wait for every worker before cleaning the temporary directory.
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for inventory in executor.map(export_one, enumerate(names)):
+                database.update(inventory)
     changes = [
         compare(key, baseline.get(key), disk.get(key), database.get(key))
         for key in sorted(

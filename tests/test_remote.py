@@ -689,3 +689,27 @@ class TestRunSubprocess:
         assert "Remote command failed with exit code 1" in str(ex.value)
         assert "Cannot fetch component missing_component" in str(ex.value)
         assert "gorak-export-missing_component-12345.log" in str(ex.value)
+
+
+def test_ssh_session_reuses_private_transport_and_restores_state() -> None:
+    import os
+    from pathlib import Path
+
+    from gorak import remote
+
+    if os.name != "posix":
+        return
+    original = ["ssh", "-T", "developer@example", "command"]
+    assert remote.session_command(original) == original
+    with remote.ssh_session():
+        ssh = remote.session_command(original)
+        scp = remote.session_command(["scp", "remote:file", "local"])
+        control = next(arg for arg in ssh if arg.startswith("ControlPath="))
+        assert control in scp
+        directory = Path(control.removeprefix("ControlPath=")).parent
+        assert directory.stat().st_mode & 0o777 == 0o700
+        with remote.ssh_session():
+            assert remote.session_command(original) == ssh
+        assert remote.session_command(["sql", "db"]) == ["sql", "db"]
+    assert remote.session_command(original) == original
+    assert not directory.exists()

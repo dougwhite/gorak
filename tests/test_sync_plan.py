@@ -96,3 +96,38 @@ def test_metadata_edit_reports_conflict_instead_of_disappearing(
     item = next(c for c in changes if c.key == "example/proc")
     assert item.action == "conflict"
     assert item.disk == "invalid"
+
+
+def test_independent_exports_overlap_and_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from threading import Barrier
+
+    from gorak.project import ProjectError
+
+    for name in ["first", "second"]:
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "app.json").write_text("{}")
+    monkeypatch.setattr(
+        sync_plan,
+        "read_applications",
+        lambda c: [Application(n, "", "") for n in ["first", "second"]],
+    )
+    barrier = Barrier(2, timeout=5)
+    paths: list[Path] = []
+
+    def export(c: OpenRoadConnection, name: str, path: Path) -> None:
+        paths.append(path)
+        barrier.wait()
+        if name == "first":
+            raise ProjectError("export failed")
+        path.write_text('<OPENROAD><APPLICATION name="second"/></OPENROAD>')
+
+    monkeypatch.setattr(sync_plan, "backup_application_xml", export)
+    with pytest.raises(ProjectError, match="export failed"):
+        sync_plan.plan_project(
+            OpenRoadConnection("local", "node", "db", None), tmp_path
+        )
+    assert len(paths) == 2
+    assert all(not p.parent.exists() for p in paths)
