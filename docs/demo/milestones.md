@@ -129,7 +129,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [ ] Treat compile-only byte changes as candidates for comparison, not source edits.
 - [x] Journal reconciliation persists full XML comparison evidence before exact-event acknowledgment, with disk-drift checks; common sync baselines remain unchanged.
 - [x] Selective observation refresh verified against mandatory full exports; corruption/unresolved mapping/mismatch use full fallback. Separate snapshots preserve common baselines.
-- [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference.
+- [x] Guard diagnostic snapshot publication with before/after committed journal observations; full event batches disable reuse. Regression coverage includes late commits, identity changes and disconnects.
+- [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.
 - [ ] Keep a verified full-rescan/reconciliation path when tracking is unavailable.

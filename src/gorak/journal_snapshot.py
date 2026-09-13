@@ -13,6 +13,7 @@ from .connection import OpenRoadConnection, require_odbc_settings
 from .installation_check import check_installation
 from .journal import acknowledgment_store, poll_journal
 from .journal_mapping import map_applications
+from .journal_observation import observe_journal
 from .journal_reconcile import flush_directory, persist_comparison
 from .portable_source import read_document
 from .project import ProjectError
@@ -102,6 +103,9 @@ def verify_selective_snapshot(
             raise ProjectError(
                 "Snapshot verification requires a complete tracking inventory"
             )
+        before = observe_journal(settings)
+        if before.installation_id != health.installation_id:
+            raise ProjectError("Tracking identity changed before snapshot observation")
         initial = fingerprint(root)
         _, tracked = baseline_inventory(root)
         scope = sorted(
@@ -123,6 +127,8 @@ def verify_selective_snapshot(
         reason = (
             "missing_or_invalid_snapshot"
             if previous is None
+            else "event_batch_at_limit"
+            if len(batch.events) >= limit
             else "unresolved_events"
             if mapping.full_comparison
             else ""
@@ -179,6 +185,8 @@ def verify_selective_snapshot(
             "changes": format_plan(changes),
             "acknowledged": False,
             "incremental_ready": False,
+            "journal_observation": before.as_dict(),
+            "continuity_certified": False,
         }
         persist_comparison(operation, report)
         pointer = {
@@ -188,6 +196,7 @@ def verify_selective_snapshot(
             "scope": scope,
             "operation": operation.name,
             "sha256": {app: digest(path) for app, path in reference.items()},
+            "journal_observation": before.as_dict(),
         }
         destination = root / ".openroad/journal-snapshot.json"
         temporary = destination.with_name(f".journal-snapshot-{operation.name}.tmp")
@@ -196,6 +205,10 @@ def verify_selective_snapshot(
                 json.dump(pointer, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
+            if observe_journal(settings) != before:
+                raise ProjectError(
+                    f"Journal changed during observation; snapshot not published. Artifacts: {operation}"
+                )
             if fingerprint(root) != initial:
                 raise ProjectError("Project changed before snapshot publication")
             temporary.replace(destination)

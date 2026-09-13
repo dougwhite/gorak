@@ -9,8 +9,9 @@ import pytest
 from gorak import journal_snapshot, sync_plan
 from gorak.database import OdbcSettings
 from gorak.installation_check import InstallationCheck
-from gorak.journal import JournalBatch
+from gorak.journal import JournalBatch, JournalEvent
 from gorak.journal_mapping import ApplicationCandidates
+from gorak.journal_observation import JournalObservation
 from gorak.journal_snapshot import verify_selective_snapshot
 from gorak.project import ProjectError
 from tests.test_sync_plan import setup as setup_project
@@ -32,6 +33,11 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, ...]:
     monkeypatch.setattr(journal_snapshot, "check_installation", lambda *a: health)
     monkeypatch.setattr(
         journal_snapshot, "poll_journal", lambda *a: JournalBatch(identity, (), 0)
+    )
+    monkeypatch.setattr(
+        journal_snapshot,
+        "observe_journal",
+        lambda *a: JournalObservation(2, identity, 0, None),
     )
     mapping = [ApplicationCandidates((), False, (), 0)]
     monkeypatch.setattr(journal_snapshot, "map_applications", lambda *a: mapping[0])
@@ -188,3 +194,98 @@ def test_snapshot_cannot_escape_cache_directory(project: tuple[Any, ...]) -> Non
     path.write_text(json.dumps(pointer))
     result = verify_selective_snapshot(connection, root)
     assert result["fallback_reason"] == "missing_or_invalid_snapshot"
+
+
+@pytest.mark.parametrize("after_count,after_max", [(2, 10), (2, 11), (0, None)])
+def test_journal_change_during_export_preserves_pointer(
+    project: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    after_count: int,
+    after_max: int | None,
+) -> None:
+    root, connection, _, _, _ = project
+    verify_selective_snapshot(connection, root)
+    pointer = root / ".openroad/journal-snapshot.json"
+    original = pointer.read_bytes()
+    identity = json.loads(original)["installation_id"]
+    observations = iter(
+        [
+            JournalObservation(2, identity, 1, 10),
+            JournalObservation(2, identity, after_count, after_max),
+        ]
+    )
+    monkeypatch.setattr(
+        journal_snapshot, "observe_journal", lambda *a: next(observations)
+    )
+    with pytest.raises(ProjectError, match="Journal changed during observation"):
+        verify_selective_snapshot(connection, root)
+    assert pointer.read_bytes() == original
+    assert not list(pointer.parent.glob(".journal-snapshot-*.tmp"))
+
+
+def test_full_batch_disables_selective_reuse(
+    project: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, connection, _, _, exports = project
+    first = verify_selective_snapshot(connection, root)
+    identity = str(first["installation_id"])
+    monkeypatch.setattr(
+        journal_snapshot,
+        "poll_journal",
+        lambda *a: JournalBatch(
+            identity,
+            (JournalEvent(1, "ii_entities", "u", {}, {}),),
+            1,
+        ),
+    )
+    exports.clear()
+    result = verify_selective_snapshot(connection, root, limit=1)
+    assert result["fallback_reason"] == "event_batch_at_limit"
+    assert result["reused_applications"] == []
+    assert exports == ["example"]
+
+
+def test_replaced_installation_during_observation_preserves_pointer(
+    project: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, connection, _, _, _ = project
+    first = verify_selective_snapshot(connection, root)
+    pointer = root / ".openroad/journal-snapshot.json"
+    original = pointer.read_bytes()
+    observations = iter(
+        [
+            JournalObservation(2, str(first["installation_id"]), 0, None),
+            JournalObservation(2, str(uuid4()), 0, None),
+        ]
+    )
+    monkeypatch.setattr(
+        journal_snapshot, "observe_journal", lambda *a: next(observations)
+    )
+    with pytest.raises(ProjectError, match="Journal changed"):
+        verify_selective_snapshot(connection, root)
+    assert pointer.read_bytes() == original
+
+
+def test_disconnect_at_final_observation_preserves_pointer(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, connection, _, _, _ = project
+    first = verify_selective_snapshot(connection, root)
+    pointer = root / ".openroad/journal-snapshot.json"
+    original = pointer.read_bytes()
+    calls = 0
+
+    def observe(*args: Any) -> JournalObservation:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("connection lost")
+        return JournalObservation(2, str(first["installation_id"]), 0, None)
+
+    monkeypatch.setattr(journal_snapshot, "observe_journal", observe)
+    with pytest.raises(RuntimeError, match="connection lost"):
+        verify_selective_snapshot(connection, root)
+    assert pointer.read_bytes() == original
+    assert not list(pointer.parent.glob(".journal-snapshot-*.tmp"))

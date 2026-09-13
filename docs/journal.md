@@ -261,3 +261,40 @@ three. Both selective passes matched fresh full exports. The checkout was tempor
 and test tracking objects were removed. Tests additionally verify that an omitted
 event causes a mismatch/fallback, remote deletion drops cached inventory, damaged
 cache falls back, and export/durability/concurrent-source failures prevent publication.
+
+### Observation-window guard
+
+Selective verification now reads the committed journal count and maximum event ID
+before polling and again immediately before publishing its snapshot pointer.
+Each read uses a fresh ODBC connection and one aggregate statement containing the
+installation marker. A change in identity, schema version, count or maximum rejects
+publication and preserves the previous pointer. Connection failure also aborts
+publication. No new events are acknowledged.
+
+This uses the entire retained journal, independent of consumer acknowledgments.
+A count increase detects a lower event ID that commits late even when the maximum
+does not change. The aggregate may scan retained history: it is a diagnostic guard,
+not the intended scalable no-change query or a high-watermark cursor.
+
+A batch containing the requested limit of events uses full fallback with reason
+event_batch_at_limit. There may be more pending events or a transaction split
+across batches, so that batch cannot justify selective reuse. Exactly-limit batches
+also fall back conservatively.
+
+Reports and pointers record journal_observation. Reports explicitly retain
+continuity_certified=false and incremental_ready=false. The mandatory full XML
+reference remains.
+
+An unchanged count/maximum does not detect a restore retaining the same installation
+UUID and aggregate values, delete-and-reinsert replacement of history, disabled
+hooks, or source changes outside hook coverage. Nor does it provide an atomic
+cross-application export: a commit can occur after the final observation. Snapshots
+remain observations requiring a fresh full reference on the next verification.
+These guards must not be used to authorize fast status/sync or event pruning.
+
+The aggregate query was verified read-only against a live schema-v2 installation
+with an empty journal (about 0.047 seconds for connection plus query in one run).
+Populated-history scale, concurrent live transactions and restore/reconnect
+acceptance remain unmeasured. Automated regressions cover late lower-ID commits,
+higher-ID commits, shrinking history, changed installation identity, a final-read
+disconnect and a full event batch; failure cases preserve the old pointer.
