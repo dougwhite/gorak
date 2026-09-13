@@ -9,7 +9,9 @@ an editor. Workbench remains the frame designer. CLI operation from Linux throug
 SSH is part of the target, not an optional alternative implementation.
 
 See [delivery milestones](milestones.md), [architecture decisions](decisions.md),
-and [acceptance evidence](acceptance.md). Proposed commands below are illustrative;
+and [acceptance evidence](acceptance.md). The updated roadmap includes the
+[direct-storage investigation](../research/encoded-source.md), mandatory ODBC source
+access, a proposed database tracking installer, and gigabyte-scale performance. Proposed commands below are illustrative;
 only commands explicitly marked current are available today.
 
 ## Demo environment and reset
@@ -35,9 +37,11 @@ or manual database repairs prerequisites. Keep failed-run artifacts for diagnosi
 Story: "Keep using Workbench. Start getting readable source history and reviews."
 
 1. Show the running application and its source in Workbench.
-2. Create a Gorak project and configure its OpenROAD connection.
+2. Create a Gorak project and configure ODBC source access and OpenROAD execution.
+   In the target stack, install/check Gorak database tracking explicitly.
 3. Export selected applications and their source dependencies.
-4. Explain `.w4gl`, `.wml`, app metadata, and any preserved source XML companions.
+4. Explain `.w4gl`, `.wml`, app metadata, and preserved source companions. XML
+   companions are the current implementation; direct decoding is the target.
 5. Show that credentials, local synchronization state, and logs are ignored.
 6. Commit the exported project and inspect a readable component in Git.
 
@@ -52,8 +56,8 @@ Exit criterion: a fresh clone contains all source needed for Act 3.
 Story: "Existing development habits now produce reviewable Git changes."
 
 1. Edit a component, add another, and delete a disposable component in Workbench.
-2. Run `gorak status` (proposed) and inspect the pending pull plan.
-3. Run `gorak sync` (current; safety/deletion improvements pending).
+2. Run `gorak status` (current) and inspect the pending pull plan.
+3. Run `gorak sync` (current; database-side deletions supported, broader recovery pending).
 4. Show accurate added, modified, and deleted files in `git status` and `git diff`.
 5. Optionally ask an AI assistant to review the diff, then commit it.
 6. Include a frame-design edit and demonstrate its preserved export.
@@ -97,7 +101,9 @@ Story: "The database can be the compiler and runtime for editor-authored code."
 Current: `gorak new app NAME --test` creates an empty registered test app;
 `gorak sync --push && gorak test` is the working explicit sequence.
 Proposed: framework-aware scaffolding, `gorak new test`, and `gorak test --sync`.
-A synchronization or compilation failure must prevent test execution.
+A synchronization failure must prevent the run. With proposed deferred compilation,
+compilation errors during launch must clearly fail the command; execution cannot
+report stale or misleading success. Explicit compilation remains available.
 
 ## Act 5: Build and use the editor
 
@@ -123,6 +129,15 @@ import as a new successful baseline.
 This extension is in the roadmap, but should not block recording the core demo
 once Acts 1–5 have reproducible evidence. Full autonomous AI authoring of frame
 layouts and a dedicated MCP server are later capabilities, not recording gates.
+
+## Performance and storage scene
+
+Show no-change status and push against a representative large repository, then one
+changed component and a test run. Report cold/warm and variable latency honestly.
+The target is sub-second no-change checks with bounded metadata traffic, not a
+full download/hash of gigabytes. Demonstrate journal-driven detection, candidate-only
+ODBC reads, and no source-export OpenROAD startup once those capabilities are built.
+Do not present direct decoding/saving or database tracking as currently implemented.
 
 ## Recording gate
 
