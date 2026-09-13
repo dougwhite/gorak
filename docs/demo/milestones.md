@@ -126,7 +126,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [ ] Associate fingerprints with verified semantic baselines and database identity.
 - [ ] Treat compile-only byte changes as candidates for comparison, not source edits.
 - [x] Journal reconciliation persists full XML comparison evidence before exact-event acknowledgment, with disk-drift checks; common sync baselines remain unchanged.
-- [ ] Consistent snapshots or before/after validation for selective baseline/fingerprint reuse.
+- [x] Selective observation refresh verified against mandatory full exports; corruption/unresolved mapping/mismatch use full fallback. Separate snapshots preserve common baselines.
+- [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.
 - [ ] Keep a verified full-rescan/reconciliation path when tracking is unavailable.

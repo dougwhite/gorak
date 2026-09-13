@@ -108,7 +108,11 @@ def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
 
 
 def plan_project(
-    connection: OpenRoadConnection, root: Path, *, capture_dir: Path | None = None
+    connection: OpenRoadConnection,
+    root: Path,
+    *,
+    capture_dir: Path | None = None,
+    reuse_xml: dict[str, Path] | None = None,
 ) -> list[Change]:
     """Inspect disk and fresh XML without writing project state or database source."""
     if capture_dir is not None:
@@ -146,7 +150,10 @@ def plan_project(
         def export_one(item: tuple[int, str]) -> dict[str, object]:
             index, name = item
             path = Path(temporary) / f"{index}.xml"
-            backup_application_xml(connection, available[name], path)
+            if reuse_xml is not None and name in reuse_xml:
+                copyfile(reuse_xml[name], path)
+            else:
+                backup_application_xml(connection, available[name], path)
             inventory = xml_inventory(read_document(path), name)
             if capture_dir is not None:
                 copyfile(path, capture_dir / f"{index}.xml")

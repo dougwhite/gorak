@@ -90,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     journal_parser.add_argument("--limit", type=int, default=100)
     journal_parser.add_argument(
+        "--verify-selective",
+        action="store_true",
+        help="Verify selective snapshots against full exports",
+    )
+    journal_parser.add_argument(
         "--map", action="store_true", help="Show affected application candidates"
     )
     journal_parser.add_argument(
@@ -838,8 +843,20 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 raise ProjectError("Journal inspection requires a gorak project")
             connection = resolve_openroad_connection(parsed, context)
             root = context.project.root
-            if parsed.reconcile and parsed.map:
-                raise ProjectError("--map cannot be combined with --reconcile")
+            if sum((parsed.reconcile, parsed.map, parsed.verify_selective)) > 1:
+                raise ProjectError(
+                    "Choose one journal mode: --map, --reconcile, or --verify-selective"
+                )
+            if parsed.verify_selective:
+                from .journal_snapshot import verify_selective_snapshot
+
+                print(
+                    json.dumps(
+                        verify_selective_snapshot(connection, root, parsed.limit),
+                        indent=2,
+                    )
+                )
+                return
             if parsed.reconcile:
                 from .journal_reconcile import reconcile_journal
 

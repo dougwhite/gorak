@@ -452,3 +452,8 @@ common sync baselines and source files. Differences leave events pending; see
 `gorak journal --map [--limit N]` adds affected-application candidates and explicit
 full-comparison fallback reasons to the journal preview. It does not narrow status
 or sync yet. See [event mapping](journal.md#map-events-to-application-candidates).
+
+`gorak journal --verify-selective [--limit N]` refreshes a separate database
+observation snapshot selectively and checks it against fresh full exports. It is a
+verification mode, not a status/sync fast path; see
+[selective snapshot verification](journal.md#verify-selective-snapshot-refresh).

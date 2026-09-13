@@ -208,3 +208,56 @@ edit's candidates were checked against the full three-way planner. Read-only liv
 acceptance mapped 30 actual demo component identities to the applications reported
 by the existing metadata reader using two batched entity queries. Live Workbench
 rename/move/delete and shared-storage reference coverage remain open.
+
+## Verify selective snapshot refresh
+
+```sh
+gorak journal --verify-selective --limit 100
+```
+
+This mode exercises selective application refresh while retaining a mandatory
+fresh full-export reference. It requires the same verified target binding and
+tracking inventory as reconciliation. It is separate from `--map` and `--reconcile`.
+
+The first run bootstraps a full observation snapshot. Subsequent runs can copy
+unchanged application XML from that snapshot and export mapped applications.
+The live application inventory is still read, so newly available applications
+within project scope are exported and deleted applications are omitted.
+
+Every selective pass is compared semantically with fresh full exports. A missing,
+corrupt, mismatched-target, changed-installation, or changed-scope snapshot causes
+full fallback. Unresolved event mapping also causes full fallback. If the selective
+snapshot differs from the reference—whether because of an omitted event, a bounded
+batch, or a concurrent database change—the full reference is retained and the
+mismatch is reported.
+
+Output includes `mode` (`selective_verified` or `full_fallback`), the fallback
+reason, reused and selectively exported application names, the full-reference
+application list, and the existing three-way source differences. Newly previewed
+events are not acknowledged. Pending acknowledgment publication from previously
+completed work follows the normal journal polling behavior.
+
+Evidence is stored in `.openroad/journal-snapshots/<operation>/`. A local
+`.openroad/journal-snapshot.json` pointer records installation identity, configured
+target, project scope and SHA-256 hashes of the full-reference XML. Cache paths and
+hashes are checked before reuse. The full-reference evidence is flushed before
+atomic pointer replacement. Source drift or an export/evidence failure before
+publication leaves the previous pointer intact. Old evidence is retained; automatic
+artifact retention is not implemented.
+
+Snapshots may record pending pushes, pulls or conflicts. They describe observed
+database source and **never replace common sync baselines or disk source**.
+Normal status, sync and reconciliation still use full comparisons.
+
+This mode is a validation tool, not the final fast path. It can do more work than
+normal status because it performs both selective and full-reference comparisons.
+A quiet journal and `selective_verified` do not certify future hook coverage.
+Removing the reference check requires complete invalidation/health and snapshot
+continuity acceptance.
+
+Live isolated acceptance bootstrapped four applications, reused all four during
+an empty-event selective pass, then refreshed one mapped application while reusing
+three. Both selective passes matched fresh full exports. The checkout was temporary
+and test tracking objects were removed. Tests additionally verify that an omitted
+event causes a mismatch/fallback, remote deletion drops cached inventory, damaged
+cache falls back, and export/durability/concurrent-source failures prevent publication.

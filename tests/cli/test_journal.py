@@ -83,3 +83,20 @@ def test_map_outputs_candidates_without_acknowledging(
     assert output["mapping"]["applications"] == ["example"]
     assert output["acknowledged"] is False
     assert output["incremental_ready"] is False
+
+
+def test_selective_verification_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gorak import journal_snapshot
+
+    (tmp_path / "gorak.json").write_text('{"name":"journal_demo"}')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *a: None)
+    monkeypatch.setattr(
+        journal_snapshot,
+        "verify_selective_snapshot",
+        lambda *a: {"mode": "selective_verified"},
+    )
+    cli.main(["journal", "--verify-selective"])
+    assert json.loads(capsys.readouterr().out)["mode"] == "selective_verified"
