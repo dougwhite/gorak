@@ -38,3 +38,38 @@ For each milestone record:
 - Artifact paths or stable references that do not expose private connection data.
 - Untested scenarios, manual Workbench steps, new bugs, and recovery interventions.
 - Implementation status, live acceptance status, and presenter acceptance status.
+
+## M1: Cache-free reconstruction, 2026-09-13
+
+CLI acceptance passed; manual frame visual acceptance remains pending.
+
+- Exported four demo applications, 30 components, and two frame markup files into
+  a separate source checkout. Coverage includes an empty app, source/image includes,
+  classes, procedures, globals, a 3GL declaration, and the unit-test framework.
+- Committed readable files and format-1 XML companions; cloned with Git into a
+  directory containing no `.openroad` cache. Local environment supplied separately.
+- Created an independent standard Ingres database using `createdb TARGET -no_x100`.
+  The plain command attempted X100 creation and failed on this installation.
+  See [Actian createdb reference](https://docs.actian.com/ingres/11.0/CommandRef/createdb_Command--Create_a_Database.htm).
+- `gorak sync --push`: four application creations succeeded; whole-app compilation
+  used fresh processes. Each preserved component passed complete XML comparison
+  after import, not only the readable-property subset.
+- Re-exported all four apps; `git diff --exit-code` succeeded and the saved diff
+  was zero bytes. No hidden source cache was supplied to the initial import.
+- `gorak test`: expected exit 1, one deliberate assertion failure, zero errors or
+  skips. Two testcase entries include setup. This proves test execution rather
+  than a green application suite.
+- Automated checks: 347 pytest tests pass; Ruff and strict mypy checked before commit.
+- Private acceptance checkout/artifacts: `/tmp/gorak-m1/clone-clean`; retained logs
+  also document failed attempts. These temporary paths are evidence pointers, not
+  dependencies of the portable source format.
+
+Issues fixed during acceptance: compilation within backupapp could see incomplete
+class/global state; creation now compiles whole apps in a fresh process. Broad log
+matching incorrectly treated `Error` and `AssertionFailedError` component names as
+errors; diagnostics distinguish these names from error messages. Component export
+filename casing is respected when writing companions.
+
+No Workbench UI inspection was performed. Frame rendering, broad binary/opaque
+structure coverage beyond the sample, format migrations beyond rejecting unknown
+versions, deletion handling, and target-bound synchronization safety remain open.

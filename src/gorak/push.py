@@ -24,6 +24,7 @@ from .parser import (
     parse_w4gl,
     split_w4gl,
 )
+from .portable_source import restore_application, restore_component
 from .project import ProjectError
 from .xml_writer import document, new_application, new_component
 
@@ -69,7 +70,20 @@ def _push_project(
         paths = sorted(folder.glob("*.w4gl"))
         if len({p.stem.casefold() for p in paths}) != len(paths):
             raise ProjectError(f"Component names collide ignoring case: {app}")
-        for path in [folder / "app.json", *paths]:
+        companion_dir = folder / ".gorak-source"
+        for companion in (companion_dir / "components").glob("*.xml"):
+            if not (folder / f"{companion.stem}.w4gl").is_file():
+                raise ProjectError(
+                    f"Source companion has no readable component: {companion}"
+                )
+        auxiliary = [p for p in companion_dir.rglob("*") if p.is_file()]
+        auxiliary.extend(folder.glob("*.wml"))
+        auxiliary.extend(
+            p
+            for p in [root / "field_defaults.json", folder / "field_defaults.json"]
+            if p.is_file()
+        )
+        for path in [folder / "app.json", *paths, *auxiliary]:
             snapshots[path] = path.read_bytes()
         if app.casefold() not in known:
             # Missing previously exported apps are deletions/conflicts, not creations.
@@ -77,8 +91,8 @@ def _push_project(
                 raise ProjectError(
                     f"Previously exported application is missing from database: {app}"
                 )
-            node = new_application(folder)
-            nodes = [new_component(path) for path in paths]
+            node = restore_application(folder)
+            nodes = [restore_component(path) for path in paths]
             start = node.findtext("procstart")
             if start and start.casefold() not in {p.stem.casefold() for p in paths}:
                 raise ProjectError(f"Starting component is missing: {app}/{start}")
@@ -330,8 +344,20 @@ def _push_project(
                             f"Existing component changed during application update: {app}/{name}"
                         )
             for source in sources:
-                actual = parse_component_node(component_tree(after, source.stem))
-                expected = parse_component_node(new_component(source))
+                actual_node = component_tree(after, source.stem)
+                expected_node = restore_component(source)
+                if (
+                    source.parent
+                    / ".gorak-source"
+                    / "components"
+                    / f"{source.stem}.xml"
+                ).is_file():
+                    if signature(actual_node) != signature(expected_node):
+                        raise ProjectError(
+                            f"Portable XML verification failed: {source.stem}"
+                        )
+                actual = parse_component_node(actual_node)
+                expected = parse_component_node(expected_node)
                 if (
                     actual.script != expected.script
                     or actual.type != expected.type

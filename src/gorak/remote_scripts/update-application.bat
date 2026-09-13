@@ -12,7 +12,7 @@ set "GORAK_IMPORT_EXIT=%ERRORLEVEL%"
 if exist "%LOG%" type "%LOG%"
 if not "%GORAK_IMPORT_EXIT%"=="0" exit /b %GORAK_IMPORT_EXIT%
 if not exist "%LOG%" exit /b 1
-findstr /I /C:"ERROR:" /C:"failed" "%LOG%" >nul
+findstr /I /C:"ERROR:" /C:" failed" "%LOG%" >nul
 if not errorlevel 1 exit /b 1
 set "LOG=%~4.compile.log"
 w4gldev compileapp "%~1" "%~2" -nowindows -e -TALL,logonly -L"%LOG%"
@@ -20,7 +20,7 @@ set "GORAK_COMPILE_EXIT=%ERRORLEVEL%"
 if exist "%LOG%" type "%LOG%"
 if not "%GORAK_COMPILE_EXIT%"=="0" exit /b %GORAK_COMPILE_EXIT%
 if not exist "%LOG%" exit /b 1
-findstr /I /C:"ERROR:" /C:"failed" "%LOG%" >nul
+findstr /I /C:"ERROR:" /C:" failed" "%LOG%" >nul
 if not errorlevel 1 exit /b 1
 echo GORAK_IMPORT_OK
 exit /b 0

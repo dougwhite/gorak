@@ -130,3 +130,45 @@ Gorak caches exported OpenROAD XML under `.openroad/`.
 ```
 
 This is useful for debugging and audit, but it is local generated state.
+
+## Portable XML source companions (format 1)
+
+Application exports now write this additional **tracked source** directory:
+
+```text
+app_name/.gorak-source/
+├── format                   # 1
+├── application.xml          # full application metadata
+└── components/
+    └── component.xml        # full XML for each exported component
+```
+
+Commit this directory. Unlike `.openroad`, it is independent of a database's
+synchronization state and is required to restore source structures not yet fully
+represented in readable files. A clean clone can use these companions to create
+applications containing exported frames, globals, 3GL declarations, and other
+preserved component types. Newly authored procedures/classes still need no XML.
+
+Readable app metadata overrides its represented XML fields. For components,
+`.w4gl` script edits override the preserved script while opaque XML is retained.
+Component metadata must still match the readable projection of its companion;
+frame markup and effective field defaults must match too. Unsupported edits are
+rejected before import. This first format preserves frame designs; it does not
+implement editing frame markup from disk. Existing-component push retains its
+current restrictions, including rejecting frame edits.
+
+Do not edit companions independently of their readable files or rename component
+folders/files without updating source identities. A companion without its readable
+component is rejected; deletion reconciliation belongs to the sync-planning work.
+The format marker is checked on restore. Unknown versions and unrecognized XML
+root structures are rejected rather than partially imported.
+
+Full and component exports refresh their corresponding companions. Script-only
+pushes need not rewrite them: reconstruction applies the current readable script.
+OpenROAD XML contents are preserved without inventing IDs; deployment baselines,
+credentials, trace logs, and recovery files remain outside versioned source.
+
+After upgrading an existing export-only project, export its applications once to
+produce companions before attempting a cache-free clone restoration. Re-export can
+overwrite local source, so reconcile local edits before doing this. Existing unsafe
+pull behavior is tracked under M2; this feature does not resolve it.

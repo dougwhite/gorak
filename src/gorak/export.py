@@ -245,6 +245,9 @@ def export_application_to_paths(
             progress,
         )
 
+    from .portable_source import write_companions
+
+    write_companions(paths.xml_path, paths.source_dir)
     return exported
 
 
@@ -262,7 +265,7 @@ def export_component_to_paths(
     backup_component_xml(connection, app, component, paths.xml_path)
 
     parsed_component = parse_xml(etree.parse(str(paths.xml_path)))
-    normalize_component_xml_path(paths.xml_path, parsed_component.name)
+    normalized_xml = normalize_component_xml_path(paths.xml_path, parsed_component.name)
     apply_field_default_inheritance(
         paths.w4gl_path.parent.parent,
         app,
@@ -279,6 +282,11 @@ def export_component_to_paths(
         parsed_component.name,
         encode_wml(parsed_component),
         progress,
+    )
+    from .portable_source import write_companions
+
+    write_companions(
+        normalized_xml, paths.w4gl_path.parent
     )
     return w4gl_path
 

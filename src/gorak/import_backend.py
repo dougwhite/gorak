@@ -12,7 +12,9 @@ from .project import ProjectError
 
 
 def checked_log(text: str) -> None:
-    if re.search(r"\b(error|failed|failure)\b|\bE_[A-Z0-9_]+", text, re.IGNORECASE):
+    if re.search(
+        r"(?:^|\n)\s*ERROR:|\bE_[A-Z0-9_]+|\b(?:failed|failure)\b", text, re.IGNORECASE
+    ):
         raise ProjectError(
             "OpenROAD reported an import/compilation error; inspect import.log"
         )
@@ -28,11 +30,7 @@ def import_component_xml(
     create: bool = False,
 ) -> None:
     """Import only the named component; keep diagnostics even when execution fails."""
-    empty_app = (
-        create
-        and component == "-"
-        and not etree.parse(str(xml_path)).findall("COMPONENT")
-    )
+    empty_app = component == "-" and not etree.parse(str(xml_path)).findall("COMPONENT")
     if connection.backend == "local":
         command = local.build_backup_component_command(
             connection.vnode,
@@ -48,7 +46,7 @@ def import_component_xml(
             )
         command[2] = "in"
         command.append("-nabort" if create else "-nreplace")
-        if not empty_app and not (component == "-" and not create):
+        if component != "-":
             command.append("-f")
         try:
             output = local.run_subprocess(command)
@@ -62,7 +60,7 @@ def import_component_xml(
                 "OpenROAD did not create a compilation log; inspect import.log"
             )
         checked_log(log_path.read_text(errors="replace"))
-        if component == "-" and not create:
+        if component == "-" and not empty_app:
             compile_log = log_path.with_suffix(".compile.log")
             local.run_subprocess(
                 [

@@ -154,7 +154,9 @@ def test_application_update_compiles_in_fresh_process(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     source = tmp_path / "source.xml"
-    source.write_text('<OPENROAD><APPLICATION name="example"/></OPENROAD>')
+    source.write_text(
+        '<OPENROAD><APPLICATION name="example"/><COMPONENT name="proc"/></OPENROAD>'
+    )
     log = tmp_path / "import.log"
     calls: list[list[str]] = []
 
@@ -175,3 +177,11 @@ def test_application_update_compiles_in_fresh_process(
     assert calls[0][1] == "backupapp"
     assert "-f" not in calls[0]
     assert calls[1][1] == "compileapp"
+
+
+def test_component_named_error_is_not_a_compiler_error() -> None:
+    import_backend.checked_log(
+        "Loading Error into database . . . done.\nCompiling error . . . done."
+    )
+    with pytest.raises(ProjectError):
+        import_backend.checked_log("ERROR: Compile errors in component example.")

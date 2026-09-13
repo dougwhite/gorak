@@ -8,7 +8,7 @@ live acceptance, and presenter acceptance separate.
 | ID | Milestone | State | Acceptance gate |
 | --- | --- | --- | --- |
 | M0 | Preserve baseline and document demo | Complete | Existing work committed; walkthrough, decisions, gaps, evidence linked |
-| M1 | Self-contained source and fresh-clone reconstruction | Not started | Clone without cache → empty DB → equivalent export, runnable app/tests |
+| M1 | Self-contained source and fresh-clone reconstruction | CLI acceptance passed; visual acceptance pending | Clone without cache → empty DB → equivalent export, runnable app/tests |
 | M2 | Safe shared sync planner and status | Not started | One-sided edits/additions/deletions work; divergent changes never overwrite silently |
 | M3 | Onboarding and dependency-aware export | Not started | Multiple apps exported with source include closure and clear external-image requirements |
 | M4 | Locked Git dependencies | Not started | Clean checkout restores identical dependency sources; explicit updates alter lock |
@@ -20,15 +20,16 @@ live acceptance, and presenter acceptance separate.
 ## M1: Source portability
 
 - [ ] Define a versioned source format and format migration policy.
-- [ ] Preserve XML structures not yet represented by readable files in tracked
+- [x] Preserve XML structures not yet represented by readable files in tracked
   source companions; credentials and target-specific sync state stay untracked.
-- [ ] Define which readable fields override preserved XML; reject inconsistent or
+- [x] Define which readable fields override preserved XML; reject inconsistent or
   unsupported edits instead of dropping content.
 - [ ] Export and reconstruct frames, globals, 3GL declarations, app metadata,
   includes, field defaults, class declarations, scripts, and opaque source data.
-- [ ] Preserve script CDATA and significant whitespace; stabilize repeated exports.
+- [x] Preserve script CDATA and significant whitespace; stabilize repeated exports
+  for the representative acceptance source (broader compatibility remains unproven).
 - [ ] Distinguish source equality from destination-specific IDs and timestamps.
-- [ ] Restore a real representative application into an independent empty target.
+- [x] Restore a real representative application into an independent empty target.
 - [ ] Verify frame rendering and interaction separately from XML equality.
 
 ## M2: Synchronization correctness

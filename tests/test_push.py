@@ -7,6 +7,7 @@ import pytest
 from gorak import push
 from gorak.connection import OpenRoadConnection
 from gorak.domain import Application, ComponentInfo
+from gorak.importer import signature
 from gorak.project import ProjectError
 from gorak.xml_writer import document, new_application, new_component
 
@@ -206,3 +207,42 @@ def test_metadata_conflict_aborts_before_import(
     )
     with pytest.raises(ProjectError, match="metadata changed since export"):
         push.push_project(connection(), tmp_path)
+
+
+def test_fresh_push_restores_exported_frame_without_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lxml import etree
+
+    from gorak.export import apply_field_default_inheritance
+    from gorak.parser import encode_w4gl, encode_wml, parse_component_node
+    from gorak.portable_source import write_companions
+
+    folder = app(tmp_path, "example")
+    xml = Path("tests/fixtures/fm_example_frame.xml")
+    node = etree.parse(str(xml)).find("COMPONENT")
+    assert node is not None
+    component = parse_component_node(node)
+    apply_field_default_inheritance(tmp_path, "example", [component])
+    source = folder / f"{component.name}.w4gl"
+    source.write_text(encode_w4gl(component))
+    source.with_suffix(".wml").write_text(encode_wml(component) or "")
+    write_companions(xml, folder)
+    assert not (tmp_path / ".openroad").exists()
+    monkeypatch.setattr(push, "read_applications", lambda _: [])
+    imported: list[bytes] = []
+
+    def importing(
+        c: Any, a: str, comp: str, path: Path, log: Path, *, create: bool
+    ) -> None:
+        assert create and comp == "-"
+        imported.append(path.read_bytes())
+
+    monkeypatch.setattr(push, "import_component_xml", importing)
+    monkeypatch.setattr(
+        push, "backup_application_xml", lambda c, a, p: p.write_bytes(imported[0])
+    )
+    assert "1 creations" in push.push_project(connection(), tmp_path)
+    restored = etree.fromstring(imported[0]).find("COMPONENT")
+    assert restored is not None
+    assert signature(restored) == signature(node)

@@ -14,8 +14,9 @@ image includes are passed through; the image must be available to OpenROAD.
 
 Supported creation includes empty applications, 4GL procedures, and user classes.
 Class attributes and methods support type declarations, arrays, nullability,
-private methods, and return types. Unknown metadata is rejected. New frames and
-other component types are not supported yet.
+private methods, and return types. Unknown metadata is rejected. Newly authored frames and other component types are not supported yet. Exported
+components of these types can be restored from tracked XML source companions; see
+[portable source format](files.md#portable-xml-source-companions-format-1).
 
 Existing procedures and classes use the script-only importer and its cached XML
 baseline. Database changes since that baseline cause a conflict. Application metadata updates preserve the latest full application XML, check for
@@ -26,7 +27,8 @@ Unchanged frames can coexist with pushed procedures and classes.
 
 All planned source is validated before imports begin. Creations use OpenROAD's
 abort-on-conflict option, and imports are re-exported to verify the result.
-Empty applications skip forced compilation. A second unchanged push does nothing.
+Whole applications compile in a fresh process after import; empty applications
+skip compilation. A second unchanged push does nothing.
 
 Push does not delete applications or components. Removing a disk file does not
 remove its database object. A previously exported object missing from the database
@@ -41,6 +43,6 @@ edits while pushing; conflict detection is optimistic.
 
 Both local Windows and SSH OpenROAD backends are supported. SQL discovery may use
 local, remote, or ODBC access; XML imports still require the OpenROAD backend.
-SSH users must run `gorak remote install` to install helper version 5, which adds
+SSH users must run `gorak remote install` to install helper version 6, which adds
 creation and application-update helpers. A missing creation helper fails without falling back to
 replacement imports.
