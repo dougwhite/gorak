@@ -126,7 +126,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Diagnostic event-to-application mapping follows current and historical parent/base relationships; uncertain/deleted/shared-storage cases request full comparison.
 - [x] Isolated complex-frame replacement, label edit, long script, embedded-image removal and deletion map to the affected app. See [frame acceptance](../research/frame-journal-acceptance.md).
 - [x] Live runtime StringObject/BitmapObject insert/update/delete capture, including explicit nstring storage, retains shared-ownership full fallback. See [API acceptance](../research/shared-storage-api-acceptance.md).
-- [ ] Complete source metadata, includes, referenced strings/images, deletion inventory, Workbench saves and live move/rename coverage before selective cache reuse.
+- [x] Live Workbench procedure/frame saves, component rename/delete, numbered version, description and include removal detected. Frame saves and include removal currently require full fallback. See [Workbench acceptance](../research/workbench-journal-acceptance.md).
+- [ ] Complete shared-storage ownership, cross-app moves, version restore/purge and broader save coverage before selective cache reuse.
 - [ ] Associate fingerprints with verified semantic baselines and database identity.
 - [ ] Treat compile-only byte changes as candidates for comparison, not source edits.
 - [x] Journal reconciliation persists full XML comparison evidence before exact-event acknowledgment, with disk-drift checks; common sync baselines remain unchanged.
