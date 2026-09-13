@@ -41,7 +41,7 @@ and [sync behavior and timing](../synchronization.md).
 | M0 | Preserve baseline and document demo | Complete; roadmap updated | Walkthrough, decisions, gaps, and evidence retained |
 | M1 | Portable source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Cache-free clone restores equivalent source and runnable sample; broader types remain open |
 | M2a | Complete sync correctness and recovery | Substantial partial implementation | Both directions handle edits/additions/deletions; conflicts, branch switches, interruptions preserve work |
-| M2b | Install database change tracking | Transaction prototype passed; installer/coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
+| M2b | Install database change tracking | Transaction and simple source-rule probes passed; installer/broad coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
 | M2c | Incremental ODBC status and fingerprinting | Research | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
 | M2d | Direct source decoding | Research | ODBC → Gorak source matches reference exports across supported types without w4gldev |
 | M2e | Direct source encoding and saving | Not started | Disk → DB → Workbench/run round trip preserves source and repository invariants |
@@ -88,7 +88,10 @@ Proposed `gorak install` installs Gorak-owned tracking tables/rules. This capabi
 is accepted in principle; exact schema, syntax, privileges, and installation targets
 must be explicit. No rules have been installed by the research work.
 
-- [ ] Inventory source-related tables and transaction/save behavior through controlled
+- [x] Temporary real source-table rules captured simple import, compile, include/metadata
+  replacement and deletion; removed after testing. Privileged owner bootstrap required.
+  See [source-rule coverage](../research/source-rule-coverage.md).
+- [ ] Complete inventory of source-related tables and transaction/save behavior through controlled
   probes: script, metadata, include, frame, image, rename, version, deletion, no-op save.
 - [ ] Minimal rule work: mark dirty identities or record small events, not repeatedly
   hash/rebuild an entire object on every chunk update.

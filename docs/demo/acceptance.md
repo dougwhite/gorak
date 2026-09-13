@@ -179,3 +179,16 @@ writer-side journal scan caused contention and was removed from the probe.
 This is transaction-mechanics evidence only: no production source rules, installer,
 retention implementation, source coverage, or large-save performance acceptance.
 Details and limitations: [journal research](../research/change-journal.md).
+
+
+## M2b actual source-table rule probe, 2026-09-13
+
+Twenty-four temporary rules on eight source-related tables captured the synthetic
+application's script import, explicit compile, metadata/include replacement,
+component deletion, and application deletion. Normal login permission was
+insufficient; owner-identity bootstrap succeeded. Whole-app imports replaced entity
+identities, confirming the need for richer tombstone context. Source-table rules,
+procedure and sequence were removed afterward; the event table was retained.
+
+No production installer, complete Workbench/frame/image coverage, failure-injection,
+or large-save overhead claim. See [source-rule coverage](../research/source-rule-coverage.md).
