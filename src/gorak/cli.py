@@ -69,6 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gorak")
     subparsers = parser.add_subparsers(dest="command")
 
+    install_parser = subparsers.add_parser("install")
+    install_parser.add_argument(
+        "--export-sql",
+        required=True,
+        metavar="PATH",
+        help="Write DBA-reviewed source tracking SQL; use - for stdout",
+    )
+
     recovery_parser = subparsers.add_parser("recover")
     recovery_parser.add_argument("operation", choices=["push"])
     add_openroad_connection_args(recovery_parser)
@@ -761,6 +769,17 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
     parsed = parser.parse_args(args)
 
     try:
+        if parsed.command == "install":
+            from .installation import export_installation_sql, installation_sql
+
+            if parsed.export_sql == "-":
+                print(installation_sql(), end="")
+            else:
+                export_installation_sql(Path(parsed.export_sql))
+                print(
+                    f"Exported capture-only installation SQL to {parsed.export_sql}; no database changes made"
+                )
+            return
         if parsed.command == "recover":
             from .recovery import recover_push
 

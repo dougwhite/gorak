@@ -41,7 +41,7 @@ and [sync behavior and timing](../synchronization.md).
 | M0 | Preserve baseline and document demo | Complete; roadmap updated | Walkthrough, decisions, gaps, and evidence retained |
 | M1 | Portable source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Cache-free clone restores equivalent source and runnable sample; broader types remain open |
 | M2a | Complete sync correctness and recovery | Substantial partial implementation | Both directions handle edits/additions/deletions; conflicts, branch switches, interruptions preserve work |
-| M2b | Install database change tracking | Transaction and simple source-rule probes passed; installer/broad coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
+| M2b | Install database change tracking | DBA SQL export implemented; capture-only, consumer/broad coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
 | M2c | Incremental ODBC status and fingerprinting | Research | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
 | M2d | Direct source decoding | Research | ODBC → Gorak source matches reference exports across supported types without w4gldev |
 | M2e | Direct source encoding and saving | Not started | Disk → DB → Workbench/run round trip preserves source and repository invariants |
@@ -84,9 +84,11 @@ and database agree. These do not constitute database transactions across command
 
 ## M2b: Versioned database installer and journal
 
-Proposed `gorak install` installs Gorak-owned tracking tables/rules. This capability
+`gorak install --export-sql PATH` now exports a DBA-applied capture-only hook script.
+Automatic installation and the incremental consumer remain unimplemented. This capability
 is accepted in principle; exact schema, syntax, privileges, and installation targets
-must be explicit. No rules have been installed by the research work.
+must be explicit. Temporary rules and the generated script were validated in an isolated database
+and removed afterward. See [DBA installation](../installation.md).
 
 - [x] Temporary real source-table rules captured simple import, compile, include/metadata
   replacement and deletion; removed after testing. Privileged owner bootstrap required.

@@ -408,3 +408,16 @@ generate tests, select a framework, or configure includes. The test application
 cannot run until an entry point is supplied and it exists in OpenROAD. Existing
 paths, including case variants, are rejected. Application names must be identifiers
 of at most 32 characters. `gorak new NAME [--nogit]` still creates a whole project.
+
+## DBA hook SQL export
+
+```sh
+gorak install --export-sql gorak-install.sql
+gorak install --export-sql -
+```
+
+Generates capture-only source-tracking SQL for DBA review. No project, connection,
+credentials, or database access is required. Existing output files are not replaced.
+The DBA applies it to an initialized source database under the required owner
+identity, locally or through an authorized vnode connection. See
+[installation instructions](installation.md) for error handling and current limits.

@@ -192,3 +192,17 @@ procedure and sequence were removed afterward; the event table was retained.
 
 No production installer, complete Workbench/frame/image coverage, failure-injection,
 or large-save overhead claim. See [source-rule coverage](../research/source-rule-coverage.md).
+
+
+## M2b DBA SQL export, 2026-09-13
+
+`gorak install --export-sql PATH` and stdout export are implemented. The generated
+capture-only v1 script retains old/new identity context and creates a server-side
+installation UUID; it does not connect, issue grants, replace existing objects, or
+activate an incremental consumer. The Windows SQL client successfully used the
+owner identity through a vnode and applied the generated script in the isolated
+database. After cleanup, a missing-table fault confirmed stop-on-error rollback
+left no installation tables or rules. Documentation covers client-side DBA execution.
+
+427 automated tests, Ruff, mypy, and diff checks passed. Runtime hook health,
+consumer lifecycle, retention, upgrades, and broad source/save acceptance remain open.
