@@ -158,7 +158,9 @@ def verify_selective_snapshot(
             previous.observer if previous is not None else None,
         )
         with acknowledgment_store(observer_path) as store:
-            batch = poll_journal(settings, store, limit, verify_complete=True)
+            batch = poll_journal(
+                settings, store, limit, verify_complete=True, verify_receipts=True
+            )
         if batch.installation_id != health.installation_id:
             raise ProjectError("Tracking identity changed during snapshot verification")
         mapping = map_applications(

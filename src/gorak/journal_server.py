@@ -66,3 +66,50 @@ def publish_acknowledgments(
         with store:
             store.executemany("insert or ignore into published values (?)", pending)
             store.executemany("delete from ack_outbox where event_id = ?", pending)
+
+
+def verify_observer_receipts(
+    connection: Any, store: sqlite3.Connection, consumer: str
+) -> None:
+    """Detect restored/forked observer progress before publishing its outbox.
+
+    Stream exact receipt IDs: equal counts alone cannot establish equal history.
+    This is an O(retained receipts) diagnostic, not a scalable fast-path token.
+    """
+    expected_published = int(
+        store.execute("select count(*) from published").fetchone()[0]
+    )
+    matched_published = 0
+    result = connection.execute(
+        text(
+            'select event_id, count(*) from "$ingres".gorak_journal_acks '
+            "where consumer_id = :consumer group by event_id"
+        ),
+        {"consumer": consumer},
+    )
+    try:
+        while rows := result.fetchmany(256):
+            for row in rows:
+                identity = int(row[0])
+                if (
+                    int(row[1]) != 1
+                    or store.execute(
+                        "select 1 from acknowledged where event_id = ?", (identity,)
+                    ).fetchone()
+                    is None
+                ):
+                    raise ProjectError(
+                        "Observer server receipts exceed or differ from local history; "
+                        "run gorak journal --rebootstrap"
+                    )
+                if store.execute(
+                    "select 1 from published where event_id = ?", (identity,)
+                ).fetchone():
+                    matched_published += 1
+    finally:
+        result.close()
+    if matched_published != expected_published:
+        raise ProjectError(
+            "Previously published observer receipts are missing on the server; "
+            "run gorak journal --rebootstrap"
+        )

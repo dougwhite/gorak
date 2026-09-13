@@ -15,7 +15,11 @@ from sqlalchemy import text
 
 from .database import EngineFactory, OdbcSettings, create_odbc_engine
 from .installation import FIELDS, SCHEMA_VERSION, TABLES
-from .journal_server import consumer_identity, publish_acknowledgments
+from .journal_server import (
+    consumer_identity,
+    publish_acknowledgments,
+    verify_observer_receipts,
+)
 from .project import ProjectError
 
 COLUMNS = ["event_id", "source_table", "action"] + [
@@ -87,6 +91,7 @@ def poll_journal(
     engine_factory: EngineFactory = create_odbc_engine,
     *,
     verify_complete: bool = False,
+    verify_receipts: bool = False,
 ) -> JournalBatch:
     """Return pending events, optionally reading one extra to establish exhaustion.
 
@@ -123,6 +128,8 @@ def poll_journal(
             params: dict[str, str] = {}
             if rows[0][0] == 2:
                 consumer = consumer_identity(store)
+                if verify_receipts:
+                    verify_observer_receipts(connection, store, consumer)
                 publish_acknowledgments(connection, store, consumer)
                 # No high-water cursor: a lower ID can commit after a higher ID.
                 query = (

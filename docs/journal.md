@@ -449,8 +449,41 @@ compile events and the include deletion, and both selective passes matched full
 references. A following quiet pass checkpointed zero new events. The temporary app
 was removed and existing manual acceptance tracking was retained.
 
-This is still a diagnostic protocol. Restoring an older valid local snapshot pointer
-can disagree with already-published server receipts; deliberate local/database
-restores require rebootstrap. Physical restore detection, complete larger event
-windows, retention, scalable receipt validation and removal of the full oracle remain
-open. Do not use these checkpoints to authorize incremental status/sync yet.
+This is still a diagnostic protocol. Receipt consistency is checked as described
+below, but deliberate local/database restores still require rebootstrap. Physical
+restore detection, complete larger event windows, retention, scalable receipt
+validation and removal of the full oracle remain open. Do not use these checkpoints
+to authorize incremental status/sync yet.
+
+
+### Observer receipt consistency
+
+Before publishing an observer outbox on schema v2, verification streams the server's
+receipt IDs and checks them against the staged local acknowledgment database:
+
+- Every server receipt must be locally acknowledged.
+- Every locally published receipt must still exist on the server.
+- A server receipt still in the local outbox is allowed, covering a server commit
+  whose success was not recorded locally.
+
+The check compares IDs, not just totals. Equal-sized but different histories are
+rejected. Divergence stops before event processing and directs the operator to
+journal --rebootstrap. It never deletes or fabricates receipts to make them agree.
+
+This detects an older local checkpoint after a newer checkpoint published receipts,
+and server receipt loss relative to known local publication. It does not detect a
+restore that preserves those exact receipts while replacing source/journal data.
+General consumer polling is unchanged; this check is specific to the private
+observer. Schema v1 has no server receipt table and retains full-reference-only
+diagnostic behavior.
+
+The query streams bounded fetch chunks but examines all retained receipts for this
+consumer. It is deliberately O(history) and is not suitable as the final large-repo
+fast-path check. A compact, transaction-safe generation/checkpoint protocol remains
+a prerequisite to replacing this diagnostic guard.
+
+Live acceptance used a temporary private consumer over retained isolated events.
+It rejected an old observer after newer receipts had been published, then rejected
+the newer observer after its server receipts were removed. Only that test consumer's
+receipt rows were deleted; source and other consumers were unchanged. Regression
+tests additionally cover same-count/different-ID history and uncertain commits.
