@@ -9,7 +9,7 @@ live acceptance, and presenter acceptance separate.
 | --- | --- | --- | --- |
 | M0 | Preserve baseline and document demo | Complete | Existing work committed; walkthrough, decisions, gaps, evidence linked |
 | M1 | Self-contained source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Clone without cache → empty DB → equivalent export, runnable app/tests |
-| M2 | Safe shared sync planner and status | In progress: planner and conservative CLI gates | One-sided edits/additions/deletions work; divergent changes never overwrite silently |
+| M2 | Safe shared sync planner and status | In progress: planner, staged pull, conservative push gates | One-sided edits/additions/deletions work; divergent changes never overwrite silently |
 | M3 | Onboarding and dependency-aware export | Not started | Multiple apps exported with source include closure and clear external-image requirements |
 | M4 | Locked Git dependencies | Not started | Clean checkout restores identical dependency sources; explicit updates alter lock |
 | M5 | Test scaffolding and combined test workflow | Partial | Scaffold → failing test → fix → pass, with diagnostics and repeatable CLI execution |

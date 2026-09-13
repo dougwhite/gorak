@@ -57,7 +57,7 @@ from .remote import (
 )
 from .run_backend import execute_application
 from .runner import TestApplication, report_summary, test_applications
-from .sync import sync_project
+from .safe_pull import sync_project
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
 
@@ -670,13 +670,14 @@ def sync_command(args: argparse.Namespace) -> str:
             raise ProjectError(
                 "Use --bind on its own; it verifies the baseline without syncing"
             )
-        guard_sync(
-            connection,
-            context.project.root,
-            push=getattr(args, "push", False),
-            bind=getattr(args, "bind", False),
-            dry_run=getattr(args, "dry_run", False),
-        )
+        if getattr(args, "push", False) or getattr(args, "bind", False):
+            guard_sync(
+                connection,
+                context.project.root,
+                push=getattr(args, "push", False),
+                bind=getattr(args, "bind", False),
+                dry_run=getattr(args, "dry_run", False),
+            )
         if getattr(args, "bind", False):
             return "Sync baseline verified and bound to the configured target"
     if getattr(args, "push", False):

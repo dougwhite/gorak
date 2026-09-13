@@ -105,3 +105,26 @@ Not yet verified/implemented: safe deletion execution, converged-state advanceme
 shared locks and atomic snapshot validation, target remapping detection, efficient
 scans, and the complete two-developer rehearsal. CLI checks do not make the older
 internal Python execution functions safe for direct callers.
+
+## M2 staged pull slice, 2026-09-13
+
+The CLI now stages affected applications, revalidates disk and database snapshots,
+and retains before-images and a journal when installing source/cache changes.
+Focused tests cover rollback on write failure, local edits during staging, database
+drift during staging, last-moment snapshot mismatch, and app deletion preserving
+unrelated notes. Full validation: 389 tests, Ruff, and strict mypy pass.
+
+Live acceptance used a disposable probe application in the retained isolated target:
+
+- Independently changed procedure source and application description in the database,
+  and added a database component; pull installed all three changes.
+- Deleted that added component in the database; pull removed its readable source
+  and portable companion.
+- Deleted the probe application in the database; pull removed tracked app source
+  and cache while preserving its human notes file.
+- Final status reported a verified target and no changes; no pending recovery marker
+  remained. The four original acceptance applications were preserved.
+
+Database-side deletion pushes, shared mutation locking, automatic crash recovery,
+and broader compatibility acceptance remain open. The previous first-slice limits
+above describe the earlier checkpoint rather than current pull capability.

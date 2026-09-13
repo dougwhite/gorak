@@ -1,5 +1,6 @@
 """Read-only three-way source comparison shared by synchronization commands."""
 
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -69,10 +70,22 @@ def xml_inventory(root: etree._Element, app: str) -> dict[str, object]:
 def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
     """Read caches in age order so a newer component export supersedes an app export."""
     result: dict[str, object] = {}
-    apps: set[str] = set()
+    tracking = root / ".openroad/tracked-applications.json"
+    names = json.loads(tracking.read_text()) if tracking.exists() else []
+    if not isinstance(names, list) or any(
+        not isinstance(name, str) or not name or "/" in name or "\\" in name
+        for name in names
+    ):
+        raise ProjectError("Invalid tracked application inventory")
+    apps: set[str] = set(names)
     cache = root / ".openroad"
     for directory in cache.iterdir() if cache.exists() else []:
-        if not directory.is_dir() or directory.name in {"pushes", "imports", "runs"}:
+        if not directory.is_dir() or directory.name in {
+            "pulls",
+            "pushes",
+            "imports",
+            "runs",
+        }:
             continue
         files = sorted(directory.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns)
         if not files:

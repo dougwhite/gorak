@@ -22,6 +22,10 @@ def target(connection: OpenRoadConnection) -> dict[str, str]:
 
 
 def binding_status(connection: OpenRoadConnection, root: Path) -> str:
+    if (root / ".openroad/pull-pending.json").exists():
+        raise ProjectError(
+            "An interrupted pull requires recovery; inspect .openroad/pull-pending.json and its before-images before continuing"
+        )
     path = root / ".openroad/sync-target.json"
     if not path.exists():
         return "unbound"
@@ -82,19 +86,22 @@ def guard_sync(
             blocked.append(change)
         elif not push and change.action == "push":
             blocked.append(change)
-        elif change.action not in {"unchanged", "converged"} and "deleted" in {
-            change.disk,
-            change.database,
-        }:
-            blocked.append(change)
-        elif not push and "/" not in change.key and change.action == "pull":
+        elif (
+            push
+            and change.action not in {"unchanged", "converged"}
+            and "deleted"
+            in {
+                change.disk,
+                change.database,
+            }
+        ):
             blocked.append(change)
     if blocked:
         details = "; ".join(
             f"{c.key}: disk {c.disk}, database {c.database}" for c in blocked
         )
         raise ProjectError(
-            "Sync stopped before writes. Reconcile pending changes; deletion execution and app-metadata pulls are not supported yet. "
+            "Sync stopped before writes. Reconcile pending changes; database deletion pushes are not supported yet. "
             + details
         )
     if status == "unbound" and not dry_run:

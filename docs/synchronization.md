@@ -1,8 +1,8 @@
 # Synchronization status and safety gates
 
-M2 is in progress. The CLI now runs a shared three-way planner before sync, but
-execution still uses the existing pull/push implementations. This is a conservative
-safety layer, not completed bidirectional synchronization or transactional execution.
+M2 is in progress. The CLI uses a shared three-way planner and a staged pull
+executor. Push retains its existing executor behind conservative safety gates.
+Bidirectional synchronization is not yet complete.
 
 ```sh
 gorak status
@@ -42,19 +42,37 @@ vnode remapping or database replacement under the same name.
 
 ## Current execution policy
 
-- Conflicts stop both directions before the existing executor runs.
+- Conflicts stop both directions before execution.
 - Pull stops if disk has pending changes, even to unrelated components.
 - Push stops if the database has pending changes, even to unrelated components.
-- Pending deletions are reported and blocked; no deletion executor exists yet.
-- Pending application metadata pulls are blocked pending the new pull executor.
+- Pull supports database-side component and application deletions and application
+  metadata changes. Unrelated files such as notes survive application deletion.
+- Push still blocks pending deletions.
 - Existing push metadata/type restrictions continue to apply.
 
 Older projects without source companions may report invalid/unsupported disk
 projections. Reconcile edits and export applications to the current portable format
 before using this workflow; do not assume a re-export preserves uncommitted edits.
 
-The guard is currently at the CLI boundary. Direct Python calls to the older
-orchestration functions do not provide this new guard. Planning and execution are
-not atomic: concurrent Workbench or file edits can still race the executor. M2 must
-move snapshot validation, locking, baseline advancement, target verification, and
-safe deletion into shared execution before claiming complete sync safety.
+## Staged pulls and recovery
+
+Pull exports affected applications into `.openroad/pulls/OPERATION/stage`, checks
+fresh database exports against the staged XML, and verifies the local snapshot
+before installing source and baseline files. Converged changes advance the baseline.
+Deleted applications remain in a local tracked-applications record so a later
+re-addition in the database can be discovered.
+
+Before-images and a change journal remain under the operation directory. A failed
+installation attempts to restore files it wrote, preserving subsequent external
+edits. `.openroad/pull-pending.json` blocks further source operations after an
+interrupted or failed installation: inspect the referenced journal and before-images
+and reconcile source/cache before removing that marker. Automatic recovery is not
+implemented. A stale `.openroad/pull.lock` likewise requires checking that no pull
+process is still active before removal.
+
+File replacement is atomic per file, not across the whole project. Revalidation is
+optimistic: external Workbench/file writes can still race the final checks. The pull
+lock serializes pulls only; do not run other modifying Gorak commands concurrently.
+Direct calls to legacy Python orchestration functions bypass the CLI safety gates.
+Shared locking across commands, stronger push validation, and database-side deletion
+execution remain M2 work.

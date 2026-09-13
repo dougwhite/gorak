@@ -24,7 +24,6 @@ def test_rebinding_to_another_target_is_rejected(tmp_path: Path) -> None:
         ("conflict", "modified", "modified", True),
         ("push", "modified", "unchanged", False),
         ("pull", "unchanged", "modified", True),
-        ("pull", "unchanged", "deleted", False),
         ("push", "deleted", "unchanged", True),
     ],
 )
