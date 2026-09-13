@@ -70,13 +70,22 @@ lanes with stable assignment throughout a transaction. Identity, restart/reuse,
 initialization and compaction must be established before adopting that design.
 Neither initial candidate was installed into ordinary tracking.
 
+[Writer-session experiments](session-revision-acceptance.md) subsequently passed
+independent writes, rollback and reused-identity checks under MVCC. However,
+page-locking writers still contend and online lane deletion can reject a writer
+with SQLSTATE 40001. The next gate is the actual writer lock configuration contract.
+Retained counters with a bounded reader/fallback are preferable to unproven online
+cleanup for an initial implementation; storage maintenance remains explicit.
+
 ## Next acceptance sequence
 
 - Completed initial primary-documentation review and isolated multi-connection
   experiments; preserve the observed contention/deadlock results.
 - Completed initial global revision rollback, held-writer, concurrent writer and
   reader checks, plus a source-partitioned reverse-commit/deadlock experiment.
-- Investigate writer-specific lane identity and lifecycle before schema integration.
+- Initial writer-specific identity/reuse and lifecycle races are tested; validate
+  writer lock settings, cross-user rule execution and restart behavior before schema
+  integration. Do not deploy automatic deletion of retained counters.
 - Specify the checkpoint state machine and failure transitions from those results.
 - Test local publication failure, server commit uncertainty, restored local state,
   changed database generation, expiry and pruning before integrating source reads.

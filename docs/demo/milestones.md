@@ -142,6 +142,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Exact private-observer receipt checks detect older local checkpoints and lost server receipts, preserving uncertain-commit retries. Live isolated fault checks passed; this O(history) diagnostic still needs a scalable replacement.
 - [x] Collect bounded multi-chunk pending windows without intermediate acknowledgments; automated later-chunk failure, publication replay and late lower-ID coverage. Live multi-chunk acceptance passed against 704 retained events; scale acceptance pending.
 - [x] Isolated revision-token experiments establish transactional rollback/visibility but reject global writer contention and source-partition lock cycles; see [results](../research/revision-token-acceptance.md).
+- [x] Isolated writer-session counters pass MVCC concurrency, rollback and observed identity reuse; page locks still contend and online consolidation rejects a racing writer. See [session results](../research/session-revision-acceptance.md).
+- [ ] Establish Workbench/import/compiler writer lock configuration before enabling revision counters; initial bounded reads must fall back safely without online counter deletion.
 - [ ] Implement and validate the [compact checkpoint protocol](../research/checkpoint-protocol.md), including transaction closure and restore/retention contracts.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
