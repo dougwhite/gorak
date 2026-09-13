@@ -433,3 +433,9 @@ sync. See [installation checks](installation.md#check-an-installation).
 backend, grants the configured ODBC user read access to Gorak tracking tables, and
 checks the result through ODBC. It requires a project and an authorized source-owner
 SQL connection. See [direct installation](installation.md#direct-installation).
+
+### Journal preview
+
+`gorak journal [--limit N]` previews pending committed source-change events over
+ODBC, using a checkout-local acknowledgment store. It does not acknowledge events
+or enable incremental sync. See [journal consumer](journal.md).

@@ -82,6 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_openroad_connection_args(install_parser)
 
+    journal_parser = subparsers.add_parser(
+        "journal", help="Preview pending source journal events"
+    )
+    journal_parser.add_argument("--limit", type=int, default=100)
+    add_openroad_connection_args(journal_parser)
+
     recovery_parser = subparsers.add_parser("recover")
     recovery_parser.add_argument("operation", choices=["push"])
     add_openroad_connection_args(recovery_parser)
@@ -806,6 +812,36 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 print(
                     f"Exported capture-only installation SQL to {parsed.export_sql}; no database changes made"
                 )
+            return
+        if parsed.command == "journal":
+            from .connection import require_odbc_settings
+            from .journal import acknowledgment_store, poll_journal
+            from .project_lock import project_lock
+
+            context = load_context(Path.cwd())
+            if context.project is None:
+                raise ProjectError("Journal inspection requires a gorak project")
+            connection = resolve_openroad_connection(parsed, context)
+            root = context.project.root
+            with project_lock(root, "journal"):
+                with acknowledgment_store(
+                    root / ".openroad" / "journal.sqlite3"
+                ) as store:
+                    batch = poll_journal(
+                        require_odbc_settings(connection), store, parsed.limit
+                    )
+            print(
+                json.dumps(
+                    {
+                        "installation_id": batch.installation_id,
+                        "events": [event.as_dict() for event in batch.events],
+                        "scanned_events": batch.scanned_events,
+                        "acknowledged": False,
+                        "incremental_ready": False,
+                    },
+                    indent=2,
+                )
+            )
             return
         if parsed.command == "recover":
             from .recovery import recover_push

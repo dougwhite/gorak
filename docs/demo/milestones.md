@@ -86,7 +86,8 @@ and database agree. These do not constitute database transactions across command
 
 `gorak install --export-sql PATH` now exports a DBA-applied capture-only hook script.
 Direct installation now uses the configured execution backend with ODBC verification.
-The incremental consumer remains unimplemented. This capability
+A replayable local-acknowledgment consumer and journal preview are implemented;
+source processing, scalable polling, and retention remain pending. This capability
 is accepted in principle; exact schema, syntax, privileges, and installation targets
 must be explicit. Temporary rules and the generated script were validated in an isolated database
 and removed afterward. See [DBA installation](../installation.md).
@@ -102,7 +103,8 @@ and removed afterward. See [DBA installation](../installation.md).
   independent consumers, updates and deletion events. See [journal research](../research/change-journal.md).
 - [ ] Production cursor/retention and real-source transaction acceptance; sequence allocation alone is not a safe
   committed-change cursor. Choose and prove a correct watermark/acknowledgment model.
-- [ ] Tombstones, per-checkout progress, retention, reconnect/offline consumers, rescan.
+- [x] Consumer primitive: per-checkout durable event acknowledgments, callback-before-ack replay, installation UUID binding, and read-only journal preview. See [journal consumer](../journal.md).
+- [ ] Integrate tombstones/source processing, retention, reconnect/offline consumers, and verified rescan bootstrap.
 - [x] Read-only ODBC installation inventory check: owner objects, rule targets, version, UUID, event read access.
 - [ ] Verify hook definitions/execution, complete table schema, and database restore/replacement; inventory alone is insufficient.
 - [ ] Transactional installation where supported; schema version, check, upgrade, and

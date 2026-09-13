@@ -20,7 +20,7 @@ base/version relationships and chunk keys where available. It does not copy sour
 payloads into the journal.
 
 This is an initial installation artifact for validation, not a completed incremental
-sync feature. Consumers, retention/pruning, full health certification, upgrades, and
+sync feature. Source-processing integration, retention/pruning, full health certification, upgrades, and
 complete source-table coverage are not implemented. Events accumulate. Do not deploy
 indefinitely on a busy source database without an agreed lifecycle. Existing names
 cause installation to stop; the script never drops or replaces an installation.
@@ -160,3 +160,6 @@ does not prove server identity across transports. Installation remains capture-o
 and should occur with source writes quiescent. Local execution is covered by
 automated transport tests; remote execution is additionally tested against an
 isolated source database.
+
+A [journal preview and replayable consumer primitive](journal.md) is now available.
+It does not yet process source changes or make status incremental.
