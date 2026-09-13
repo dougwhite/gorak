@@ -124,3 +124,17 @@ database differ, it stops with the marker intact. A partially successful push st
 requires deliberate reconciliation; this command does not choose a winning side or
 roll back database writes. Pull recovery is still manual. A stale mutation/push lock
 from a killed process must be inspected separately before running recovery.
+
+## No-change push cost
+
+When the verified planner reports only unchanged objects, push returns immediately
+without repeating application/component inventory calls or creating push artifacts.
+The full safety comparison still exports tracked applications. A following `status`
+command performs another independent comparison.
+
+A seven-application remote sample measured 14.6 seconds before this shortcut and
+9.5 seconds afterward. These are individual wall-clock observations, not a benchmark
+guarantee. Almost all measured time was in SSH/SCP subprocesses; local processing
+was about 0.1 seconds in the first sample. Export execution and transport startup
+are combined in the SSH timings. Metadata-based change detection and batching
+remain future work; ODBC alone does not remove full XML exports.

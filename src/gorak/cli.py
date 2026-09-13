@@ -684,13 +684,24 @@ def sync_command(args: argparse.Namespace) -> str:
                 "Use --bind on its own; it verifies the baseline without syncing"
             )
         if getattr(args, "push", False) or getattr(args, "bind", False):
-            guard_sync(
+            plan = guard_sync(
                 connection,
                 context.project.root,
                 push=getattr(args, "push", False),
                 bind=getattr(args, "bind", False),
                 dry_run=getattr(args, "dry_run", False),
             )
+            if (
+                getattr(args, "push", False)
+                and plan
+                and all(change.action == "unchanged" for change in plan)
+            ):
+                label = (
+                    "Push dry run"
+                    if getattr(args, "dry_run", False)
+                    else "Push complete"
+                )
+                return f"{label}: no changes (verified comparison)"
         if getattr(args, "bind", False):
             return "Sync baseline verified and bound to the configured target"
     if getattr(args, "push", False):
