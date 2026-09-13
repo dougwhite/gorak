@@ -156,7 +156,15 @@ Flags:
 gorak component export salesapp main_frame
 ```
 
+### `gorak status`
+
+Inspect a read-only three-way source plan as JSON. See [synchronization](synchronization.md).
+
 ### `gorak sync`
+
+Existing caches must first be verified with `gorak sync --bind`. The CLI checks
+target identity and pending changes before synchronization; see
+[safety gates and current limits](synchronization.md).
 
 Use `gorak sync --push` to import disk changes into OpenROAD, or
 `gorak sync --push --dry-run` to validate and save generated XML without importing.

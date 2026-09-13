@@ -149,8 +149,16 @@ def build_parser() -> argparse.ArgumentParser:
     defaults_subparsers = defaults_parser.add_subparsers(dest="defaults_command")
     defaults_subparsers.add_parser("flatten")
 
+    status_parser = subparsers.add_parser("status")
+    add_openroad_connection_args(status_parser)
+
     sync_parser = subparsers.add_parser("sync")
     add_openroad_connection_args(sync_parser)
+    sync_parser.add_argument(
+        "--bind",
+        action="store_true",
+        help="Verify and bind an existing cache to its configured target",
+    )
     sync_parser.add_argument("--push", action="store_true", help="Import disk changes")
     sync_parser.add_argument(
         "--dry-run", action="store_true", help="Prepare push XML without importing"
@@ -372,6 +380,10 @@ def export_component_command(args: argparse.Namespace) -> str:
 
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
+    from .sync_guard import binding_status
+
+    if context.project is not None:
+        binding_status(connection, context.project.root)
     app = cast(str, args.app)
     component = cast(str, args.component)
     print(
@@ -395,6 +407,10 @@ def app_export_command(args: argparse.Namespace) -> str:
 
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
+    from .sync_guard import binding_status
+
+    if context.project is not None:
+        binding_status(connection, context.project.root)
     app = cast(str, args.app)
     root = export_root(context, cast(str | None, args.output))
     print(f"Exporting application {app} from {connection_source(connection)}")
@@ -591,6 +607,10 @@ def component_import_command(args: argparse.Namespace) -> str:
     if context.project is None:
         raise ProjectError("Import requires a gorak project")
     connection = resolve_openroad_connection(args, context)
+    from .sync_guard import binding_status
+
+    if context.project is not None:
+        binding_status(connection, context.project.root)
     operation = import_component(
         connection,
         context.project.root,
@@ -641,6 +661,24 @@ def sync_command(args: argparse.Namespace) -> str:
 
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
+    from .sync_guard import guard_sync
+
+    if context.project is not None:
+        if getattr(args, "bind", False) and (
+            getattr(args, "push", False) or getattr(args, "dry_run", False)
+        ):
+            raise ProjectError(
+                "Use --bind on its own; it verifies the baseline without syncing"
+            )
+        guard_sync(
+            connection,
+            context.project.root,
+            push=getattr(args, "push", False),
+            bind=getattr(args, "bind", False),
+            dry_run=getattr(args, "dry_run", False),
+        )
+        if getattr(args, "bind", False):
+            return "Sync baseline verified and bound to the configured target"
     if getattr(args, "push", False):
         from .push import push_project
 
@@ -735,6 +773,28 @@ def main(argv: Sequence[str] | None = None) -> None:
             print(defaults_flatten_command(parsed))
             return
 
+        if parsed.command == "status":
+            from .sync_guard import binding_status
+            from .sync_plan import format_plan, plan_project
+
+            context = load_context(Path.cwd())
+            if context.project is None:
+                raise ProjectError("Status requires a gorak project")
+            connection = resolve_openroad_connection(parsed, context)
+            print(
+                json.dumps(
+                    {
+                        "baseline_target": binding_status(
+                            connection, context.project.root
+                        ),
+                        "changes": format_plan(
+                            plan_project(connection, context.project.root)
+                        ),
+                    },
+                    indent=2,
+                )
+            )
+            return
         if parsed.command == "sync":
             print(sync_command(parsed))
             return

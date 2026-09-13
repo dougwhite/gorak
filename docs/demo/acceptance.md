@@ -84,3 +84,24 @@ values separately and use short disposable names.
 Broad binary/opaque structure coverage beyond the sample, format migrations beyond
 rejecting unknown versions, deletion handling, and target-bound synchronization
 safety remain open.
+
+## M2 first slice: planning and CLI safety gates, 2026-09-13
+
+Implementation is partial; the new execution engine and deletion handling remain open.
+Automated: 385 pytest tests pass; Ruff and strict mypy pass. Tests cover the complete
+27-state comparison matrix, deletion versus child edits, malformed local projections,
+read-only status, target mismatch, explicit binding, and conservative execution gates.
+
+Live checks against the retained isolated acceptance database:
+
+- Unchanged accepted clone produced an empty change list.
+- Explicit binding verified the cached baseline and recorded the configured target.
+- A temporary disk script edit caused pull to stop; the edited bytes remained intact.
+- Independent edits of the same procedure in disk and database caused push to stop
+  with both sides reported modified. The original database and local script were
+  restored in a finally block. Private evidence: `/tmp/gorak-m1/conflict-check`.
+
+Not yet verified/implemented: safe deletion execution, converged-state advancement,
+shared locks and atomic snapshot validation, target remapping detection, efficient
+scans, and the complete two-developer rehearsal. CLI checks do not make the older
+internal Python execution functions safe for direct callers.
