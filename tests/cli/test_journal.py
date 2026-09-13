@@ -58,3 +58,28 @@ def test_reconcile_dispatches_to_comparison_service(
     cli.main(["journal", "--reconcile", "--limit", "2"])
     assert json.loads(capsys.readouterr().out)["processed_events"] == 2
     assert calls == [2]
+
+
+def test_map_outputs_candidates_without_acknowledging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gorak import journal_mapping
+    from gorak.journal_mapping import ApplicationCandidates
+
+    (tmp_path / "gorak.json").write_text('{"name":"journal_demo"}')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *a: None)
+    monkeypatch.setattr(connection, "require_odbc_settings", lambda *a: None)
+    monkeypatch.setattr(
+        journal, "poll_journal", lambda *a: JournalBatch("installation", (), 0)
+    )
+    monkeypatch.setattr(
+        journal_mapping,
+        "map_applications",
+        lambda *a: ApplicationCandidates(("example",), False, (), 1),
+    )
+    cli.main(["journal", "--map"])
+    output = json.loads(capsys.readouterr().out)
+    assert output["mapping"]["applications"] == ["example"]
+    assert output["acknowledged"] is False
+    assert output["incremental_ready"] is False

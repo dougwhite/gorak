@@ -158,3 +158,53 @@ and one synthetic journal event. The command saved evidence and acknowledged the
 event without changing source or common baselines; temporary tracking objects were
 removed afterward. Tests additionally cover conflicts/pushes/pulls, concurrent disk
 edits, durability failure, and replay after acknowledgment failure.
+
+## Map events to application candidates
+
+```sh
+gorak journal --map --limit 100
+```
+
+This previews the selected batch with a `mapping` result:
+
+- `applications`: the union of application names found, normalized to lower case.
+- `full_comparison`: true if any selected event cannot be mapped completely.
+- `events`: per-event candidate applications and fallback reasons.
+- `metadata_queries`: number of batched entity lookups, excluding installation checks.
+
+The mapper queries only identity, parent, base, name and type metadata through
+ODBC. It follows version-to-base and component-to-application ancestry and keeps
+historical edges from both sides of entity events. Moves and application renames
+therefore retain both application candidates. Tombstones from other events in the
+same batch can resolve an entity that has disappeared from the database. Includes
+map to their declaring application; included-image build dependencies remain separate.
+
+Shared strings, Unicode strings and images always request full comparison until
+ownership/reference mapping is implemented. Missing ancestry, cycles, invalid names,
+and traversal limits also request full comparison. Deleted component/application/
+encoded rows require captured historical identity evidence; a current row alone
+cannot prove that an ID was not reused. A bounded batch may omit the needed tombstone,
+so fallback is expected even when a later batch could explain the deletion.
+
+Lookups are parameterized, deduplicated and batched in groups of 128 IDs, with a
+16-level and 10,000-identity bound. The reader uses explicit MVCC/shared read locking
+and checks the installation UUID before and after traversal. Installation mismatch or
+database errors fail the command; they are not treated as an empty candidate set.
+
+Mapping does not acknowledge newly previewed events, import source, update common
+baselines, or change the scope of status/sync/reconciliation. As with normal preview,
+previously completed acknowledgment publication may occur during polling. Mapping and
+reconciliation flags are separate modes.
+
+`full_comparison: false` means only that the selected events were resolved by this
+mapper. It does not certify journal coverage, a complete transaction/batch, absence of
+other changes, or permission to reuse cached source. Historical ID reuse and concurrent
+metadata movement still need broader acceptance before cache reuse. Unknown events
+must never be silently discarded when this service is integrated into comparison.
+
+Tests cover moves, renames, deleted graphs, missing history, shared storage, cycles,
+traversal limits, batched ancestry and installation replacement. A synthetic script
+edit's candidates were checked against the full three-way planner. Read-only live
+acceptance mapped 30 actual demo component identities to the applications reported
+by the existing metadata reader using two batched entity queries. Live Workbench
+rename/move/delete and shared-storage reference coverage remain open.

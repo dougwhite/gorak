@@ -90,6 +90,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     journal_parser.add_argument("--limit", type=int, default=100)
     journal_parser.add_argument(
+        "--map", action="store_true", help="Show affected application candidates"
+    )
+    journal_parser.add_argument(
         "--reconcile",
         action="store_true",
         help="Compare source and acknowledge verified events",
@@ -835,6 +838,8 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 raise ProjectError("Journal inspection requires a gorak project")
             connection = resolve_openroad_connection(parsed, context)
             root = context.project.root
+            if parsed.reconcile and parsed.map:
+                raise ProjectError("--map cannot be combined with --reconcile")
             if parsed.reconcile:
                 from .journal_reconcile import reconcile_journal
 
@@ -851,9 +856,17 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                     batch = poll_journal(
                         require_odbc_settings(connection), store, parsed.limit
                     )
+            mapping = None
+            if parsed.map:
+                from .journal_mapping import map_applications
+
+                mapping = map_applications(
+                    require_odbc_settings(connection), batch
+                ).as_dict()
             print(
                 json.dumps(
                     {
+                        **({"mapping": mapping} if mapping is not None else {}),
                         "installation_id": batch.installation_id,
                         "events": [event.as_dict() for event in batch.events],
                         "scanned_events": batch.scanned_events,

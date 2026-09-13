@@ -448,3 +448,7 @@ Version 2 enables server-side pending-event selection for `gorak journal`.
 and acknowledges the selected events only when disk and database agree. It preserves
 common sync baselines and source files. Differences leave events pending; see
 [journal reconciliation](journal.md#reconcile-events-against-source).
+
+`gorak journal --map [--limit N]` adds affected-application candidates and explicit
+full-comparison fallback reasons to the journal preview. It does not narrow status
+or sync yet. See [event mapping](journal.md#map-events-to-application-candidates).

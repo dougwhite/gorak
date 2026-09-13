@@ -121,7 +121,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [ ] Verify Ingres hash functions, input limits, Unicode/binary handling, and collision
   policy. Hash ordered, length-delimited complete values; never truncate or hash only
   lengths/timestamps. Prefer post-commit dirty-object hashing over row-trigger hashing.
-- [ ] Cover source metadata, includes, referenced strings/images, and deletion inventory.
+- [x] Diagnostic event-to-application mapping follows current and historical parent/base relationships; uncertain/deleted/shared-storage cases request full comparison.
+- [ ] Complete source metadata, includes, referenced strings/images, deletion inventory, and live move/rename coverage before selective cache reuse.
 - [ ] Associate fingerprints with verified semantic baselines and database identity.
 - [ ] Treat compile-only byte changes as candidates for comparison, not source edits.
 - [x] Journal reconciliation persists full XML comparison evidence before exact-event acknowledgment, with disk-drift checks; common sync baselines remain unchanged.
