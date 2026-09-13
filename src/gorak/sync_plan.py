@@ -4,6 +4,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from shutil import copyfile
 from tempfile import TemporaryDirectory
 from typing import Literal
 
@@ -106,8 +107,12 @@ def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
     return result, apps
 
 
-def plan_project(connection: OpenRoadConnection, root: Path) -> list[Change]:
+def plan_project(
+    connection: OpenRoadConnection, root: Path, *, capture_dir: Path | None = None
+) -> list[Change]:
     """Inspect disk and fresh XML without writing project state or database source."""
+    if capture_dir is not None:
+        capture_dir.mkdir(parents=True, exist_ok=False)
     baseline, apps = baseline_inventory(root)
     disk: dict[str, object] = {}
     invalid: dict[str, str] = {}
@@ -142,13 +147,23 @@ def plan_project(connection: OpenRoadConnection, root: Path) -> list[Change]:
             index, name = item
             path = Path(temporary) / f"{index}.xml"
             backup_application_xml(connection, available[name], path)
-            return xml_inventory(read_document(path), name)
+            inventory = xml_inventory(read_document(path), name)
+            if capture_dir is not None:
+                copyfile(path, capture_dir / f"{index}.xml")
+            return inventory
 
         # Independent applications have separate export paths. Consume in sorted
         # order and wait for every worker before cleaning the temporary directory.
         with ThreadPoolExecutor(max_workers=4) as executor:
             for inventory in executor.map(export_one, enumerate(names)):
                 database.update(inventory)
+        if capture_dir is not None:
+            (capture_dir / "applications.json").write_text(
+                json.dumps(
+                    {name: f"{index}.xml" for index, name in enumerate(names)}, indent=2
+                ),
+                encoding="utf-8",
+            )
     changes = [
         compare(key, baseline.get(key), disk.get(key), database.get(key))
         for key in sorted(

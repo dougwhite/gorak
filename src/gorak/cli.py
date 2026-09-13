@@ -89,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
         "journal", help="Preview pending source journal events"
     )
     journal_parser.add_argument("--limit", type=int, default=100)
+    journal_parser.add_argument(
+        "--reconcile",
+        action="store_true",
+        help="Compare source and acknowledge verified events",
+    )
     add_openroad_connection_args(journal_parser)
 
     recovery_parser = subparsers.add_parser("recover")
@@ -830,6 +835,15 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 raise ProjectError("Journal inspection requires a gorak project")
             connection = resolve_openroad_connection(parsed, context)
             root = context.project.root
+            if parsed.reconcile:
+                from .journal_reconcile import reconcile_journal
+
+                print(
+                    json.dumps(
+                        reconcile_journal(connection, root, parsed.limit), indent=2
+                    )
+                )
+                return
             with project_lock(root, "journal"):
                 with acknowledgment_store(
                     root / ".openroad" / "journal.sqlite3"

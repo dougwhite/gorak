@@ -131,3 +131,20 @@ def test_independent_exports_overlap_and_fail_closed(
         )
     assert len(paths) == 2
     assert all(not p.parent.exists() for p in paths)
+
+
+def test_optional_capture_retains_exact_xml_without_altering_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+
+    connection = setup(tmp_path, monkeypatch, xml("RETURN 3;"))
+    baseline = (tmp_path / ".openroad/example/example.xml").read_bytes()
+    destination = tmp_path / ".openroad/journal-comparisons/test/xml"
+    changes = sync_plan.plan_project(connection, tmp_path, capture_dir=destination)
+    assert (destination / "0.xml").read_text() == xml("RETURN 3;")
+    assert json.loads((destination / "applications.json").read_text()) == {
+        "example": "0.xml"
+    }
+    assert next(c for c in changes if c.key == "example/proc").action == "pull"
+    assert (tmp_path / ".openroad/example/example.xml").read_bytes() == baseline

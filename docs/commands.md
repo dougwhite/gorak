@@ -443,3 +443,8 @@ or enable incremental sync. See [journal consumer](journal.md).
 `gorak install --upgrade` upgrades capture schema v1 to v2 through the configured
 backend; `--upgrade --export-sql PATH` exports the guarded upgrade for the DBA.
 Version 2 enables server-side pending-event selection for `gorak journal`.
+
+`gorak journal --reconcile [--limit N]` saves fresh full source-comparison evidence
+and acknowledges the selected events only when disk and database agree. It preserves
+common sync baselines and source files. Differences leave events pending; see
+[journal reconciliation](journal.md#reconcile-events-against-source).

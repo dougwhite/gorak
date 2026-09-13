@@ -88,7 +88,9 @@ and database agree. These do not constitute database transactions across command
 Direct installation now uses the configured execution backend with ODBC verification.
 A replayable local-acknowledgment consumer and journal preview are implemented;
 v2 adds server-side pending selection and durable acknowledgment publication.
-Source processing, large-history performance, and retention remain pending. This capability
+Full-comparison journal reconciliation now persists observation snapshots before
+acknowledgment. Selective source processing, large-history performance, and retention
+remain pending. This capability
 is accepted in principle; exact schema, syntax, privileges, and installation targets
 must be explicit. Temporary rules and the generated script were validated in an isolated database
 and removed afterward. See [DBA installation](../installation.md).
@@ -122,7 +124,8 @@ and removed afterward. See [DBA installation](../installation.md).
 - [ ] Cover source metadata, includes, referenced strings/images, and deletion inventory.
 - [ ] Associate fingerprints with verified semantic baselines and database identity.
 - [ ] Treat compile-only byte changes as candidates for comparison, not source edits.
-- [ ] Consistent snapshots or before/after validation during baseline/fingerprint creation.
+- [x] Journal reconciliation persists full XML comparison evidence before exact-event acknowledgment, with disk-drift checks; common sync baselines remain unchanged.
+- [ ] Consistent snapshots or before/after validation for selective baseline/fingerprint reuse.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.
 - [ ] Keep a verified full-rescan/reconciliation path when tracking is unavailable.

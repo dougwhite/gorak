@@ -37,3 +37,24 @@ def test_journal_requires_project(
         cli.main(["journal"])
     assert error.value.code == 1
     assert "requires a gorak project" in capsys.readouterr().err
+
+
+def test_reconcile_dispatches_to_comparison_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gorak import journal_reconcile
+
+    (tmp_path / "gorak.json").write_text('{"name":"journal_demo"}')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *a: None)
+    calls: list[int] = []
+
+    def reconcile(connection: object, root: Path, limit: int) -> dict[str, object]:
+        assert root == tmp_path
+        calls.append(limit)
+        return {"processed_events": 2}
+
+    monkeypatch.setattr(journal_reconcile, "reconcile_journal", reconcile)
+    cli.main(["journal", "--reconcile", "--limit", "2"])
+    assert json.loads(capsys.readouterr().out)["processed_events"] == 2
+    assert calls == [2]

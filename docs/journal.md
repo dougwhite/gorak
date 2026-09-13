@@ -111,3 +111,50 @@ authorization. Acknowledgments are not trusted evidence for deleting shared hist
 
 The consumer still does not drive `status` or `sync`; verified source processing
 and complete hook health remain prerequisites.
+
+## Reconcile events against source
+
+```sh
+gorak journal --reconcile --limit 100
+```
+
+This connects pending events to the existing full three-way source comparison.
+It requires a verified sync target binding and a complete tracking inventory.
+It supports either tracking schema version; v2 additionally publishes completed
+acknowledgments on subsequent polls.
+
+For a nonempty batch, Gorak captures fresh XML for every tracked/present project
+application, compares disk and database against the common sync baseline, and
+saves the comparison under `.openroad/journal-comparisons/<operation>/`.
+The directory contains exported XML, its application map, and `comparison.json`.
+One full comparison is shared by the batch. Events concerning applications outside
+the checkout do not automatically add those applications to the project scope.
+
+Events are acknowledged only if disk and database agree for the whole project
+scope (unchanged or converged) and the source fingerprint remained stable through
+comparison and evidence persistence. Pending pushes, pulls, conflicts, invalid source,
+export failures, installation identity changes, or storage failures stop processing.
+A difference report is retained where comparison completed, and events remain pending.
+
+The XML and receipt are flushed before the event-to-report link is committed locally,
+and that link is committed before acknowledging the exact event ID. Filesystem failure
+before acknowledgment replays the comparison. A later batch uses fresh evidence rather
+than trusting a previous receipt. POSIX directories are fsynced; directory fsync is
+not available in this implementation on Windows, where only file flushes are explicit.
+
+**This command neither imports source nor advances the common sync baseline.**
+Those baselines must continue to preserve the last common disk/database version,
+particularly during conflicts. Reconciliation evidence is a separate observation
+snapshot, not a substitute baseline. Finish the appropriate sync or resolve differences
+before retrying a blocked journal reconciliation. The command does not repair source.
+
+An empty batch performs no XML comparison and reports `comparison: null`; that is
+not a claim that the source is unchanged. Normal `status` and `sync` still perform
+their full checks. Selective comparison/cache reuse needs complete invalidation,
+source-to-app dependency mapping and verified bootstrap before it can be enabled.
+
+Live isolated acceptance used a temporary checkout copy, fresh OpenROAD XML exports,
+and one synthetic journal event. The command saved evidence and acknowledged the
+event without changing source or common baselines; temporary tracking objects were
+removed afterward. Tests additionally cover conflicts/pushes/pulls, concurrent disk
+edits, durability failure, and replay after acknowledgment failure.
