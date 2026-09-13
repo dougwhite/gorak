@@ -106,14 +106,21 @@ changes and disposes its connection after checking. Configure developer SELECT
 access through the DBA; owner impersonation is not performed by Gorak.
 
 JSON output lists missing tables, sequence, procedure and rules (including incorrect
-rule targets), unsupported version/mode, and invalid installation identity. Exit 1
+rule targets), missing or modified rule/procedure SQL definitions, unsupported
+version/mode, and invalid installation identity. Exit 1
 means a detected problem or database-access failure; exit 0 means the expected
-capture-only inventory and marker were found. Connection/permission errors use the
+capture-only inventory, definitions and marker were found. Connection/permission errors use the
 normal CLI error reporting.
 
 A successful check reports `capture_only_inventory_present` and
-`incremental_ready: false`. It does **not** certify rule/procedure definitions,
-table column types, enabled-rule execution, complete source coverage, or continuity
+`definitions_verified: true` and `incremental_ready: false`. Catalog SQL segments
+are reassembled and compared with Gorak’s generated definitions, allowing keyword
+case, whitespace, and the source owner qualification added by Ingres. String
+literals and quoted identifiers remain significant. Missing or modified definitions
+make the check incomplete; no schema upgrade is needed for this check.
+
+It does **not** certify table column types, extra constraints, enabled-rule
+execution, complete source coverage, or continuity
 after a database restore. It is a point-in-time diagnostic, not permission to bypass
 a full source comparison. Same-named objects owned by a developer cannot satisfy
 the check. Source writes should remain quiescent while diagnosing an installation

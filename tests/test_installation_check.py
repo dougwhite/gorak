@@ -5,11 +5,16 @@ from uuid import uuid4
 import pytest
 
 from gorak.database import OdbcSettings
+from gorak.installation import installation_statements
 from gorak.installation_check import (
     CATALOG_QUERIES,
     EXPECTED_RULES,
     EXPECTED_TABLES,
     check_installation,
+)
+from gorak.installation_definitions import (
+    PROCEDURE_DEFINITION_SQL,
+    RULE_DEFINITIONS_SQL,
 )
 
 
@@ -23,6 +28,13 @@ def fixture() -> tuple[MagicMock, dict[str, list[tuple[Any, ...]]]]:
             (1, str(uuid4()), "capture_only")
         ],
     }
+    statements = installation_statements()
+    rows[RULE_DEFINITIONS_SQL] = [
+        (s.split()[2], 1, s) for s in statements if s.startswith("create rule ")
+    ]
+    rows[PROCEDURE_DEFINITION_SQL] = [
+        (1, s) for s in statements if s.startswith("create procedure ")
+    ]
     engine = MagicMock()
     engine.connect.return_value.__enter__.return_value.execute.side_effect = (
         lambda query: rows.get(str(query), [])
@@ -42,6 +54,7 @@ def test_complete_inventory_does_not_claim_incremental_readiness() -> None:
     assert report.status == "capture_only_inventory_present"
     assert report.installation_id
     assert report.incremental_ready is False
+    assert report.definitions_verified is True
     engine.dispose.assert_called_once()
 
 
@@ -98,3 +111,26 @@ def test_v2_requires_ack_table_and_reports_schema_version() -> None:
     report = run(engine)
     assert not report.issues
     assert report.schema_version == 2
+
+
+def test_inventory_with_modified_hook_is_incomplete() -> None:
+    engine, rows = fixture()
+    name, sequence, sql = rows[RULE_DEFINITIONS_SQL][0]
+    rows[RULE_DEFINITIONS_SQL][0] = (
+        name,
+        sequence,
+        sql.replace("p_action='i'", "p_action='x'"),
+    )
+    report = run(engine)
+    assert report.status == "incomplete"
+    assert report.definitions_verified is False
+    assert any("modified capture rule definition" in issue for issue in report.issues)
+
+
+def test_missing_catalog_definition_fails_closed() -> None:
+    engine, rows = fixture()
+    rows[PROCEDURE_DEFINITION_SQL] = []
+    report = run(engine)
+    assert report.status == "incomplete"
+    assert report.definitions_verified is False
+    assert any("procedure definition" in issue for issue in report.issues)

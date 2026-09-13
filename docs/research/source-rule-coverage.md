@@ -92,3 +92,10 @@ the journal procedure, and its sequence were removed; absence was checked throug
 catalog queries. The event table and local raw logs were retained for inspection.
 No original application source was edited and no rule remains attached to source
 tables from this probe. Machine-specific names and raw extracts are not tracked.
+
+## Follow-up
+
+The [2026-09-14 change and failure acceptance](journal-change-acceptance.md) tests
+the generated installation and mapper, including capture failure during a SQL
+update and an OpenROAD replacement import. It addresses consequence 4 for those
+specific operations; broader save-path and transaction acceptance remains open.

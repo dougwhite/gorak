@@ -109,7 +109,9 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Consumer primitive: per-checkout durable event acknowledgments, callback-before-ack replay, installation UUID binding, and read-only journal preview. See [journal consumer](../journal.md).
 - [ ] Integrate tombstones/source processing, retention, reconnect/offline consumers, and verified rescan bootstrap.
 - [x] Read-only ODBC installation inventory check: owner objects, rule targets, version, UUID, event read access.
-- [ ] Verify hook definitions/execution, complete table schema, and database restore/replacement; inventory alone is insufficient.
+- [x] Compare catalog rule/procedure definitions with generated SQL; live altered-rule detection and restoration verified.
+- [x] Real synthetic-app create/edit/compile/include/delete capture and bounded capture-failure acceptance. See [change acceptance](../research/journal-change-acceptance.md).
+- [ ] Verify broader hook execution, complete table schema, and database restore/replacement; definition checks alone are insufficient.
 - [ ] Transactional installation where supported; schema version, check, upgrade, and
   removal procedures that preserve source and define tracking-data consequences.
 - [ ] Measure rule overhead during large saves/imports/compilation and concurrent edits.
