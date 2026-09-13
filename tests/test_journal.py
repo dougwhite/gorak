@@ -188,3 +188,39 @@ def test_malformed_event_does_not_advance_progress(tmp_path: Path) -> None:
         with pytest.raises(ProjectError, match="Invalid source journal data"):
             consume_journal(SETTINGS, store, lambda e: None, engine_factory=db.factory)
         assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("count,complete", [(0, True), (1, True), (2, False)])
+def test_legacy_pending_completeness_without_acknowledgment(
+    tmp_path: Path,
+    count: int,
+    complete: bool,
+) -> None:
+    db = Database()
+    db.events = [event(i) for i in range(1, count + 1)]
+    with acknowledgment_store(tmp_path / "ack.sqlite3") as store:
+        batch = poll_journal(SETTINGS, store, 1, db.factory, verify_complete=True)
+        assert batch.complete is complete
+        assert len(batch.events) == min(count, 1)
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+
+
+def test_lookahead_skips_legacy_acknowledged_rows(tmp_path: Path) -> None:
+    db = Database()
+    db.events = [event(1), event(2), event(3)]
+    with acknowledgment_store(tmp_path / "ack.sqlite3") as store:
+        store.execute("insert into acknowledged values (2)")
+        store.commit()
+        batch = poll_journal(SETTINGS, store, 1, db.factory, verify_complete=True)
+        assert batch.complete is False
+        assert [e.event_id for e in batch.events] == [1]
+        assert batch.scanned_events == 3
+
+
+def test_malformed_lookahead_is_not_silently_ignored(tmp_path: Path) -> None:
+    db = Database()
+    db.events = [event(1), ("bad-id", *event(2)[1:])]
+    with acknowledgment_store(tmp_path / "ack.sqlite3") as store:
+        with pytest.raises(ProjectError, match="Invalid source journal data"):
+            poll_journal(SETTINGS, store, 1, db.factory, verify_complete=True)
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)

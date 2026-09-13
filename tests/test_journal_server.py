@@ -161,3 +161,39 @@ def test_outbox_failure_rolls_back_local_acknowledgment(tmp_path: Path) -> None:
             len(poll_journal(SETTINGS, store, engine_factory=server.factory).events)
             == 1
         )
+
+
+@pytest.mark.parametrize(
+    "count,complete", [(0, True), (1, True), (2, False), (3, False)]
+)
+def test_server_completeness_reads_at_most_one_extra_event(
+    tmp_path: Path,
+    count: int,
+    complete: bool,
+) -> None:
+    server = Server()
+    for i in range(1, count + 1):
+        server.add(i)
+    with acknowledgment_store(tmp_path / "a.sqlite3") as store:
+        batch = poll_journal(SETTINGS, store, 1, server.factory, verify_complete=True)
+        assert batch.complete is complete
+        assert batch.scanned_events == min(count, 2)
+        assert len(batch.events) == min(count, 1)
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)
+        assert server.db.execute(
+            'select count(*) from "$ingres".gorak_journal_acks'
+        ).fetchone() == (0,)
+        sql = [str(call.args[0]) for call in server.connection.execute.call_args_list]
+        assert any(query.startswith("select first 2 ") for query in sql)
+
+
+def test_late_commit_remains_visible_after_complete_query(tmp_path: Path) -> None:
+    server = Server()
+    server.add(20)
+    with acknowledgment_store(tmp_path / "a.sqlite3") as store:
+        first = poll_journal(SETTINGS, store, 1, server.factory, verify_complete=True)
+        assert first.complete is True
+        server.add(10)
+        later = poll_journal(SETTINGS, store, 1, server.factory, verify_complete=True)
+        assert later.complete is False
+        assert store.execute("select count(*) from acknowledged").fetchone() == (0,)

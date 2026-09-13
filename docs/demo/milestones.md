@@ -137,6 +137,7 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Explicit local journal rebootstrap archives old state, creates a fresh consumer and verifies full exports without resetting source baselines. Restore notification remains an operator responsibility.
 - [x] Isolated live acceptance: same-identity acknowledgment replay, changed-identity recovery, and rejection of a late lower-ID commit during export. See [recovery acceptance](../research/journal-recovery-acceptance.md).
 - [x] Hash-checked historical entity ancestry narrows diagnostic deletion mapping while retaining current candidates; live compile/include checks match full exports. Plain journal mapping and full-reference guards remain conservative.
+- [x] Bounded lookahead distinguishes an exhausted pending set from a truncated batch, without acknowledging the extra event; live exact/short-limit checks passed.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred
   bytes, memory, and server load. Sub-second is a target, not an achieved guarantee.

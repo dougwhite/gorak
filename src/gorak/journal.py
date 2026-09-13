@@ -44,6 +44,7 @@ class JournalBatch:
     installation_id: str
     events: tuple[JournalEvent, ...]
     scanned_events: int
+    complete: bool | None = None
 
 
 @contextmanager
@@ -84,10 +85,17 @@ def poll_journal(
     store: sqlite3.Connection,
     limit: int = 100,
     engine_factory: EngineFactory = create_odbc_engine,
+    *,
+    verify_complete: bool = False,
 ) -> JournalBatch:
-    """Return at most limit unacknowledged events from a fresh committed read."""
+    """Return pending events, optionally reading one extra to establish exhaustion.
+
+    Completeness concerns this query only, not future commits or hook coverage.
+    The lookahead event is never acknowledged or included in returned events.
+    """
     if not 1 <= limit <= 10000:
         raise ProjectError("Journal limit must be between 1 and 10000")
+    query_limit = limit + int(verify_complete)
     engine = engine_factory(settings)
     try:
         with engine.connect() as connection:
@@ -118,7 +126,7 @@ def poll_journal(
                 publish_acknowledgments(connection, store, consumer)
                 # No high-water cursor: a lower ID can commit after a higher ID.
                 query = (
-                    f"select first {limit} "
+                    f"select first {query_limit} "
                     + ", ".join("e." + name for name in COLUMNS)
                     + ' from "$ingres".gorak_change_events e where not exists ('
                     + 'select 1 from "$ingres".gorak_journal_acks a '
@@ -133,9 +141,9 @@ def poll_journal(
                 else connection.execute(text(query))
             )
             try:
-                while len(events) < limit:
+                while len(events) < query_limit:
                     # Stream metadata; do not materialize a potentially huge journal.
-                    chunk = result.fetchmany(min(256, limit - len(events)))
+                    chunk = result.fetchmany(min(256, query_limit - len(events)))
                     if not chunk:
                         break
                     for row in chunk:
@@ -171,7 +179,12 @@ def poll_journal(
                         )
             finally:
                 result.close()
-            return JournalBatch(installation_id, tuple(events), scanned)
+            return JournalBatch(
+                installation_id,
+                tuple(events[:limit]),
+                scanned,
+                len(events) <= limit if verify_complete else None,
+            )
     except (ValueError, TypeError, IndexError) as ex:
         raise ProjectError(
             "Invalid source journal data; no events acknowledged"

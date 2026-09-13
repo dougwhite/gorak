@@ -276,10 +276,12 @@ A count increase detects a lower event ID that commits late even when the maximu
 does not change. The aggregate may scan retained history: it is a diagnostic guard,
 not the intended scalable no-change query or a high-watermark cursor.
 
-A batch containing the requested limit of events uses full fallback with reason
-event_batch_at_limit. There may be more pending events or a transaction split
-across batches, so that batch cannot justify selective reuse. Exactly-limit batches
-also fall back conservatively.
+Selective verification now reads at most one extra pending event to test whether
+the query is exhausted. More events than the requested limit use full fallback
+with reason event_batch_at_limit; the lookahead event is not processed or
+acknowledged. An exactly-limit batch can proceed only when exhaustion is established.
+Unknown completeness retains the previous conservative fallback. Transactions
+spanning the limit still cannot justify selective reuse.
 
 Reports and pointers record journal_observation. Reports explicitly retain
 continuity_certified=false and incremental_ready=false. The mandatory full XML
@@ -387,3 +389,23 @@ the previous snapshot graph, and matched fresh full references. Compilation and
 direct SQL include deletion were used to exercise these histories autonomously;
 this was not another human Workbench save. The extra test application was removed;
 the existing Workbench acceptance app and tracking installation were preserved.
+
+
+### Bounded pending-set completeness
+
+The snapshot report includes pending_set_complete, measured at the event query.
+Schema v2 applies FIRST limit+1 server-side for this diagnostic; ordinary preview
+and consumer polling retain their existing limit. Schema v1 can still scan
+acknowledged history locally. Both return at most limit events to the caller and
+acknowledge none as a consequence of lookahead. Invalid lookahead data fails the
+read rather than being silently ignored.
+
+A complete query is not a transaction cursor or a guarantee about future commits.
+The before/after journal observation, full-reference comparison and conservative
+mapping guards remain. This does not collect arbitrary-size pending windows;
+larger sets still fall back and can be investigated with a larger limit.
+
+Live read-only acceptance used 447 retained events and a fresh temporary consumer.
+A limit of 447 reported complete; 446 reported incomplete and transferred only the
+one additional event needed to establish it. The journal stayed unchanged and no
+events were acknowledged.

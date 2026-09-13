@@ -149,7 +149,7 @@ def verify_selective_snapshot(
             if rebootstrap:
                 bind_store(store, health.installation_id)
                 consumer_identity(store)
-            batch = poll_journal(settings, store, limit)
+            batch = poll_journal(settings, store, limit, verify_complete=True)
         if batch.installation_id != health.installation_id:
             raise ProjectError("Tracking identity changed during snapshot verification")
         mapping = map_applications(
@@ -163,7 +163,8 @@ def verify_selective_snapshot(
             else "missing_or_invalid_snapshot"
             if previous is None
             else "event_batch_at_limit"
-            if len(batch.events) >= limit
+            if batch.complete is False
+            or (batch.complete is None and len(batch.events) >= limit)
             else "unresolved_events"
             if mapping.full_comparison
             else ""
@@ -221,6 +222,7 @@ def verify_selective_snapshot(
             ),
             "changes": format_plan(changes),
             "acknowledged": False,
+            "pending_set_complete": batch.complete,
             "incremental_ready": False,
             "journal_observation": before.as_dict(),
             "continuity_certified": False,

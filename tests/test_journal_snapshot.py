@@ -32,7 +32,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, ...]:
     monkeypatch.setattr(journal_snapshot, "binding_status", lambda *a: "verified")
     monkeypatch.setattr(journal_snapshot, "check_installation", lambda *a: health)
     monkeypatch.setattr(
-        journal_snapshot, "poll_journal", lambda *a: JournalBatch(identity, (), 0)
+        journal_snapshot, "poll_journal", lambda *a, **kw: JournalBatch(identity, (), 0)
     )
     monkeypatch.setattr(
         journal_snapshot,
@@ -236,7 +236,7 @@ def test_full_batch_disables_selective_reuse(
     monkeypatch.setattr(
         journal_snapshot,
         "poll_journal",
-        lambda *a: JournalBatch(
+        lambda *a, **kw: JournalBatch(
             identity,
             (JournalEvent(1, "ii_entities", "u", {}, {}),),
             1,
@@ -443,3 +443,24 @@ def test_over_budget_ancestry_does_not_block_full_observation(
     assert first["captured_entities"] is None
     assert second["historical_entities_used"] == 0
     assert second["incremental_ready"] is False
+
+
+def test_exact_limit_with_proven_exhaustion_can_verify_selectively(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, connection, _, _, _ = project
+    first = verify_selective_snapshot(connection, root)
+    monkeypatch.setattr(
+        journal_snapshot,
+        "poll_journal",
+        lambda *a, **kw: JournalBatch(
+            str(first["installation_id"]),
+            (JournalEvent(1, "ii_entities", "u", {}, {}),),
+            1,
+            True,
+        ),
+    )
+    result = verify_selective_snapshot(connection, root, limit=1)
+    assert result["pending_set_complete"] is True
+    assert result["mode"] == "selective_verified"
+    assert result["selective_matches_reference"] is True
