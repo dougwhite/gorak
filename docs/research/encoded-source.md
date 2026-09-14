@@ -98,3 +98,32 @@ measuring helper startup and OpenROAD runtime separately is still required.
 
 Sub-second no-change checks look feasible from the direct-read measurements. A
 sub-second import-and-test loop is not established by this investigation.
+
+## First decoder slice (2026-09-14)
+
+`encoded_source.py` now reads one resolved entity through a parameterized ODBC
+query, fetching at most 1025 rows. It orders chunks locally and accepts only subtype
+1 with unique contiguous sequence numbers starting at zero, nonempty chunks no
+longer than 1790 characters, and a total at most 1 MiB (at most 1024 chunks).
+
+The supported graph is deliberately narrow: the observed six-object, uncompiled
+`proc4glsource` with integer return type, empty object/tagged-value/macro/query
+bags, and an inline `stringobject` script. The implementation verifies the complete
+fixed layout around that string. It consumes the declared character length rather
+than splitting on `$`, `=`, colons or newlines inside source. The entire suffix must
+match. Header/layout changes, compiled IL, other datatypes, nonempty bags, external
+strings, non-ASCII storage and corruption request XML fallback. Unicode byte/character
+length rules have **not** been inferred from ASCII examples.
+
+Three isolated synthetic cases (initial source, edited description/script, and a
+long script spanning three chunks) were imported through OpenROAD and read through
+ODBC. The reconstructed complete component signatures matched fresh XML exports,
+including version descriptions read from `ii_entities.short_remark`. Only synthetic
+chunks and XML expectations are tracked in `tests/fixtures/encoded_source/`; database
+IDs and environment-specific data were removed. These are reference fixtures, not
+proof of support for every procedure graph or OpenROAD release.
+
+A complete XML signature check is essential: finding the script text alone cannot
+certify that unknown source properties, tagged values or external storage have not
+changed. Compile-only encoded changes remain candidates, and unsupported compiled
+forms retain full XML comparison.
