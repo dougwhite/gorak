@@ -1,4 +1,6 @@
-"""Lossless palettes with repository/application/frame property inheritance."""
+"""Legacy expanded-preview palette metadata and migration compatibility.
+
+Ordinary compact defaults use field_defaults.py and contract_source.py."""
 
 from copy import deepcopy
 from pathlib import Path

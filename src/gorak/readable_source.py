@@ -1,8 +1,7 @@
-"""Complete readable source, independent of export caches and XML companions.
+"""Legacy expanded-preview codec for compatibility, recovery and migration.
 
-Scripts live only in W4GL bodies or WML event elements. Named TOML/JSON metadata
-holds the remaining native properties, including metadata on array containers.
-"""
+Ordinary source uses parser.py and contract_source.py; it neither emits nor
+requires the preview source_format/defaults_inherited flags."""
 
 import tomllib
 from pathlib import Path

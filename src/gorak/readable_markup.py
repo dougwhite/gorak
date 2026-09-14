@@ -1,4 +1,4 @@
-"""Self-contained WML: explicit field properties, typed rows and field events."""
+"""Legacy expanded-preview WML codec; ordinary nested WML uses contract_source."""
 
 from lxml import etree
 

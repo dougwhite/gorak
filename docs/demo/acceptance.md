@@ -208,9 +208,11 @@ left no installation tables or rules. Documentation covers client-side DBA execu
 consumer lifecycle, retention, upgrades, and broad source/save acceptance remain open.
 
 
-## Complete readable source (format 2), 2026-09-14
+## Historical experimental preview, 2026-09-14
 
-This supersedes the format-1 companion requirement in the historical M1 rehearsal.
+The following evidence describes the superseded expanded preview, not the normal
+source contract. Its `source_format = 2` machinery is retained only for preview
+compatibility, recovery and migration. See the current compact acceptance below.
 
 - Exported three applications to readable `.w4gl`, `.wml` and `app.json`; committed
   and cloned them locally with no XML, companions or `.openroad` cache in the clone.
@@ -230,9 +232,10 @@ This supersedes the format-1 companion requirement in the historical M1 rehearsa
   checkout and database application were left untouched.
 - Manual Workbench visual acceptance for this format change remains unperformed.
 
-Before reusing a legacy demo checkout, run `gorak migrate-source`, inspect its
-Git diff and retain `.openroad/migrations` recovery evidence. Do not delete XML
-before migration or remove target bindings/baselines as a reset shortcut.
+For that experimental preview or an old companion-based checkout only, use
+`gorak migrate-source`, inspect its diff and retain migration recovery evidence.
+Existing compact projects require no migration. Never remove target bindings or
+baselines as a reset shortcut.
 
 
 ### Inherited defaults correction
@@ -248,3 +251,28 @@ before migration or remove target bindings/baselines as a reset shortcut.
 - Updated the demo preview: its frame W4GL is 24 lines, the application defaults
   are `{}`, and the root retains the shared palette plus necessary native metadata.
   Exact source comparison was unchanged and the two runtime tests passed.
+
+
+## Current compact contract, 2026-09-15
+
+Normal source uses the established compact component tables, nested WML and
+repository → application → frame defaults. No `source_format` or
+`defaults_inherited` flags are emitted or required. Query-designer metadata is
+unsupported and dropped. Older declarations that omitted an explicit NULL
+initializer need an authoritative re-export to recover that missing information.
+
+- Fresh-database live acceptance compiled seven applications across eight observed
+  component types. With explicit NULL defaults recovered, two subsequent export
+  rounds matched all 181 readable files byte for byte.
+- Actual CLI status, push and scoped tests succeeded; runtime results were
+  444 tests, zero failures/errors and three skipped.
+- `tests/cli/test_compact_workflow.py` exercises an untouched synthetic ORAPI-era
+  project through actual CLI status, push, configured tests and repeated exports.
+  Only external services are mocked; planning, safety gates, reconstruction,
+  verification and export remain real. The test rejects preview codec calls and
+  compares all versioned source/default files byte for byte. It is a compatibility
+  regression, not evidence of OpenROAD runtime or visual behavior.
+
+**Manual Workbench visual acceptance of this compact reconstruction remains
+outstanding and is a merge gate.** Earlier preview/demo visual checks do not
+substitute for reviewing these reconstructed frames.

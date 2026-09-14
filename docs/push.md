@@ -12,9 +12,9 @@ created from that metadata and their `.w4gl` files, without needing cached XML.
 New source includes are ordered before applications that depend on them. External
 image includes are passed through; the image must be available to OpenROAD.
 
-Format 2 supports reconstruction of all eight observed component types from
-readable files, including frames and their field events. No saved XML is required.
-New procedures/classes also support the earlier compact declaration syntax.
+The established compact source format supports reconstruction of all eight
+observed component types, including nested frame markup and field events. No saved
+XML, source-format flags or migration is required for existing compact projects.
 Unknown source shapes are refused. See [source formats](files.md).
 
 Existing components are rebuilt from the same readable representation.
