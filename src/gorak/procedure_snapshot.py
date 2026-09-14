@@ -67,6 +67,19 @@ def metadata_hash(
         ignored = {"last_altered_by", "alter_date", "alter_count"}
     if component:
         ignored.add("current_make")
+    if (
+        component
+        and row.get("data_type") == "integer"
+        and row.get("is_nullable") == "N"
+        and row.get("value_string") == ""
+        and row.get("read_only") == "N"
+        and row.get("is_array") == "N"
+        and isinstance(row.get("value_type"), str)
+        and row["value_type"].strip() in {"", "system"}
+    ):
+        # CLI compilation fills this derived classification for the supported
+        # scalar integer form. Other types, defaults and classifications are guarded.
+        row = dict(row, value_type="system")
     return hashlib.sha256(
         json.dumps(
             {k: v for k, v in row.items() if k not in ignored},

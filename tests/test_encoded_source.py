@@ -6,8 +6,6 @@ import pytest
 from lxml import etree
 
 from gorak.encoded_source import (
-    PREFIX,
-    SUFFIX,
     UnsupportedSource,
     assemble_chunks,
     decode_procedure,
@@ -19,11 +17,28 @@ from tests.test_affected_source import SETTINGS, Engine
 FIXTURES = Path(__file__).parent / "fixtures/encoded_source"
 
 
+# Original uncompiled fixture layout for deliberate corruption tests.
+PREFIX = (
+    "6\n14: Source Object\n1\n\n13:proc4glsource\n1\n1\n\n"
+    "6\n0\n-1:\n2\n0\n3\n\n1\n\n4\n4\n0\n5\n6\n0\n-1:\n\n$\n"
+    "3:bag\n2\n1\n\n2\n10\n0\n6:object\n\n$\n"
+    "3:bag\n3\n1\n\n2\n10\n0\n11:taggedvalue\n\n$\n"
+    "12:stringobject\n4\n1\n\n0\n"
+)
+SUFFIX = (
+    "\n\n$\n3:bag\n5\n1\n\n2\n10\n0\n13:macrovariable\n\n$\n"
+    "3:bag\n6\n1\n\n2\n10\n0\n11:queryobject\n\n$\n=\n"
+)
+
+
 def payload(script: str) -> str:
     return PREFIX + str(len(script)) + ":" + script + SUFFIX
 
 
-@pytest.mark.parametrize("name", ["initial", "edited", "long"])
+@pytest.mark.parametrize(
+    "name",
+    ["initial", "edited", "long", "compiled_zero", "compiled_one", "compiled_local"],
+)
 def test_live_synthetic_chunks_match_complete_xml_oracle(name: str) -> None:
     rows = json.loads((FIXTURES / f"{name}.json").read_text())
     reference = etree.parse(str(FIXTURES / f"{name}.xml")).getroot()

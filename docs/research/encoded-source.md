@@ -127,3 +127,11 @@ A complete XML signature check is essential: finding the script text alone canno
 certify that unknown source properties, tagged values or external storage have not
 changed. Compile-only encoded changes remain candidates, and unsupported compiled
 forms retain full XML comparison.
+
+## Structural compiled-procedure follow-up
+
+The next slice replaces the fixed prefix with a bounded graph reader and validates
+known compiler arrays and symbol references separately from readable source. CLI
+import/compile/recompile experiments match full XML for constant returns and a
+local integer variable; unknown compiler forms remain explicit fallbacks.
+See [CLI evidence and deferred Workbench gates](compiled-procedure-acceptance.md).

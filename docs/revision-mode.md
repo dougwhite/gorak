@@ -184,9 +184,10 @@ remains unchanged. Added/deleted/replaced entity identities, application source
 changes, unknown ownership, shared storage, unsupported graphs and budgets retain
 explicit XML fallback.
 
-The initial decoder accepts only the observed uncompiled integer-procedure graph
-with empty auxiliary bags and ASCII inline scripts. It does not yet cover compiled
-IL, classes, frames, Unicode storage, external strings or general source graphs.
+The decoder accepts the observed integer-procedure graph with empty auxiliary bags
+and ASCII inline scripts, plus bounded compiler records for constant returns and
+simple local integer variables. Other compiler layouts, literal pools, classes,
+frames, Unicode storage, external strings and general source graphs still fall back.
 See [encoded-source research](research/encoded-source.md). Changing unsupported
 content must not be interpreted as an unchanged procedure.
 
@@ -204,3 +205,7 @@ and script saves took 0.397 and 0.412 seconds with separate full-XML agreement.
 See [acceptance evidence and limits](research/changed-procedure-acceptance.md).
 These small samples do not establish larger-project or tail latency. Enrollment is
 currently capped at 128 procedures; exceeding that cap disables the shortcut.
+
+The [compiled-procedure CLI follow-up](research/compiled-procedure-acceptance.md)
+verified compile-only ODBC observations in approximately 0.38 seconds. Manual
+Workbench acceptance for that extension remains pending.

@@ -1,0 +1,1 @@
+<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="probe" xsi:type="proc4glsource"><versshortremarks>Local variable</versshortremarks><script>PROCEDURE probe() = DECLARE n = integer; ENDDECLARE { n = 2; RETURN n; }</script><datatype>integer</datatype></COMPONENT>

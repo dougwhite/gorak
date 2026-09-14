@@ -1,7 +1,7 @@
 """Strict first slice of OpenROAD 12 procedure source decoding.
 
-Only the experimentally verified, uncompiled integer-procedure graph is accepted.
-Unknown layouts, compiled graphs, external strings and non-ASCII payloads explicitly
+Observed integer-procedure graphs and bounded compiler records are accepted.
+Unknown layouts, literal pools, external strings and non-ASCII payloads explicitly
 request XML fallback. This is intentionally not a general object deserializer.
 """
 
@@ -11,31 +11,24 @@ from lxml import etree
 from sqlalchemy import text
 
 from .database import EngineFactory, OdbcSettings, create_odbc_engine
+from .encoded_graph import UnsupportedSource as UnsupportedSource
+from .encoded_graph import read_graph
 
 MAX_CHUNKS = 1024
 MAX_CHARACTERS = 1024 * 1024
-PREFIX = (
-    "6\n14: Source Object\n1\n\n13:proc4glsource\n1\n1\n\n"
-    "6\n0\n-1:\n2\n0\n3\n\n1\n\n4\n4\n0\n5\n6\n0\n-1:\n\n$\n"
-    "3:bag\n2\n1\n\n2\n10\n0\n6:object\n\n$\n"
-    "3:bag\n3\n1\n\n2\n10\n0\n11:taggedvalue\n\n$\n"
-    "12:stringobject\n4\n1\n\n0\n"
-)
-SUFFIX = (
-    "\n\n$\n3:bag\n5\n1\n\n2\n10\n0\n13:macrovariable\n\n$\n"
-    "3:bag\n6\n1\n\n2\n10\n0\n11:queryobject\n\n$\n=\n"
-)
-
-
-class UnsupportedSource(ValueError):
-    """The caller must use its complete XML observation, never a partial result."""
 
 
 @dataclass(frozen=True)
 class ProcedureSource:
     script: str
+    compiled_name: str | None = None
 
     def component(self, name: str, description: str) -> etree._Element:
+        if (
+            self.compiled_name is not None
+            and self.compiled_name.casefold() != name.casefold()
+        ):
+            raise UnsupportedSource("compiled_procedure_name_mismatch")
         node = etree.Element(
             "COMPONENT",
             name=name,
@@ -51,28 +44,12 @@ class ProcedureSource:
 
 def decode_procedure(payload: str) -> ProcedureSource:
     """Consume the complete graph, honoring string length rather than delimiters."""
-    if (
-        len(payload) > MAX_CHARACTERS
-        or not payload.isascii()
-        or "\x00" in payload
-        or not payload.startswith(PREFIX)
-    ):
-        raise UnsupportedSource("unsupported_procedure_layout_or_encoding")
-    start = len(PREFIX)
-    colon = payload.find(":", start, start + 9)
-    length_text = payload[start:colon]
-    if colon < 0 or not length_text.isdecimal() or str(int(length_text)) != length_text:
-        raise UnsupportedSource("invalid_script_length")
-    length = int(length_text)
-    end = colon + 1 + length
-    if length > MAX_CHARACTERS or payload[end:] != SUFFIX:
-        raise UnsupportedSource("invalid_script_boundary_or_graph_tail")
-    script = payload[colon + 1 : end]
+    script, compiled_name = read_graph(payload)
     # XML parsers normalize CR/CRLF; retain that same XML-oracle meaning.
     script = script.replace("\r\n", "\n").replace("\r", "\n")
     if any(ord(c) < 32 and c not in "\n\t" for c in script):
         raise UnsupportedSource("invalid_xml_script_character")
-    return ProcedureSource(script)
+    return ProcedureSource(script, compiled_name)
 
 
 def assemble_chunks(rows: list[tuple[int, int, str]]) -> str:

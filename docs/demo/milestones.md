@@ -259,3 +259,13 @@ choices must not retroactively imply prior verification or erase unresolved bugs
 - [x] First status after isolated Workbench description/script edits: 0.397/0.412 seconds
   without XML exports; separate full oracles agreed. Larger-corpus latency remains
   open. Direct source writes excluded. See [acceptance](../research/changed-procedure-acceptance.md).
+
+## Compiled-procedure follow-up (2026-09-14)
+
+- [x] Structural procedure graph reader with bounded strings, object references,
+  compiler arrays and symbol-chain validation; unknown layouts retain XML.
+- [x] CLI import/compile/edit/recompile comparison against complete XML oracles;
+  first compile-only statuses measured 0.381/0.387 seconds, with conflicting push
+  rejected. See [CLI acceptance](../research/compiled-procedure-acceptance.md).
+- [ ] Manual compiled-procedure Workbench description/script/save/recompile checks.
+  CLI identity replacement remains a fallback and is not a substitute for this gate.

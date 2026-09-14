@@ -218,3 +218,31 @@ def test_workbench_component_replacement_checks_complete_final_source(
         SETTINGS, {"objects": {"app/probe": RECORD}}, candidate, {"app/probe": "before"}
     )
     assert inventory == {"app/probe": "verified-new"}
+
+
+def test_scalar_integer_compile_classification_has_narrow_equivalence() -> None:
+    row = {
+        "data_type": "integer",
+        "is_nullable": "N",
+        "value_type": "      ",
+        "value_string": "",
+        "read_only": "N",
+        "is_array": "N",
+    }
+    assert snapshot.metadata_hash(row, component=True) == snapshot.metadata_hash(
+        dict(row, value_type="system"), component=True
+    )
+    assert snapshot.metadata_hash(row, component=True) != snapshot.metadata_hash(
+        dict(row, value_type="user"), component=True
+    )
+    for changed in (
+        {"data_type": "other"},
+        {"is_nullable": "Y"},
+        {"value_string": "42"},
+        {"is_array": "Y"},
+        {"read_only": "Y"},
+    ):
+        unusual = row | changed
+        assert snapshot.metadata_hash(
+            unusual, component=True
+        ) != snapshot.metadata_hash(dict(unusual, value_type="system"), component=True)
