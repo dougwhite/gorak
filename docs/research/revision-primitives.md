@@ -84,9 +84,10 @@ values remain unchanged. This setting is database-name scoped, not vnode scoped;
 connections to another installation using the same database name need separate
 acceptance before this can be a general launcher policy.
 
-The caller supplies the execution host's environment, an installation-symbol lookup
-callback, and the startup encoding. Existing database-specific environment values
-win; otherwise the callback provides the installation value. Includes are read on
+The caller supplies the execution host's environment and startup encoding. Nonempty
+database-specific process values win; absent or empty values fall back to the
+installation symbol through that host's `ingprenv`. A callback remains injectable
+for controlled tests or execution-host adapters. Includes are read on
 that host with a 1 MiB budget and strict decoding. Invalid input fails before the
 child launches. The normalized SQL retains existing SET statements and appends the
 revision table's MVCC/shared setting. Output uses exclusive creation in a unique
@@ -100,8 +101,8 @@ environment are never rewritten. Abrupt host/process termination can leave orpha
 files; orphan recovery remains a backend responsibility. Startup contents are not
 added to regular source or diagnostic artifacts.
 
-This primitive does not yet resolve installation symbols itself, deploy a remote
-worker, verify extension health, or change any normal run/import command. It must
+This primitive resolves installation symbols but does not deploy a remote worker,
+verify extension health, or change any normal run/import command. It must
 execute on the OpenROAD host: an SSH client must not resolve remote paths locally.
 General launcher wiring is pending. Preserving effective configuration requires
 checking both process settings and Ingres installation symbols; reading only the
@@ -120,3 +121,40 @@ bytes were unchanged. The test app, extension and remote harness were removed;
 parent tracking identity and structural checks remained healthy. This acceptance
 used an explicit process setting, not installation-symbol fallback, and does not
 certify startup precedence on other OpenROAD versions or runtime database flows.
+
+
+## Effective startup lookup
+
+The default `writer_settings.installation_startup_value()` fallback queries exactly
+one database-specific symbol using `ingprenv` under the child's absolute `II_SYSTEM`
+(bin, then utility). It never searches PATH or requests a complete environment dump.
+The same child environment is passed to the utility. Nonzero exit, stderr, timeout,
+missing executable, invalid encoding and malformed output prevent artifact creation;
+they never silently mean "unset". A successful empty output is the unset case.
+Errors omit captured startup SQL, which may contain sensitive literals.
+
+Actian documents that [ingprenv reads the installation symbol table](https://docs.actian.com/actianingres/12.1/CommandRef/ingprenv_Command--Display_Environment_Variable_V.htm),
+so it is a fallback rather than a replacement for process-environment resolution.
+Environment-name matching is case-insensitive on Windows and case-sensitive on
+POSIX. Ambiguous case variants in a Windows input mapping are rejected.
+
+Live Windows SQL acceptance confirmed a database-specific installation timeout of
+17, a process override of 23, and fallback to 17 when that process override was
+empty. The prior artifact implementation incorrectly treated empty as an explicit
+blank; that behavior is corrected and regression-tested. Temporary installation
+settings were scoped to the research database, removed afterward, and the original
+symbol-table bytes matched their pre-test hash. An attempted private `II_CONFIG`
+redirect did not isolate `ingprenv` on this host; that attempt stopped before utility
+writes. No private-directory isolation is claimed.
+
+The default resolver also passed real OpenROAD import and fresh-process compilation
+with an installation-symbol include, an empty process override, paths with spaces
+and an unrelated counter row held uncommitted. The original include and installation
+symbols were restored, generated startup files were removed, and the test app and
+extension were removed. Existing parent tracking remained healthy.
+
+Remaining launcher integration must select the matching OpenROAD executable, apply
+runtime overrides before resolution, keep the child inside the artifact lifetime,
+and execute resolution on the remote host for SSH. This API alone does not validate
+subsequent application-issued SET statements, runtime database transitions, capture
+coverage or continuity, and cannot enable fast status.

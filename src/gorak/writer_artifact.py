@@ -11,6 +11,7 @@ from pathlib import Path
 from .project import ProjectError
 from .revision_installation import REVISION_TABLE
 from .writer_init import compose_writer_init
+from .writer_settings import environment_keys, installation_startup_value
 
 MAX_STARTUP_BYTES = 1024 * 1024
 
@@ -27,14 +28,15 @@ def writer_environment(
     environment: Mapping[str, str],
     database: str,
     *,
-    installation_value: Callable[[str], str],
+    installation_value: Callable[[str], str] | None = None,
     encoding: str,
     temporary_root: Path | None = None,
 ) -> Iterator[dict[str, str]]:
     """Create an execution-host include and yield a private child environment.
 
-    The caller must run this on the OpenROAD execution host, resolve symbol-table
-    fallback with that host's Ingres installation and choose its source encoding.
+    Run this on the OpenROAD execution host and choose its source encoding.
+    Default symbol lookup uses the child's II_SYSTEM installation; an injected
+    resolver must observe the same execution-host and installation boundary.
     No connection or installation verification is implied. The child must finish
     before leaving this context (including timeout termination).
     """
@@ -42,10 +44,16 @@ def writer_environment(
     child = dict(environment)
     # Windows environment names are case-insensitive. Reject ambiguous mappings
     # rather than quietly picking one value on another host.
-    keys = [key for key in child if key.upper() == variable]
+    keys = environment_keys(child, variable)
     if len(keys) > 1:
         raise ProjectError("Ambiguous database startup environment")
-    existing = child[keys[0]] if keys else installation_value(variable)
+    # Ingres treats an empty process value as unset and reads the symbol table.
+    if keys and child[keys[0]]:
+        existing = child[keys[0]]
+    elif installation_value is not None:
+        existing = installation_value(variable)
+    else:
+        existing = installation_startup_value(variable, child, encoding=encoding)
     if not isinstance(existing, str):
         raise ProjectError("Invalid installation startup value")
     try:

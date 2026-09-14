@@ -130,7 +130,10 @@ def test_missing_include_and_invalid_encoding_fail_before_launch(
         assert not list(tmp_path.glob("gorak-init-*"))
 
 
-def test_ambiguous_case_and_empty_override(tmp_path: Path) -> None:
+def test_ambiguous_case_and_empty_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("gorak.writer_settings._WINDOWS_ENV", True)
     with pytest.raises(ProjectError, match="Ambiguous"):
         with writer_environment(
             {"ING_SET_SOURCE": "", "ing_set_source": ""},
@@ -140,17 +143,20 @@ def test_ambiguous_case_and_empty_override(tmp_path: Path) -> None:
         ):
             pytest.fail("launched")
 
-    def unused(name: str) -> str:
-        pytest.fail("explicit empty override must not read installation value")
+    def fallback(name: str) -> str:
+        assert name == "ING_SET_SOURCE"
+        return "set lockmode session where timeout=17"
 
     with writer_environment(
         {"ing_set_source": ""},
         "source",
-        installation_value=unused,
+        installation_value=fallback,
         encoding="ascii",
         temporary_root=tmp_path,
     ) as child:
         assert "ing_set_source" not in child
         assert (
-            Path(child["ING_SET_SOURCE"][8:]).read_text().startswith("set lockmode on")
+            Path(child["ING_SET_SOURCE"][8:])
+            .read_text()
+            .startswith("set lockmode session where timeout=17")
         )
