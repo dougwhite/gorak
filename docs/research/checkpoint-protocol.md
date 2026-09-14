@@ -105,3 +105,10 @@ confirmed caller identity/permissions and process-local row-lock initialization 
 import/compile source mutations. Active Workbench settings, table-specific startup
 integration, multi-server/restart identity and bounded observation remain gates.
 No global defaults, installed tracking or normal source-command behavior changed.
+
+
+The [counter-reader matrix](counter-reader-acceptance.md) subsequently showed that
+serializable ROW writers exclude MVCC readers. The counter-table contract must
+therefore use MVCC/shared on both sides, preserving application isolation and
+source-table settings. CLI acceptance passed; manual Workbench MVCC acceptance
+is prepared but pending.

@@ -163,9 +163,12 @@ The intentional label edit remains in the isolated application.
 reads timed out while the holder was active. Disabling ODBC pooling and explicitly
 setting table-level MVCC did not resolve it. The counters were read only after
 holder release; do not describe this as successful nonblocking counter observation.
-The cause needs an isolated reproduction covering reader isolation, table access
+The cause needed an isolated reproduction covering reader isolation, table access
 and the mixed ROW-writer/MVCC-reader combination before the revision fast path is
-enabled. No specific cause has been established by this test.
+enabled. This test alone did not establish a cause. The subsequent
+[counter reader matrix](counter-reader-acceptance.md) identified documented
+serializable-ROW/MVCC incompatibility and validated table-specific MVCC/shared
+through real CLI writes and concurrent reads.
 
 ## Restart and identity boundary
 
