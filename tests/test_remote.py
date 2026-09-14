@@ -103,7 +103,7 @@ COMPONENT_SYNC_METADATA_OUTPUT = """
 REMOTE_MANIFEST_OUTPUT = dedent(
     """
         {
-          "version": "7",
+          "version": "8",
           "files": [
             "applist.sql",
             "revision-generation.sql",
@@ -361,7 +361,7 @@ class TestVerifyRemoteHelpers:
         with pytest.raises(RemoteCommandError) as ex:
             verify_remote_helpers(
                 REMOTE_HOST,
-                run_cmd=lambda command: '{"version": "7", "files": []}',
+                run_cmd=lambda command: '{"version": "8", "files": []}',
             )
 
         assert "missing or outdated" in str(ex.value)

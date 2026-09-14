@@ -66,7 +66,9 @@ def test_rejects_unsafe_import_before_write(
     current = XML
     if change == "metadata":
         source.write_text(
-            source.read_text().replace('datatype = "integer"', 'datatype = "varchar"')
+            source.read_text().replace(
+                'datatype = "integer"', 'unknown_property = "varchar"'
+            )
         )
     if change == "database":
         current = XML.replace(b"RETURN 0", b"RETURN 2")
@@ -140,7 +142,7 @@ def test_rejects_unrecognized_front_matter(
     monkeypatch.setattr(
         importer, "backup_component_xml", lambda *a: pytest.fail("must validate first")
     )
-    with pytest.raises(ProjectError, match="Metadata"):
+    with pytest.raises(ProjectError, match="front matter"):
         importer.import_component(CONNECTION, tmp_path, "app", "example")
 
 
@@ -246,3 +248,118 @@ def test_existing_import_lock_is_preserved(
     with pytest.raises(ProjectError, match="Another import"):
         importer.import_component(CONNECTION, tmp_path, "app", "example")
     assert lock.read_text() == "another operation"
+
+
+@pytest.mark.parametrize("edit", ["frame", "field", "both"])
+def test_import_frame_scripts_preserves_layout_and_defaults(
+    tmp_path: Path, monkeypatch: MonkeyPatch, edit: str
+) -> None:
+    from gorak.export import apply_field_default_inheritance
+    from gorak.parser import encode_wml, parse_component_node
+
+    xml = Path("tests/fixtures/fm_example_frame.xml").read_bytes()
+    node = etree.fromstring(xml).find("COMPONENT")
+    assert node is not None
+    component = parse_component_node(node)
+    name = component.name
+    folder = tmp_path / "app"
+    folder.mkdir()
+    cache = tmp_path / ".openroad/app"
+    cache.mkdir(parents=True)
+    (cache / f"{name}.xml").write_bytes(xml)
+    apply_field_default_inheritance(tmp_path, "app", [component])
+    source = folder / f"{name}.w4gl"
+    source.write_text(encode_w4gl(component))
+    markup = source.with_suffix(".wml")
+    markup.write_text(encode_wml(component) or "")
+    if edit in {"frame", "both"}:
+        source.write_text(
+            source.read_text().replace("some code block", "new frame code")
+        )
+    if edit in {"field", "both"}:
+        markup.write_text(markup.read_text().replace("Hello World!", "Launch ready!"))
+    uploaded: list[bytes] = []
+
+    def export(
+        connection: OpenRoadConnection, app: str, component: str, path: Path
+    ) -> None:
+        path.write_bytes(uploaded[-1] if uploaded else xml)
+
+    def push(
+        connection: OpenRoadConnection, app: str, component: str, path: Path, log: Path
+    ) -> None:
+        uploaded.append(path.read_bytes())
+
+    monkeypatch.setattr(importer, "backup_component_xml", export)
+    monkeypatch.setattr(importer, "import_component_xml", push)
+    importer.import_component(CONNECTION, tmp_path, "app", name)
+    expected = xml
+    if edit in {"frame", "both"}:
+        expected = expected.replace(b"some code block", b"new frame code")
+    if edit in {"field", "both"}:
+        expected = expected.replace(b"Hello World!", b"Launch ready!")
+    assert importer.signature(etree.fromstring(uploaded[0])) == importer.signature(
+        etree.fromstring(expected)
+    )
+
+
+@pytest.mark.parametrize("concurrent_edit", [False, True])
+def test_geometry_canonicalization_preserves_concurrent_wml_edits(
+    tmp_path: Path, monkeypatch: MonkeyPatch, concurrent_edit: bool
+) -> None:
+    from gorak import safe_pull
+    from gorak.parser import encode_wml, parse_component_node
+
+    xml = b"""<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><COMPONENT name="panel" xsi:type="framesource"><topform><width>1000</width><childfields><row xsi:type="entryfield"><name>input</name><xleft>104</xleft></row><row_class>formfield</row_class></childfields></topform></COMPONENT></OPENROAD>"""
+    folder = tmp_path / "app"
+    folder.mkdir()
+    cache = tmp_path / ".openroad/app"
+    cache.mkdir(parents=True)
+    baseline = cache / "panel.xml"
+    baseline.write_bytes(xml)
+    component = parse_component_node(etree.fromstring(xml).find("COMPONENT"))
+    source = folder / "panel.w4gl"
+    source.write_text(encode_w4gl(component))
+    markup = source.with_suffix(".wml")
+    markup.write_text(
+        (encode_wml(component) or "").replace('xleft="104"', 'xleft="321"')
+    )
+    uploaded: list[bytes] = []
+
+    def export(connection: OpenRoadConnection, app: str, name: str, path: Path) -> None:
+        data = (
+            uploaded[-1].replace(b"<xleft>321</xleft>", b"<xleft>323</xleft>")
+            if uploaded
+            else xml
+        )
+        path.write_bytes(data)
+
+    def push(
+        connection: OpenRoadConnection, app: str, name: str, path: Path, log: Path
+    ) -> None:
+        uploaded.append(path.read_bytes())
+
+    monkeypatch.setattr(importer, "backup_component_xml", export)
+    monkeypatch.setattr(importer, "import_component_xml", push)
+    original_apply = safe_pull.apply_files
+
+    def apply(
+        root: Path,
+        changes: dict[Path, bytes | None],
+        recovery: Path,
+        expected: dict[str, str] | None = None,
+    ) -> None:
+        if concurrent_edit:
+            markup.write_text(markup.read_text().replace('xleft="321"', 'xleft="500"'))
+        original_apply(root, changes, recovery, expected)
+
+    monkeypatch.setattr(safe_pull, "apply_files", apply)
+    if concurrent_edit:
+        with pytest.raises(ProjectError, match="File changed"):
+            importer.import_component(CONNECTION, tmp_path, "app", "panel")
+        assert 'xleft="500"' in markup.read_text()
+        assert baseline.read_bytes() == xml
+    else:
+        result = importer.import_component(CONNECTION, tmp_path, "app", "panel")
+        assert 'xleft="323"' in markup.read_text()
+        assert baseline.read_bytes() == (result / "after.xml").read_bytes()

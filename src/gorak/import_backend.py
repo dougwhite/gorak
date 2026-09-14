@@ -50,8 +50,6 @@ def import_component_xml(
             )
         command[2] = "in"
         command.append("-nabort" if create else "-nreplace")
-        if component != "-":
-            command.append("-f")
         try:
             output = local.run_subprocess(
                 local_writer_command(
@@ -70,7 +68,7 @@ def import_component_xml(
                 "OpenROAD did not create a compilation log; inspect import.log"
             )
         checked_log(log_path.read_text(errors="replace"))
-        if component == "-" and not empty_app:
+        if not empty_app:
             compile_log = log_path.with_suffix(".compile.log")
             local.run_subprocess(
                 local_writer_command(
@@ -82,6 +80,8 @@ def import_component_xml(
                         ),
                         app,
                         "-nowindows",
+                        "-e",
+                        *([f"-c{component}", "-f"] if component != "-" else []),
                         "-TALL,logonly",
                         f"-L{local.command_path(compile_log)}",
                     ],
@@ -95,8 +95,6 @@ def import_component_xml(
         return
 
     host = require_remote_host(connection)
-    if connection.revision_generation:
-        remote.verify_remote_helpers(host)
     # cmd.exe expands percent/exclamation characters even inside double quotes.
     # Restrict this initial write path rather than applying incomplete escaping.
     values = [connection.vnode, connection.database, app, component]
@@ -108,6 +106,7 @@ def import_component_xml(
         raise ProjectError(
             "Remote import requires a Windows root without shell metacharacters"
         )
+    remote.verify_remote_helpers(host)
     token = uuid4().hex
     destination = f"{host.gorak_root}\\import-{token}.xml"
     remote.run_subprocess(remote.build_upload_command(host, str(xml_path), destination))

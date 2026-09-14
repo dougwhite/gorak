@@ -1,7 +1,6 @@
 """Explicit disk-to-database sync with preflight and retained import artifacts."""
 
 import json
-import tomllib
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,16 +13,11 @@ from .export import (
     read_applications,
     read_components,
 )
-from .field_defaults import effective_defaults, read_defaults
 from .import_backend import import_component_xml
 from .importer import component_tree, import_component, signature, validate_name
 from .parser import (
-    encode_w4gl,
-    encode_wml,
     parse_application_xml,
     parse_component_node,
-    parse_w4gl,
-    split_w4gl,
 )
 from .portable_source import restore_application, restore_component
 from .project import ProjectError
@@ -218,43 +212,15 @@ def _push_project(
                     f"Existing component needs an export baseline: {app}/{name}"
                 )
             else:
-                edited = parse_w4gl(path.read_text(), name)
-                if baseline.type == "framesource":
-                    frame_defaults = edited.props.get("fielddefaults", {})
-                    original_defaults = baseline.props.get("fielddefaults", {})
-                    if original_defaults != effective_defaults(
-                        read_defaults(root / "field_defaults.json"),
-                        read_defaults(folder / "field_defaults.json"),
-                        frame_defaults,
-                    ):
-                        raise ProjectError(
-                            f"Frame defaults changed; push not supported: {app}/{name}"
-                        )
-                    baseline.props.pop("fielddefaults", None)
-                    edited.props.pop("fielddefaults", None)
-                    markup = path.with_suffix(".wml")
-                    if (
-                        not markup.is_file()
-                        or markup.read_text().strip()
-                        != (encode_wml(baseline) or "").strip()
-                    ):
-                        raise ProjectError(
-                            f"Frame markup changed; push not supported: {app}/{name}"
-                        )
-                    if (
-                        edited.props != baseline.props
-                        or edited.script != baseline.script
-                        or edited.type != baseline.type
-                    ):
-                        raise ProjectError(
-                            f"Frame edits are not supported: {app}/{name}"
-                        )
+                from copy import deepcopy
+
+                from .portable_source import overlay_component
+
+                baseline_node = component_tree(candidate, name)
+                overlaid = overlay_component(deepcopy(baseline_node), path)
+                if signature(overlaid) == signature(baseline_node):
                     continue
-                if edited.script == baseline.script and tomllib.loads(
-                    split_w4gl(path.read_text())[0]
-                ) == tomllib.loads(split_w4gl(encode_w4gl(baseline))[0]):
-                    continue
-                # The importer also rejects metadata edits and checks database drift.
+                # The importer validates the overlay and checks database drift.
                 prepared_edits[(app, name)] = (
                     import_component(connection, root, app, name, dry_run=True)
                     / "submitted.xml"
@@ -315,7 +281,7 @@ def _push_project(
         (operation / f"{index}-submitted.xml").write_bytes(creations[key][1])
     check_source()
     if dry_run:
-        return f"Push dry run: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} script updates. XML: {operation}"
+        return f"Push dry run: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} component updates. XML: {operation}"
     for path, content in snapshots.items():
         if path.read_bytes() != content:
             raise ProjectError(f"Local source changed during push preflight: {path}")
@@ -405,7 +371,15 @@ def _push_project(
                     / "components"
                     / f"{source.stem}.xml"
                 ).is_file():
-                    if signature(actual_node) != signature(expected_node):
+                    from .frame_geometry import normalized_markup
+
+                    normalized = normalized_markup(expected_node, actual_node)
+                    if normalized is not None:
+                        cache_updates[source.with_suffix(".wml")] = normalized.encode()
+                    if (
+                        signature(actual_node) != signature(expected_node)
+                        and normalized is None
+                    ):
                         raise ProjectError(
                             f"Portable XML verification failed: {source.stem}"
                         )
@@ -431,6 +405,9 @@ def _push_project(
             cache_updates[root / ".openroad" / app / f"{name}.xml"] = (
                 imported / "after.xml"
             ).read_bytes()
+            normalized_path = imported / "normalized.wml"
+            if normalized_path.exists():
+                cache_updates[root / app / f"{name}.wml"] = normalized_path.read_bytes()
         check_source()
         apply_files(root, dict(cache_updates), operation, initial)
         (operation / "verified").write_text(
@@ -441,4 +418,4 @@ def _push_project(
         raise ProjectError(
             f"Push stopped; earlier operations may have succeeded. Artifacts: {operation}\n{ex}"
         ) from ex
-    return f"Push complete: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} script updates. Artifacts: {operation}"
+    return f"Push complete: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} component updates. Artifacts: {operation}"

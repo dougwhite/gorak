@@ -9,6 +9,11 @@ from gorak.project import ProjectError
 from gorak.remote import RemoteCommandError, RemoteHost
 
 
+@pytest.fixture(autouse=True)
+def current_helpers(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(remote, "verify_remote_helpers", lambda host: None)
+
+
 def test_local_import_scopes_component_and_detects_compile_error(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -31,7 +36,7 @@ def test_local_import_scopes_component_and_detects_compile_error(
         )
     assert calls[0][1:5] == ["backupapp", "in", "node::demo", "app"]
     assert "-cexample" in calls[0]
-    assert "-f" in calls[0]
+    assert "-f" not in calls[0]
     assert "-nreplace" in calls[0]
     assert "compilation failed" in log.read_text()
 
@@ -185,3 +190,50 @@ def test_component_named_error_is_not_a_compiler_error() -> None:
     )
     with pytest.raises(ProjectError):
         import_backend.checked_log("ERROR: Compile errors in component example.")
+
+
+def test_old_helpers_rejected_before_upload(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    def reject(host: RemoteHost) -> None:
+        raise ProjectError("Reinstall remote helpers")
+
+    monkeypatch.setattr(remote, "verify_remote_helpers", reject)
+    monkeypatch.setattr(
+        remote, "run_subprocess", lambda *a: pytest.fail("must not upload")
+    )
+    with pytest.raises(ProjectError, match="Reinstall"):
+        import_backend.import_component_xml(
+            OpenRoadConnection(
+                "remote", "node", "demo", RemoteHost("user", "host", r"C:\gorak")
+            ),
+            "app",
+            "example",
+            tmp_path / "source.xml",
+            tmp_path / "import.log",
+        )
+
+
+def test_existing_component_compiles_after_load(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    log = tmp_path / "import.log"
+    calls: list[list[str]] = []
+
+    def run(command: list[str]) -> str:
+        calls.append(command)
+        target = log if command[1] == "backupapp" else log.with_suffix(".compile.log")
+        target.write_text("done")
+        return ""
+
+    monkeypatch.setattr(local, "run_subprocess", run)
+    import_backend.import_component_xml(
+        OpenRoadConnection("local", "node", "demo", None),
+        "app",
+        "example",
+        tmp_path / "source.xml",
+        log,
+    )
+    assert [c[1] for c in calls] == ["backupapp", "compileapp"]
+    assert "-f" not in calls[0]
+    assert all(flag in calls[1] for flag in ["-cexample", "-f", "-e"])
