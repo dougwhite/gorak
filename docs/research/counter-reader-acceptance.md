@@ -69,8 +69,47 @@ update on an unrelated counter row. All relevant counter access used shared read
 This establishes the tested CLI writer/reader combination. A corresponding manual
 Workbench test has been prepared with a private launcher copy that preserves its
 existing inline initialization and appends only the temporary counter-table setting.
-That manual MVCC test remains pending. The earlier manual ROW test is not a substitute.
+The manual MVCC test subsequently passed as detailed below. The earlier manual
+ROW test remains separate evidence.
 
 General startup merging, include-file handling, database scoping, schema upgrades,
 identity/restart and retention contracts remain separate implementation gates.
 No production revision schema or normal status/sync fast path is enabled by this work.
+
+
+## Actual Workbench MVCC writer and reader acceptance
+
+The user reopened Workbench with the private test launcher, which retained the
+existing session readlock/timeout statement and appended MVCC/shared only for the
+temporary counter table. They changed the simple frame's button label, saved and
+closed the frame editor.
+
+Verification established all of the following before releasing the holder:
+
+- A separate read-committed ROW-lock update of the held counter row timed out,
+  independently confirming the lock. This challenge avoids the serializable
+  ROW/MVCC table compatibility conflict.
+- A SQLAlchemy MVCC/shared reader successfully read **29 committed counter
+  increments**, excluding the unrelated held row.
+- A fresh OpenROAD export verified the requested button label while the holder
+  was still active.
+- Captured session settings remained default/Nolock/serializable. The override
+  was table-specific; existing session settings were preserved.
+
+The user mentioned a possible accidental button movement. Comparing the exported
+button properties found only the requested text-label change; its position and
+size properties were unchanged.
+
+The holder was then rolled back, temporary rules/procedure/table removed, and the
+copied launcher deleted. Existing tracking remained healthy. The original launcher
+was unchanged; the intentional label edit remains in the isolated application.
+
+The private verifier required correction before it completed: its generated read
+block initially landed in an import line, and an MVCC NOWAIT write challenge
+returned a generic update error rather than the expected lock-timeout SQLSTATE.
+No acceptance was inferred from either failure. The final compatible ROW/read-
+committed challenge and successful read/export checks above provided the evidence.
+
+This closes the controlled Workbench writer/reader compatibility check. It does
+not enable normal status/sync, certify arbitrary clients, or resolve startup-file
+composition, restart/restore identity, bounded observation and retention.

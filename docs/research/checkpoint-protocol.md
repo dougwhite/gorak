@@ -110,5 +110,5 @@ No global defaults, installed tracking or normal source-command behavior changed
 The [counter-reader matrix](counter-reader-acceptance.md) subsequently showed that
 serializable ROW writers exclude MVCC readers. The counter-table contract must
 therefore use MVCC/shared on both sides, preserving application isolation and
-source-table settings. CLI acceptance passed; manual Workbench MVCC acceptance
-is prepared but pending.
+source-table settings. CLI and controlled manual Workbench MVCC writer/reader acceptance passed.
+General initialization, bounded observation and identity/retention work remain.
