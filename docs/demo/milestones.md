@@ -17,11 +17,42 @@ refresh, automatic physical-restore detection, or gigabyte-scale local compariso
 
 ## Target and evidence
 
+The owner-defined delivery milestone is a faithful round trip of the entire
+private reference project: source tables → tracked git files → fresh clone →
+fresh isolated source database, using direct decoding and direct table encoding.
+Coverage of every component and source-bearing dependency in that corpus is the
+demo acceptance boundary. Universal OpenROAD coverage is not a prerequisite;
+additional forms can be identified through later users and controlled experiments.
+This expands the earlier read-only milestone to include M2e direct source writes
+in isolated test databases. It does not authorize replacing the reference database.
+
+Acceptance requires:
+
+- An explicit inventory of all applications, component kinds, properties, graphs,
+  includes and referenced string/image storage in the reference project, with no
+  silently skipped objects. Declare external runtime dependencies separately.
+- Complete source reconstruction from a fresh git clone without `.openroad`
+  caches, original database access, XML source companions, or XML import/export
+  in the reconstruction path. Preserve all source-bearing values and relationships;
+  destination-local IDs and reproducible compiler artifacts need not be identical.
+- Independent comparison of reconstructed source with the original, using XML as
+  a development oracle plus direct structural checks, compilation, runtime tests
+  and owner Workbench acceptance. Report deferred manual checks separately.
+- Safe identity/reference allocation, transaction boundaries, compilation
+  invalidation, journal integration, conflict checks and recoverable failures for
+  direct writes. Test only against disposable destinations until verified.
+- Correct incremental status and sync after reconstruction and subsequent edits,
+  retaining the under-one-second first-status target after a small edit. Measure
+  this on the full reference corpus; full clone restoration has a separate timing.
+- Explicit unsupported results outside proven coverage. XML compatibility paths
+  may remain available, but any required XML fallback within the reference-corpus
+  round trip leaves this milestone incomplete.
+
 ODBC is the accepted required source-access transport for the target stack. Local
 Windows or SSH OpenROAD execution remains for running, testing, image builds, and
 explicit compilation. The normal source path should eventually avoid XML and
 OpenROAD process startup; XML remains the compatibility oracle/fallback during
-transition. Direct decoding and safe database saves are not yet implemented.
+transition. Narrow procedure decoding is implemented; direct table saves are not.
 
 Design for gigabytes of source, not only the demonstration corpus. A no-change
 status/push should target under one second without work proportional to total
@@ -61,8 +92,10 @@ and [sync behavior and timing](../synchronization.md).
 | M7 | Editor tasks and community rehearsal | Not started | Two developers complete Acts 1–5 from clean disposable environments |
 | M8 | Watch, rich editor tests, and MCP | Not started | Same safe services power automatic sync and agent/editor tooling |
 
-Recommended order: finish bounded M2a gaps alongside M2b research, then M2c, M2d,
-M2e; integrate M3 onboarding with the database installer. M5 transport and deferred
+Immediate order: inventory reference-corpus coverage, define the complete portable
+source representation and table-write contract, then deliver decoder/encoder round
+trips in verified increments until the fresh-clone corpus gate above passes.
+Finish bounded M2a gaps alongside M2c–M2e; integrate M3 onboarding with the database installer. M5 transport and deferred
 compilation work can proceed independently. M4 and M6 follow the stable source/app
 model. M7 rehearses the integrated result; M8 builds on it.
 
