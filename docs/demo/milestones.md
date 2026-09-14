@@ -52,7 +52,8 @@ ODBC is the accepted required source-access transport for the target stack. Loca
 Windows or SSH OpenROAD execution remains for running, testing, image builds, and
 explicit compilation. The normal source path should eventually avoid XML and
 OpenROAD process startup; XML remains the compatibility oracle/fallback during
-transition. Narrow procedure decoding is implemented; direct table saves are not.
+transition. Narrow procedure decoding and experimental empty-database native
+restoration are implemented; incremental direct table saves are not.
 
 Design for gigabytes of source, not only the demonstration corpus. A no-change
 status/push should target under one second without work proportional to total
@@ -310,5 +311,18 @@ choices must not retroactively imply prior verification or erase unresolved bugs
   [scope and measurements](../research/direct-storage-roundtrip.md).
 - [ ] Interpret remaining class fields and external references; framing preserves
   opaque values but does not certify semantic coverage or table-write safety.
-- [ ] Prove isolated direct reconstruction with allocation, relationships and
-  transactional recovery before integrating normal import/export replacement.
+- [x] Prove isolated direct reconstruction with allocation, relationships and
+  transactional recovery. Normal editable import/export replacement remains open.
+- [x] Synthetic direct-table reconstruction from fresh git clones with new IDs,
+  complete XML agreement, compile/run and rollback checks.
+- [x] Experimental full reference-corpus restoration into a newly created empty
+  database without XML import: seven apps/157 components match full XML before and
+  after successful compilation. Stale dependency normalization and private capture
+  are now implemented in the experimental native CLI; ordinary editable sync
+  integration is still pending.
+- [x] `source export/verify/restore` provides partitioned native archives, offline
+  verification, ODBC capture and transactional empty-database restoration. A fresh
+  clone restored all seven apps through ODBC, matched all XML oracles, compiled
+  successfully, and passed six focused runtime tests. See [commands](../native-source.md).
+- [ ] Integrate native snapshots with editable source and conflict-safe incremental
+  sync; finish semantic decoding and large-corpus changed-status acceptance.

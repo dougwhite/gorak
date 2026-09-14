@@ -92,6 +92,7 @@ gorak sync
 - [Configuration Guide](docs/config.md) - Customize how gorak communicates with OpenROAD / Ingres
 - [Synchronization](docs/synchronization.md) - Status, target binding, conflicts, and current limits
 - [Run and Test](docs/run-test.md) - Execute applications and collect unit-test results
+- [Native Source Snapshots](docs/native-source.md) - Experimental XML-free ODBC export and fresh-database restoration
 - [Component Import](docs/import.md) - Import existing procedure and class script edits
 - [Files And Formats](docs/files.md) - Overview of the file formats and project layouts gorak uses
 - [Remote Helpers](docs/remote.md) - How to use gorak with a remote Windows OpenROAD host

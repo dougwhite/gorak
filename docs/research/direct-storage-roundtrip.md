@@ -61,3 +61,97 @@ Next gates are isolated transactional allocation/reconstruction probes, complete
 class-field/reference meaning, portable representation and edit ownership, then
 fresh-clone restoration and subsequent conflict-safe sync. No normal import/export
 route has been switched by the framing codec alone.
+
+## Catalog archive and isolated reconstruction
+
+`storage_archive.py` validates a bounded ASCII archive of entity, component,
+application, include, source-chunk, long-remark, dependency and containment rows.
+It requires complete current/base pairs, matching metadata and source graph kinds,
+contiguous chunks, unique identities and resolved catalog references. Schema/type
+changes, unknown tables and unresolved IDs fail explicitly. Catalog ID remapping
+leaves graph-local IDs unchanged. Graph bodies still preserve uninterpreted fields.
+
+The Ingres terminal monitor strips newlines from ordinary multiline SQL literals.
+A failed synthetic reconstruction exposed this as truncated source, rather than a
+missing relationship. The exact ASCII hexadecimal literal renderer prevents that
+rewriting and source text injection into SQL/monitor commands. Parameterized ODBC
+writers should preserve values directly instead of using this transport encoding.
+
+A procedure-only fixture and a mixed fixture with two frames, one class and two
+procedures passed direct reconstruction after removing the original disposable
+application. A fresh local git clone supplied the table archive; new entity IDs
+were allocated transactionally through `ii_id`. Complete XML signatures matched,
+fresh-process compilation preserved source, and the harmless starting procedure
+ran. Rolling back restoration preserved source absence, allocator value and managed
+revision counters. Temporary apps, helpers and revision extensions were removed.
+These fixtures do not certify concurrent direct saves or graphical interactions.
+
+## Complete reference-corpus restore experiment
+
+Following base/current IDs and source includes, rather than comparing folder names
+case-sensitively, expanded the initial capture to the actual current corpus:
+**seven applications, 157 components, 328 entity rows, 153 encoded graphs and
+69,937 chunks containing 125,034,939 characters**. Additional kinds include 3GL
+procedures, a script component and a ghost frame. Base/current name case differences
+are preserved. The initial 111-graph framing result above was an incomplete
+name-selected inventory, not the final coverage boundary.
+
+The corpus also contained 115 dependency edges pointing to ten deleted entity IDs.
+The private restore experiment retained their application/component names and
+provenance but changed the stale destination handles to zero, preventing accidental
+binding to newly allocated objects. This normalization was experimental: the archive
+validator itself still rejects unresolved nonzero IDs. Live external IDs must not
+be treated as stale without checking the source catalog.
+
+A new standard database was created with Ingres/OpenROAD catalogs using
+`createdb TARGET -no_x100 -f ingres windows_4gl`; see the
+[official catalog creation options](https://docs.actian.com/ingres/11.0/CommandRef/createdb_Command--Create_a_Database.htm).
+All archive table layouts matched and source tables were empty before restoration.
+The private archive was committed to a local temporary repository and restored from
+its fresh clone, with new destination entity IDs. **No XML import was used in the
+reconstruction path.** Direct table insertion took 28.601 seconds in one sample.
+
+All seven complete application XML signatures matched independent original-database
+exports. All seven applications then compiled in dependency order in fresh OpenROAD
+processes, with zero error diagnostics; all seven source signatures still matched
+after compilation. Compilation samples ranged from 0.824 to 19.516 seconds per app.
+XML was used only as an independent oracle. The source database was not compiled or
+modified. This proves an experimental full-corpus source reconstruction, not normal
+CLI integration, a full semantic decoder, runtime test coverage or visual acceptance.
+The single large research archive is not the final git source layout.
+
+## Native CLI integration and acceptance
+
+`gorak source export/verify/restore` now packages this contract as an experimental
+ODBC route. Captures follow case-insensitive application names and base/current IDs
+under shared serializable table locks. Known stale dependencies become symbolic
+only after checking that their destinations do not exist anywhere in the catalog;
+live external handles fail. Restoration requires an empty destination, checks
+column layouts, locks and allocates IDs, invalidates compilation, inserts bound
+parameters, and compares complete stored rows and the allocator before commit.
+Existing-source replacement is explicitly refused.
+
+The partitioned archive contains native graph files, catalog metadata, hashes and
+Git attributes protecting exact newline bytes. It needs no XML or ignored cache.
+The new CLI exported the complete corpus in 52.207 seconds. From a fresh private
+local git clone, offline verification took 8.057 seconds, destination dry-run took
+14.659 seconds and parameterized ODBC restoration took 99.686 seconds. These are
+single end-to-end observations with repeated defensive validation, not throughput
+guarantees or incremental-status measurements.
+
+All seven restored source signatures matched the original independent XML oracles.
+All seven then compiled without errors, and all seven signatures still matched.
+A focused runtime class executed six tests with zero failures, errors or skips.
+The temporary test-selection constant was reset and recompiled, and its complete
+application signature matched again. The full business suite and GUI acceptance
+were not run. No reference-database source mutations were made.
+
+Manifest hashing and Git newline attributes were finalized after the live ODBC
+restore; archive payload equality and fresh-clone verification cover that packaging
+change separately. See [native command scope](../native-source.md). General semantic
+field decoding and ordinary editable sync remain incomplete.
+
+Final packaging acceptance preserved all 153 graphs through a fresh git clone with
+`core.autocrlf=true`. Both newly created destination databases and the temporary
+remote helper were removed. The earlier isolated tracking installation retained
+its identity and healthy checks, with its temporary extension absent.

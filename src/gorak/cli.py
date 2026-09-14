@@ -69,6 +69,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gorak")
     subparsers = parser.add_subparsers(dest="command")
 
+    source_parser = subparsers.add_parser(
+        "source", help="Experimental XML-free native source archives"
+    )
+    source_parser.add_argument("operation", choices=["export", "restore", "verify"])
+    source_parser.add_argument("directory")
+    source_parser.add_argument("--app", action="append", default=[])
+    source_parser.add_argument("--dry-run", action="store_true")
+    add_openroad_connection_args(source_parser)
+
     install_parser = subparsers.add_parser("install")
     install_action = install_parser.add_mutually_exclusive_group()
     install_action.add_argument(
@@ -834,6 +843,11 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
     parsed = parser.parse_args(args)
 
     try:
+        if parsed.command == "source":
+            from .storage_command import source_command
+
+            print(source_command(parsed))
+            return
         if parsed.command == "install":
             from .installation import export_installation_sql, installation_sql
 
