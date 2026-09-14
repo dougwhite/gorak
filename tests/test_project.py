@@ -54,6 +54,7 @@ def test_create_project_creates_default_project_skeleton(
         FIXTURE_ROOT / "field_defaults.json"
     ).read_text()
     assert (project.root / ".gitignore").read_text() == ".env\n.openroad/\n"
+    assert "gorak sync --push && gorak test" in (project.root / "AGENTS.md").read_text()
     assert calls == [(["git", "init"], project.root)]
     assert capsys.readouterr().err == ""
 
@@ -62,9 +63,7 @@ def test_create_project_seeds_nested_field_default_subtrees(tmp_path: Path) -> N
     project = create_project(tmp_path / "my_project", run_cmd=lambda command, cwd: None)
     defaults = json.loads((project.root / "field_defaults.json").read_text())
     controlbutton = next(
-        style
-        for style in defaults["field_styles"]
-        if style["type"] == "controlbutton"
+        style for style in defaults["field_styles"] if style["type"] == "controlbutton"
     )
 
     assert controlbutton["properties"]["optionmenu"]["bgcolor"] == "2"

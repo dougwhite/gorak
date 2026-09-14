@@ -149,13 +149,11 @@ represented in readable files. A clean clone can use these companions to create
 applications containing exported frames, globals, 3GL declarations, and other
 preserved component types. Newly authored procedures/classes still need no XML.
 
-Readable app metadata overrides its represented XML fields. For components,
-`.w4gl` script edits override the preserved script while opaque XML is retained.
-Component metadata must still match the readable projection of its companion;
-frame markup and effective field defaults must match too. Unsupported edits are
-rejected before import. This first format preserves frame designs; it does not
-implement editing frame markup from disk. Existing-component push retains its
-current restrictions, including rejecting frame edits.
+Readable app metadata overrides its represented XML fields. Component scripts,
+represented metadata, frame markup and existing field-default properties overlay
+the preserved component XML. Unedited opaque content is retained. See
+[component editing](component-editing.md) for supported shapes and acceptance.
+Unsupported edits are rejected before import.
 
 Do not edit companions independently of their readable files or rename component
 folders/files without updating source identities. A companion without its readable
@@ -163,12 +161,11 @@ component is rejected; deletion reconciliation belongs to the sync-planning work
 The format marker is checked on restore. Unknown versions and unrecognized XML
 root structures are rejected rather than partially imported.
 
-Full and component exports refresh their corresponding companions. Script-only
-pushes need not rewrite them: reconstruction applies the current readable script.
+Full and component exports refresh their corresponding companions. Pushes need
+not rewrite them: reconstruction applies the current readable edits.
 OpenROAD XML contents are preserved without inventing IDs; deployment baselines,
 credentials, trace logs, and recovery files remain outside versioned source.
 
 After upgrading an existing export-only project, export its applications once to
-produce companions before attempting a cache-free clone restoration. Re-export can
-overwrite local source, so reconcile local edits before doing this. Existing unsafe
-pull behavior is tracked under M2; this feature does not resolve it.
+produce companions before attempting a cache-free clone restoration. Reconcile pending local edits before exporting. Ordinary `gorak sync` plans a
+safe pull and refuses conflicts; direct export is not a conflict-resolution tool.

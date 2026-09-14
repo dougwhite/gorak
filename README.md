@@ -1,120 +1,70 @@
-# gorak
+# Gorak — the Greater OpenROAD Application Kit
 
-GORAK — the Greater OpenROAD Application Kit.
+Work with OpenROAD source in VS Code, Git, and AI coding agents. Gorak exports
+applications into readable 4GL source and frame markup, synchronizes explicit
+changes with an OpenROAD source database, and runs application tests from the CLI.
 
-> Warning: gorak is in early alpha. Source file formats are subject to change.
-> Consider carefully before using this utility in a mission-critical or production environment.
+> **Early alpha.** Formats and compatibility are still evolving. Start with a
+> disposable source database and backed-up source, never your production repository.
+> Imports are verified but are not a transaction across an entire application set.
 
-## Setup
+The everyday loop is explicit:
 
-We recommend you install [`uv`](https://docs.astral.sh/uv/) for the best development experience.
+```sh
+gorak sync                       # pull latest before editing
+# edit readable .w4gl / .wml source
+gorak sync --push && gorak test   # import/compile, then test database source
+git diff                         # inspect before committing or opening a PR
+```
 
-Clone the repo and install vendor packages:
+`gorak test` does **not** synchronize source. `gorak status` inspects disk,
+baseline and database changes. Conflicts stop synchronization rather than choosing
+whichever timestamp is newest.
 
-```bash
+## Get started
+
+You need Python 3.12+, Git, and an initialized OpenROAD/Ingres development
+installation, either locally or on a Windows host reached through SSH. See the
+[onboarding guide](docs/getting-started.md) for prerequisites, connection settings,
+disposable database setup, and the first export.
+
+```sh
 git clone https://github.com/dougwhite/gorak.git
 cd gorak
 uv sync
-```
-
-Run the test suite:
-
-```bash
-uv run pytest
-```
-
-Install the tool in editable mode:
-
-```bash
 uv tool install --editable .
-```
-
-## Quickstart
-
-You can now run gorak like so:
-
-```bash
-gorak --help
-```
-
-Create a new gorak project:
-
-```bash
 gorak new myproject
 cd myproject
-```
-
-This will create the following project layout (with example application):
-```
-myproject
-├── .env.example
-├── field_defaults.json
-├── .gitignore
-├── gorak.json
-└── myproject
-    ├── app.json
-    └── p4_init.w4gl
-```
-
-Copy `.env.example` to `.env`:
-
-```bash
 cp .env.example .env
+# Configure .env for your disposable source database.
+gorak app list
+gorak app export example_app
 ```
 
-Modify `.env` to match the correct Ingres/OpenROAD environment:
+New projects include an `AGENTS.md` explaining the correct edit → push → test
+workflow. Existing projects can adopt the [agent instructions](docs/agent-workflow.md).
 
-```env
-GORAK_BACKEND=local
-GORAK_VNODE=myvnode
-GORAK_DATABASE=exampledb
-```
+## What works, and what is experimental
 
-> See the [Configuration Guide](docs/config.md) for more information on alternate backends.
+The normal path uses OpenROAD XML export/import, preserves opaque XML companions,
+and verifies imported source. Existing procedures/classes, frame logic and layout,
+and represented component metadata use the same conflict and recovery gates.
+[Component editing](docs/component-editing.md) describes the tested types and limits;
+[rehearsal evidence](docs/demo/rehearsal.md) distinguishes automated and live checks
+from visual acceptance. Fresh procedure/class creation and portable application
+restoration are also available. Source deletion pushes remain unsupported.
 
-Export an application from your OpenROAD repo:
+Optional [managed revision acceleration](docs/revision-mode.md) retains its writer
+and DBA generation contract. [Native source archives](docs/native-source.md),
+[journal diagnostics](docs/journal.md), and [direct source decoding](docs/research/encoded-source.md)
+are specialist facilities, not onboarding prerequisites. Watch mode, automatic
+synchronization and broad native source writes are future work.
 
-```bash
-gorak app export myapplication
-```
+## Documentation
 
-To sync new component changes:
-
-```bash
-gorak sync
-```
-
-## Full Documentation
-
-- [Community Demo and Roadmap](docs/demo/README.md) - Planned walkthrough, missing capabilities, and acceptance milestones
-
-- [Full Command List](docs/commands.md) - List of all commands and CLI parameters explained
-- [Configuration Guide](docs/config.md) - Customize how gorak communicates with OpenROAD / Ingres
-- [Synchronization](docs/synchronization.md) - Status, target binding, conflicts, and current limits
-- [Run and Test](docs/run-test.md) - Execute applications and collect unit-test results
-- [Native Source Snapshots](docs/native-source.md) - Experimental XML-free ODBC export and fresh-database restoration
-- [Component Import](docs/import.md) - Import existing procedure and class script edits
-- [Files And Formats](docs/files.md) - Overview of the file formats and project layouts gorak uses
-- [Remote Helpers](docs/remote.md) - How to use gorak with a remote Windows OpenROAD host
-- [Development Guide](docs/development.md) - Guide to contributing to the gorak project
-
-## Project Goals
-
-Gorak aims to make OpenROAD projects work like modern source code projects.
-
-The primary goal is to let developers work on an OpenROAD application entirely
-from VS Code, with OpenROAD Workbench acting as a build artifact server rather
-than the source of truth.
-
-Gorak is focused on:
-
-- A useful CLI for day-to-day OpenROAD development.
-- Human-readable, text-based OpenROAD source and metadata.
-- Git source control for OpenROAD applications.
-- Two-way sync between local source files and OpenROAD repositories.
-
-Optional [managed revision mode](docs/revision-mode.md) gives status and push a
-verified quiet path using ODBC revision tokens. It requires the documented writer
-and DBA generation contract. An explicit experimental procedure decoder can also
-refresh supported description/script changes through ODBC; other changes retain
-full XML comparison. See the [scope and measured acceptance](docs/research/changed-procedure-acceptance.md).
+- [Getting started](docs/getting-started.md) · [Configuration](docs/config.md)
+- [Commands](docs/commands.md) · [Synchronization and recovery](docs/synchronization.md)
+- [Component editing](docs/component-editing.md) · [Push](docs/push.md)
+- [Run and test](docs/run-test.md) · [Files and portable source](docs/files.md)
+- [Remote helpers](docs/remote.md) · [Demo rehearsal](docs/demo/rehearsal.md)
+- [Development](docs/development.md) · [Longer-term roadmap](docs/demo/README.md)

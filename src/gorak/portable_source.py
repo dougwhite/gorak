@@ -1,18 +1,14 @@
 """Versioned XML source companions, independent of database synchronization state."""
 
-import tomllib
 from copy import deepcopy
 from pathlib import Path
 
 from lxml import etree
 
-from .field_defaults import diff_defaults, effective_defaults, read_defaults
+from .field_defaults import effective_defaults, read_defaults
 from .parser import (
-    encode_w4gl,
-    encode_wml,
     parse_component_node,
     parse_w4gl,
-    split_w4gl,
 )
 from .project import ProjectError
 
@@ -77,7 +73,7 @@ def cached_node(folder: Path, tag: str, name: str) -> etree._Element | None:
 
 
 def restore_component(path: Path) -> etree._Element:
-    """Overlay script edits; refuse unimplemented changes to metadata or frame UI."""
+    """Overlay readable edits over portable companions or legacy cached XML."""
     from .xml_writer import new_component
 
     companion = path.parent / DIRECTORY / "components" / f"{path.stem}.xml"
@@ -93,41 +89,32 @@ def restore_component(path: Path) -> etree._Element:
         if baseline is None:
             return new_component(path)
         node = baseline
+    return overlay_component(node, path)
+
+
+def overlay_component(node: etree._Element, path: Path) -> etree._Element:
+    """Apply editable source to a supplied baseline, preserving opaque XML."""
     original = parse_component_node(node)
     text = path.read_text()
     edited = parse_w4gl(text, path.stem)
-    defaults = original.props.pop("fielddefaults", None)
-    if isinstance(defaults, dict):
-        parent = effective_defaults(
+    defaults = original.props.get("fielddefaults", {})
+    if original.type == "framesource":
+        from .defaults_writer import overlay_defaults
+
+        desired = effective_defaults(
             read_defaults(path.parent.parent / "field_defaults.json"),
             read_defaults(path.parent / "field_defaults.json"),
-            {},
+            edited.props.get("fielddefaults", {}),
         )
-        override = diff_defaults(parent, defaults)
-        if override:
-            original.props["fielddefaults"] = override
-        supplied = edited.props.get("fielddefaults", {})
-        if effective_defaults(parent, {}, supplied) != defaults:
-            raise ProjectError(f"Field default edits are not supported: {path}")
-    if original.type != edited.type or tomllib.loads(
-        split_w4gl(encode_w4gl(original))[0]
-    ) != tomllib.loads(split_w4gl(text)[0]):
-        raise ProjectError(
-            f"Portable component metadata edits are not supported: {path}"
-        )
-    markup = encode_wml(original)
-    if markup is not None:
-        wml = path.with_suffix(".wml")
-        if not wml.is_file() or wml.read_text().strip() != markup.strip():
-            raise ProjectError(f"Frame markup edits are not supported: {path}")
-    if edited.script != original.script:
-        script = node.find("script")
-        if script is None or edited.script is None:
-            raise ProjectError(f"Cannot add or remove a script section: {path}")
-        previous = script.text or ""
-        leading = previous[: len(previous) - len(previous.lstrip())]
-        trailing = previous[len(previous.rstrip()) :]
-        script.text = etree.CDATA(leading + edited.script + trailing)
+        if desired != defaults:
+            overlay_defaults(node, desired)
+    from .component_edits import overlay_metadata
+    from .wml_writer import overlay_markup
+
+    overlay_metadata(node, path)
+    if original.markup is not None:
+        overlay_markup(node, path.with_suffix(".wml"))
+
     return node
 
 

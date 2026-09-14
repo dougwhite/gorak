@@ -86,7 +86,7 @@ def test_application_deletion_conflicts_with_remote_component_edit(
     assert "component edits" in app.reason
 
 
-def test_metadata_edit_reports_conflict_instead_of_disappearing(
+def test_metadata_edit_is_planned_as_push(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     connection = setup(tmp_path, monkeypatch, xml())
@@ -94,8 +94,8 @@ def test_metadata_edit_reports_conflict_instead_of_disappearing(
     source.write_text(source.read_text().replace('"integer"', '"varchar"'))
     changes = sync_plan.plan_project(connection, tmp_path)
     item = next(c for c in changes if c.key == "example/proc")
-    assert item.action == "conflict"
-    assert item.disk == "invalid"
+    assert item.action == "push"
+    assert item.disk == "modified"
 
 
 def test_independent_exports_overlap_and_fail_closed(

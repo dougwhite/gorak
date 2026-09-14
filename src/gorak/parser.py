@@ -227,30 +227,36 @@ def encode_frame_markup(
 def frame_markup_element(
     node: etree._Element,
     defaults_index: "MarkupDefaultsIndex",
+    mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> etree._Element:
     if node.tag in MAINBAR_MARKUP_CHILDREN:
-        return mainbar_markup_element(node, defaults_index)
+        return mainbar_markup_element(node, defaults_index, mapping)
 
     tag = node.get(f"{{{NS['xsi']}}}type") if node.tag == "row" else node.tag
     if not tag:
         tag = node.tag
 
     element = etree.Element(tag)
+    if mapping is not None:
+        mapping[element] = node
     copy_markup_attributes(node, element)
     default_properties = defaults_index.properties_for(tag, node)
-    append_markup_content(element, node, defaults_index, default_properties)
+    append_markup_content(element, node, defaults_index, default_properties, mapping)
     return element
 
 
 def mainbar_markup_element(
     node: etree._Element,
     defaults_index: "MarkupDefaultsIndex",
+    mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> etree._Element:
     element = etree.Element(node.tag)
+    if mapping is not None:
+        mapping[element] = node
     copy_markup_attributes(node, element)
     row = node.find("row")
     if row is not None:
-        append_markup_content(element, row, defaults_index, {})
+        append_markup_content(element, row, defaults_index, {}, mapping)
 
     return element
 
@@ -260,28 +266,32 @@ def append_markup_content(
     node: etree._Element,
     defaults_index: "MarkupDefaultsIndex",
     default_properties: dict[str, Any],
+    mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> None:
     for child in node:
         if child.tag in {"childfields", "childmenufields"}:
-            append_childfields(element, child, defaults_index)
+            append_childfields(element, child, defaults_index, mapping)
         elif child.tag == "script":
             script = etree.SubElement(element, "script")
+            if mapping is not None:
+                mapping[script] = child
             script.text = etree.CDATA((child.text or "").strip())
         elif len(child) == 0 and not child.attrib:
             value = (child.text or "").strip()
             if should_encode_markup_attribute(child.tag, value, default_properties):
                 element.set(child.tag, value)
         else:
-            element.append(frame_markup_element(child, defaults_index))
+            element.append(frame_markup_element(child, defaults_index, mapping))
 
 
 def append_childfields(
     parent: etree._Element,
     childfields: etree._Element,
     defaults_index: "MarkupDefaultsIndex",
+    mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> None:
     for row in childfields.findall("row"):
-        parent.append(frame_markup_element(row, defaults_index))
+        parent.append(frame_markup_element(row, defaults_index, mapping))
 
 
 def copy_markup_attributes(source: etree._Element, target: etree._Element) -> None:

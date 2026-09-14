@@ -173,6 +173,9 @@ def write_project_skeleton(root: Path, name: str) -> None:
     )
     (app_dir / f"{DEFAULT_STARTING_COMPONENT}.w4gl").write_text(DEFAULT_P4_INIT)
     (root / "field_defaults.json").write_text(default_field_defaults_json())
+    (root / "AGENTS.md").write_text(
+        files(TEMPLATE_PACKAGE).joinpath("AGENTS.md").read_text()
+    )
     (root / ".env.example").write_text(ENV_EXAMPLE)
     (root / ".gitignore").write_text(".env\n.openroad/\n")
 
