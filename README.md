@@ -1,70 +1,132 @@
-# Gorak — the Greater OpenROAD Application Kit
+# gorak
 
-Work with OpenROAD source in VS Code, Git, and AI coding agents. Gorak exports
-applications into readable 4GL source and frame markup, synchronizes explicit
-changes with an OpenROAD source database, and runs application tests from the CLI.
+GORAK — the Greater OpenROAD Application Kit.
 
-> **Early alpha.** Formats and compatibility are still evolving. Start with a
-> disposable source database and backed-up source, never your production repository.
-> Imports are verified but are not a transaction across an entire application set.
+Work with OpenROAD source using readable files, Git, VS Code, command-line tests,
+and AI coding agents.
 
-The everyday loop is explicit:
+> **Early alpha.** Gorak is still evolving. Use a disposable development source
+> database and keep backups; do not point it at production source yet.
 
-```sh
-gorak sync                       # pull latest before editing
-# edit readable .w4gl / .wml source
-gorak sync --push && gorak test   # import/compile, then test database source
-git diff                         # inspect before committing or opening a PR
-```
+## Setup
 
-`gorak test` does **not** synchronize source. `gorak status` inspects disk,
-baseline and database changes. Conflicts stop synchronization rather than choosing
-whichever timestamp is newest.
+We recommend [`uv`](https://docs.astral.sh/uv/) for the best development experience.
 
-## Get started
+Clone the repo and install the development environment:
 
-You need Python 3.12+, Git, and an initialized OpenROAD/Ingres development
-installation, either locally or on a Windows host reached through SSH. See the
-[onboarding guide](docs/getting-started.md) for prerequisites, connection settings,
-disposable database setup, and the first export.
-
-```sh
+```bash
 git clone https://github.com/dougwhite/gorak.git
 cd gorak
 uv sync
-uv tool install --editable .
-gorak new myproject
-cd myproject
-cp .env.example .env
-# Configure .env for your disposable source database.
-gorak app list
-gorak app export example_app
 ```
 
-New projects include an `AGENTS.md` explaining the correct edit → push → test
-workflow. Existing projects can adopt the [agent instructions](docs/agent-workflow.md).
+Run the test suite:
 
-## What works, and what is experimental
+```bash
+uv run pytest
+```
 
-The normal path uses OpenROAD XML export/import, preserves opaque XML companions,
-and verifies imported source. Existing procedures/classes, frame logic and layout,
-and represented component metadata use the same conflict and recovery gates.
-[Component editing](docs/component-editing.md) describes the tested types and limits;
-[rehearsal evidence](docs/demo/rehearsal.md) distinguishes automated and live checks
-from visual acceptance. Fresh procedure/class creation and portable application
-restoration are also available. Source deletion pushes remain unsupported.
+Install the tool in editable mode:
 
-Optional [managed revision acceleration](docs/revision-mode.md) retains its writer
-and DBA generation contract. [Native source archives](docs/native-source.md),
-[journal diagnostics](docs/journal.md), and [direct source decoding](docs/research/encoded-source.md)
-are specialist facilities, not onboarding prerequisites. Watch mode, automatic
-synchronization and broad native source writes are future work.
+```bash
+uv tool install --editable .
+```
 
-## Documentation
+## Quickstart
 
-- [Getting started](docs/getting-started.md) · [Configuration](docs/config.md)
-- [Commands](docs/commands.md) · [Synchronization and recovery](docs/synchronization.md)
-- [Component editing](docs/component-editing.md) · [Push](docs/push.md)
-- [Run and test](docs/run-test.md) · [Files and portable source](docs/files.md)
-- [Remote helpers](docs/remote.md) · [Demo rehearsal](docs/demo/rehearsal.md)
-- [Development](docs/development.md) · [Longer-term roadmap](docs/demo/README.md)
+Check the CLI:
+
+```bash
+gorak --help
+```
+
+Create a local Gorak project:
+
+```bash
+gorak new myproject
+cd myproject
+```
+
+This creates a small example project including connection settings, agent
+instructions, project metadata and a starter application.
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Modify `.env` to match your OpenROAD / Ingres development environment. For a local
+OpenROAD installation, the basic settings look like:
+
+```env
+GORAK_BACKEND=local
+GORAK_VNODE=myvnode
+GORAK_DATABASE=exampledb
+```
+
+> See the [Configuration Guide](docs/config.md) for local, remote/SSH and ODBC setup.
+
+List the applications available in the configured OpenROAD source database:
+
+```bash
+gorak app list
+```
+
+Export an existing application into readable source files:
+
+```bash
+gorak app export myapplication
+```
+
+From there, the normal development loop is deliberately simple:
+
+```bash
+gorak sync                       # pull the latest OpenROAD changes
+# edit .w4gl / .wml files in your editor
+gorak sync --push                # push disk changes back to OpenROAD
+gorak test                       # run configured OpenROAD tests
+git diff                         # review the result
+```
+
+`gorak test` runs the source currently in the OpenROAD database, so disk changes
+must be synchronized first. `gorak status` shows the current disk/database change
+plan when you want to inspect what Gorak thinks has changed.
+
+New projects include an `AGENTS.md` describing this workflow for coding agents such
+as Codex, so an agent can pull source, make a change, synchronize it, run the tests,
+and prepare a Git change using the same commands as a human developer.
+
+## Full Documentation
+
+- [Getting Started](docs/getting-started.md) - First project, prerequisites and connection setup
+- [Full Command List](docs/commands.md) - CLI commands and options
+- [Configuration Guide](docs/config.md) - Local, remote and ODBC configuration
+- [Synchronization](docs/synchronization.md) - Status, pull/push, conflicts and recovery
+- [Component Editing](docs/component-editing.md) - Current readable editing surface and limits
+- [Run and Test](docs/run-test.md) - Execute applications and collect test results
+- [Component Import](docs/import.md) - Import an individual existing component
+- [Files and Formats](docs/files.md) - Project files and source representation
+- [Remote Helpers](docs/remote.md) - Windows/OpenROAD execution over SSH
+- [Development Guide](docs/development.md) - Contributing to Gorak
+- [Community Demo and Roadmap](docs/demo/README.md) - Longer-term direction and acceptance goals
+
+Experimental work on direct ODBC source access, change tracking, native source
+snapshots and large-repository performance is documented separately and is not
+required for the normal workflow above.
+
+## Project Goals
+
+Gorak aims to make OpenROAD projects work more like modern source-code projects.
+
+The goal is to let developers keep using OpenROAD and Workbench where they make
+sense, while making application source accessible to normal developer tooling:
+editors, Git, automated tests, code review and AI coding agents.
+
+Gorak is focused on:
+
+- A useful CLI for day-to-day OpenROAD development.
+- Human-readable, text-based OpenROAD source and metadata.
+- Git source control for OpenROAD applications.
+- Safe two-way synchronization between local files and OpenROAD repositories.
+- Command-line build/test workflows that can be used by humans and coding agents.
