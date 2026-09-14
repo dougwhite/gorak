@@ -134,7 +134,7 @@ a request to force the operation. Read the named `.openroad` artifacts and
 [recovery guide](synchronization.md).
 
 `.openroad/` stores ignored baselines, target binding, operation/recovery journals,
-locks and run logs/results. Complete format-2 readable source needs no XML
+locks and run logs/results. Supported readable source needs no XML
 companions. Run `gorak migrate-source` once for legacy projects; keep its recovery
 evidence under `.openroad`. See [formats and migration](files.md).
 

@@ -1,22 +1,21 @@
-"""Local, verified conversion of legacy projections to complete readable source."""
+"""Local, verified conversion to the established compact source contract."""
 
 import json
 from pathlib import Path
 from shutil import copy2
 from uuid import uuid4
 
+from lxml import etree
+
+from .contract_source import decode_component
 from .errors import ProjectError
-from .importer import signature
+from .export import application_metadata, apply_field_default_inheritance
+from .parser import encode_w4gl, parse_application_xml, parse_component_node
 from .portable_source import DIRECTORY, legacy_application, legacy_component
 from .project import read_json
 from .project_lock import project_lock
-from .readable_source import (
-    decode_application,
-    decode_component,
-    encode_application,
-    encode_component,
-)
 from .safe_pull import apply_files, fingerprint
+from .xml_writer import document
 
 
 def migrate_source(root: Path) -> Path | None:
@@ -30,39 +29,52 @@ def migrate_source(root: Path) -> Path | None:
         changes: dict[Path, bytes | None] = {}
         stage.mkdir(parents=True)
         if (root / "field_defaults.json").is_file():
-            copy2(root / "field_defaults.json", stage / "field_defaults.json")
+            copy_defaults(root / "field_defaults.json", stage / "field_defaults.json")
         for app_file in sorted(root.glob("*/app.json")):
             folder = app_file.parent
             if folder.name.startswith("."):
                 continue
             target = stage / folder.name
             target.mkdir(parents=True, exist_ok=True)
-            if read_json(app_file).get("source_format") != 2:
-                node = legacy_application(folder)
-                content = (
-                    json.dumps(encode_application(node), indent=4) + "\n"
-                ).encode()
-                (target / "app.json").write_bytes(content)
-                if signature(decode_application(target)) != signature(node):
-                    raise ProjectError("Application migration verification failed")
-                changes[app_file] = content
-            from .palette import prepare
-
+            node = legacy_application(folder)
+            app = parse_application_xml(etree.fromstring(document([node])))
+            content = (
+                json.dumps(
+                    application_metadata(
+                        app.application, included_applications=app.included_applications
+                    ),
+                    indent=4,
+                )
+                + "\n"
+            ).encode()
+            (target / "app.json").write_bytes(content)
+            changes[app_file] = content
             if (folder / "field_defaults.json").is_file():
-                copy2(folder / "field_defaults.json", target / "field_defaults.json")
+                copy_defaults(
+                    folder / "field_defaults.json", target / "field_defaults.json"
+                )
             sources = [
                 (path, legacy_component(path)) for path in sorted(folder.glob("*.w4gl"))
             ]
-            defaults = prepare(stage, target, [node for _, node in sources])
+
             for path, node in sources:
-                text, markup = encode_component(node, defaults=defaults)
+                component = parse_component_node(node)
+                apply_field_default_inheritance(stage, target.name, [component])
+                text, markup = encode_w4gl(component), component.markup
+                text = text.rstrip() + "\n"
+                markup = markup.rstrip() + "\n" if markup is not None else None
                 destination = target / path.name
                 destination.write_text(text, encoding="utf-8", newline="\n")
                 if markup is not None:
                     destination.with_suffix(".wml").write_text(
                         markup, encoding="utf-8", newline="\n"
                     )
-                if signature(decode_component(destination)) != signature(node):
+                reconstructed = parse_component_node(decode_component(destination))
+                apply_field_default_inheritance(stage, target.name, [reconstructed])
+                if (
+                    encode_w4gl(reconstructed).strip() != text.strip()
+                    or (reconstructed.markup or "").strip() != (markup or "").strip()
+                ):
                     raise ProjectError(
                         f"Component migration verification failed: {path.name}"
                     )
@@ -129,3 +141,17 @@ def migrate_source(root: Path) -> Path | None:
                 if not any(directory.iterdir()):
                     directory.rmdir()
         return operation
+
+
+def copy_defaults(source: Path, destination: Path) -> None:
+    """Remove preview-only transport metadata, retaining effective property values."""
+    values = read_json(source)
+    if "structure" not in values:
+        copy2(source, destination)
+        return
+    from .field_defaults import parse_field_defaults_node
+    from .palette import decode
+
+    destination.write_text(
+        json.dumps(parse_field_defaults_node(decode(values)), indent=4) + "\n"
+    )

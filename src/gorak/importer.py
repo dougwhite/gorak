@@ -136,7 +136,14 @@ def import_component(
             normalized = normalized_markup(
                 current, actual, complete=is_complete(source)
             )
-            if signature(actual) != signature(current) and normalized is None:
+            from .contract_source import equivalent
+
+            matches = (
+                signature(actual) == signature(current)
+                if is_complete(source)
+                else equivalent(actual, current)
+            )
+            if not matches and normalized is None:
                 raise ProjectError(
                     "Post-import verification failed; database may have changed"
                 )

@@ -14,7 +14,7 @@ from lxml import etree
 from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
 from .importer import signature
-from .portable_source import read_document, restore_application, restore_component
+from .portable_source import comparison_application, comparison_component, read_document
 from .project import ProjectError
 
 Action = Literal["unchanged", "converged", "pull", "push", "conflict"]
@@ -134,7 +134,7 @@ def plan_project(
         seen.add(app.casefold())
         apps.add(app)
         try:
-            disk[app.casefold()] = signature(restore_application(folder))
+            disk[app.casefold()] = signature(comparison_application(folder))
         except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
             invalid[app.casefold()] = str(ex)
         for source in sorted(folder.glob("*.w4gl")):
@@ -142,7 +142,7 @@ def plan_project(
             if key in disk or key in invalid:
                 raise ProjectError(f"Case-insensitive component collision: {key}")
             try:
-                disk[key] = signature(restore_component(source))
+                disk[key] = signature(comparison_component(source))
             except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
                 invalid[key] = str(ex)
     if database_hashes is not None:

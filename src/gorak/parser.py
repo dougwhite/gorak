@@ -13,6 +13,7 @@ from .domain import Application, ApplicationExport, Component, IncludedApplicati
 from .field_defaults import parse_field_defaults_node
 
 IGNORED_PROPERTIES = {
+    "queries",
     "script",
     "fielddefaults",
     "attributes",
@@ -63,11 +64,12 @@ def parse_w4gl(text: str, name: str) -> Component:
     metadata = tomllib.loads(front_matter)
     component_type = first_table_name(metadata)
     props = dict(metadata[component_type])
+    props.pop("queries", None)
     props.update(
         {
             key: value
             for key, value in metadata.items()
-            if key != component_type and isinstance(value, dict)
+            if key not in {component_type, "queries"} and isinstance(value, dict)
         }
     )
 
@@ -278,6 +280,12 @@ def append_markup_content(
             script.text = etree.CDATA((child.text or "").strip())
         elif len(child) == 0 and not child.attrib:
             value = (child.text or "").strip()
+            if child.tag == "obj_encoded":
+                # OpenROAD rewraps encoded bitmap transport across XML lines.
+                # WML attributes use the XML attribute whitespace convention.
+                value = (
+                    value.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
+                )
             if should_encode_markup_attribute(child.tag, value, default_properties):
                 element.set(child.tag, value)
         else:
@@ -456,7 +464,12 @@ def extract_props(
 
     for child in node:
         if child.tag not in ignored:
-            props[child.tag] = (child.text or "").strip()
+            value = (child.text or "").strip()
+            # Empty projections of structured designer data carry no readable
+            # information. They are not part of the supported source contract.
+            if not value and child.tag in {"extension", "queries"}:
+                continue
+            props[child.tag] = value
 
     return props
 
@@ -474,6 +487,8 @@ def extract_attributes(node: etree._Element) -> dict[str, str]:
                 nullable=is_nullable(row),
                 array=is_array(row),
             )
+            if row.findtext("defaultvalue") == "2":
+                attributes[name] += " DEFAULT NULL"
 
     return attributes
 

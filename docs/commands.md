@@ -203,10 +203,10 @@ gorak debug audit frame.xml --missing-only
 
 ### `gorak migrate-source`
 
-Locally converts legacy projections/companions into complete format-2 source.
-Pending readable edits are preserved and exact reconstruction is checked before
+Locally converts the expanded preview or legacy companions into compact source.
+Pending readable edits are preserved and readable round-trip stability is checked before
 installation. Before-images live under `.openroad/migrations/`. No database writes
-or baseline changes occur. See [migration details](files.md#migrating-existing-projects).
+or baseline changes occur. See [migration details](files.md#optional-migration).
 
 ### `gorak defaults flatten`
 
@@ -222,7 +222,7 @@ gorak defaults flatten
 ### `gorak encode XML_FILE`
 
 Encodes a single OpenROAD XML source file into the legacy `.w4gl` projection for
-inspection. This diagnostic command does not create a complete format-2 project
+inspection. This diagnostic command does not create a project with inherited defaults
 or accompanying frame WML. Use application/component export for portable source.
 
 Flags:

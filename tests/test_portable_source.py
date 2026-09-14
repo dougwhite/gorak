@@ -36,11 +36,11 @@ def test_frame_reconstruction_from_companion_or_legacy_cache(
         assert not (tmp_path / ".openroad").exists()
     assert signature(restore_component(source)) == signature(original)
     source.with_suffix(".wml").write_text("<frame />")
-    with pytest.raises(ProjectError, match="markup edits"):
+    with pytest.raises(ProjectError, match="topform"):
         restore_component(source)
 
 
-def test_preserves_opaque_properties_and_overlays_script(tmp_path: Path) -> None:
+def test_drops_unsupported_queries_and_overlays_script(tmp_path: Path) -> None:
     folder = tmp_path / "example"
     folder.mkdir()
     xml = tmp_path / "export.xml"
@@ -56,7 +56,7 @@ def test_preserves_opaque_properties_and_overlays_script(tmp_path: Path) -> None
     write_companions(xml, folder)
     xml.unlink()
     restored = restore_component(source)
-    assert restored.findtext("queries/row/opaque") == "keep me"
+    assert restored.find("queries") is None
     assert "RETURN 2" in restored.findtext("script", "")
 
 

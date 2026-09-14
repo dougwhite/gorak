@@ -233,7 +233,6 @@ def export_application_to_paths(
     backup_application_xml(connection, app, paths.xml_path)
 
     from .portable_source import read_document
-    from .readable_source import encode_application, encode_component
 
     tree = read_document(paths.xml_path)
     if tree.tag != "OPENROAD" or any(
@@ -244,16 +243,14 @@ def export_application_to_paths(
     application_node = tree.find("APPLICATION")
     if application_node is None or len(tree.findall("APPLICATION")) != 1:
         raise ProjectError("Expected one exported application")
-    application_source = encode_application(application_node)
-    from .palette import prepare
-
-    defaults = prepare(
-        paths.source_dir.parent, paths.source_dir, tree.findall("COMPONENT")
+    application_source = application_metadata(
+        exported.application, included_applications=exported.included_applications
     )
-    encoded = [
-        (str(n.get("name")), encode_component(n, defaults=defaults))
-        for n in tree.findall("COMPONENT")
-    ]
+    components = exported.components
+    apply_field_default_inheritance(
+        paths.source_dir.parent, paths.source_dir.name, components
+    )
+    encoded = [(c.name, (encode_w4gl(c), c.markup)) for c in components]
     if len({name.casefold() for name, _ in encoded}) != len(encoded):
         raise ProjectError("Duplicate exported component names")
     for name, (text, markup) in encoded:
@@ -278,18 +275,16 @@ def export_component_to_paths(
     backup_component_xml(connection, app, component, paths.xml_path)
 
     from .portable_source import read_document
-    from .readable_source import encode_component
 
     tree = read_document(paths.xml_path)
     if tree.tag != "OPENROAD" or len(tree) != 1 or tree[0].tag != "COMPONENT":
         raise ProjectError("Expected a single exported component")
-    node = tree[0]
     parsed_component = parse_xml(tree)
     normalize_component_xml_path(paths.xml_path, parsed_component.name)
-    from .palette import prepare
-
-    defaults = prepare(paths.w4gl_path.parent.parent, paths.w4gl_path.parent, [node])
-    text, markup = encode_component(node, defaults=defaults)
+    apply_field_default_inheritance(
+        paths.w4gl_path.parent.parent, paths.w4gl_path.parent.name, [parsed_component]
+    )
+    text, markup = encode_w4gl(parsed_component), parsed_component.markup
     w4gl_path = write_component_w4gl(
         paths.w4gl_path.parent, parsed_component.name, text, progress
     )

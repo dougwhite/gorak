@@ -20,7 +20,7 @@ from .parser import (
     parse_component_node,
 )
 from .portable_source import restore_application, restore_component
-from .project import ProjectError
+from .project import ProjectError, read_json
 from .readable_source import is_complete
 from .safe_pull import apply_files, fingerprint
 from .xml_writer import document, new_application, new_component
@@ -117,8 +117,6 @@ def _push_project(
             disk_app = parse_application_xml(
                 etree.fromstring(document([new_application(folder)]))
             )
-            from .project import read_json
-
             complete_app = read_json(folder / "app.json").get("source_format") == 2
             app_source_changed = complete_app and signature(
                 etree.parse(str(app_cache)).find("APPLICATION")
@@ -355,7 +353,10 @@ def _push_project(
                 if (
                     actual_app is None
                     or expected_app is None
-                    or signature(actual_app) != signature(expected_app)
+                    or (
+                        read_json(root / app / "app.json").get("source_format") == 2
+                        and signature(actual_app) != signature(expected_app)
+                    )
                 ):
                     raise ProjectError(f"Application source verification failed: {app}")
                 exported = parse_application_xml(etree.parse(str(after)))
@@ -404,6 +405,13 @@ def _push_project(
                     ):
                         raise ProjectError(
                             f"Portable XML verification failed: {source.stem}"
+                        )
+                if not is_complete(source):
+                    from .contract_source import equivalent
+
+                    if not equivalent(actual_node, expected_node):
+                        raise ProjectError(
+                            f"Readable source verification failed: {source.stem}"
                         )
                 actual = parse_component_node(actual_node)
                 expected = parse_component_node(expected_node)

@@ -30,17 +30,16 @@ use a disposable source/runtime environment.
 
 ## Source ownership and safety
 
-- Track `.w4gl`, `.wml`, `app.json`, `gorak.json` and field-default JSON. Format 2 contains complete
-  source; no XML companion or existing cache is needed for reconstruction.
+- Track `.w4gl`, `.wml`, `app.json`, `gorak.json` and field-default JSON.
+  Supported source reconstructs without XML companions or an existing cache.
 - `.env` contains local connection settings and secrets. Never commit it or print
   credentials. `.openroad/` is ignored: it contains target bindings, XML transport
   and baselines, operation journals, locks, recovery evidence and run artifacts.
-- Keep all named metadata, typed rows and array wrappers intact unless changing
-  them deliberately. Root `field_defaults.json` is authoritative; application
+- Keep component declarations, field names and event scopes consistent. Root `field_defaults.json` is authoritative; application
   defaults contain only differences, and frame `[fielddefaults]` contains only
-  differences from its application. Layout properties are explicit in WML.
-  Unknown source shapes are rejected rather than guessed. Run `gorak migrate-source`
-  once for legacy projects before ordinary sync; retain the migration evidence.
+  differences from its application. WML omits values equal to inherited defaults; imports reconstruct them.
+  Query-designer metadata is unsupported and dropped. Existing compact source
+  needs no format migration. Unknown source shapes are rejected.
 - A conflict means disk and database changed relative to their common baseline.
   Stop, retain both versions, inspect the reported component and ask the owner
   which change to reconcile. There is no ordinary force/overwrite workflow.

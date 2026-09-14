@@ -151,10 +151,10 @@ def legacy_project(root: Path) -> Path:
 def test_migration_preserves_edits_and_backups(tmp_path: Path) -> None:
     source = legacy_project(tmp_path)
     before = source.read_bytes()
-    expected = signature(legacy_component(source))
+    expected = parse_component_node(legacy_component(source))
     operation = migrate_source(tmp_path)
     assert operation is not None
-    assert signature(restore_component(source)) == expected
+    assert parse_component_node(restore_component(source)) == expected
     assert (operation / "before/example" / source.name).read_bytes() == before
     assert not (source.parent / ".gorak-source").exists()
     assert not list(source.parent.rglob("*.xml"))
@@ -194,16 +194,17 @@ def test_migration_detects_concurrent_edit(
     from gorak import source_migration
 
     source = legacy_project(tmp_path)
-    original_encoder = encode_component
+    from gorak.domain import Component
+    from gorak.parser import encode_w4gl
 
-    def encode_and_edit(
-        node: etree._Element, **kwargs: object
-    ) -> tuple[str, str | None]:
+    original_encoder = encode_w4gl
+
+    def encode_and_edit(node: Component) -> str:
         result = original_encoder(node)
         source.write_text(source.read_text() + "\n// external edit\n")
         return result
 
-    monkeypatch.setattr(source_migration, "encode_component", encode_and_edit)
+    monkeypatch.setattr(source_migration, "encode_w4gl", encode_and_edit)
     with pytest.raises(ProjectError, match="Source changed"):
         migrate_source(tmp_path)
     assert source.read_text().endswith("// external edit\n")

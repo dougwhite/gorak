@@ -36,7 +36,7 @@ def test_preflight_rejects_unsupported_before_any_import(
     monkeypatch.setattr(push, "read_applications", lambda _: [])
     calls: list[Any] = []
     monkeypatch.setattr(push, "import_component_xml", lambda *a, **k: calls.append(a))
-    with pytest.raises(ProjectError, match="not supported"):
+    with pytest.raises(ProjectError, match="WML source file"):
         push.push_project(connection(), tmp_path)
     assert not calls
 

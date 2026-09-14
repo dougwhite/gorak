@@ -105,20 +105,12 @@ class TestAppExport:
             ("backup", "project-vnode", "project-db", "sample_app", xml_path),
         ]
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
-            "source_format": 2,
-            "included_applications": {
-                "row": [
-                    {"sequence": "1", "appname": "gorak_included", "version": "-1"},
-                    {
-                        "sequence": "2",
-                        "appname": "finance",
-                        "version": "-1",
-                        "imgfilename": "finance.pkg",
-                    },
-                    {"appname": "core", "version": "-1", "imgfilename": "core.plb"},
-                ],
-                "row_class": "inclapp",
-            },
+            "starting_component": "fm_start",
+            "description": "Example application",
+            "included_applications": [
+                "gorak_included",
+                {"name": "finance", "image": "finance.pkg"},
+            ],
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
         assert (
@@ -217,20 +209,12 @@ class TestAppExport:
             ("backup", "vnode", "db", "sample_app", xml_path),
         ]
         assert json.loads((output_dir / "sample_app" / "app.json").read_text()) == {
-            "source_format": 2,
-            "included_applications": {
-                "row": [
-                    {"sequence": "1", "appname": "gorak_included", "version": "-1"},
-                    {
-                        "sequence": "2",
-                        "appname": "finance",
-                        "version": "-1",
-                        "imgfilename": "finance.pkg",
-                    },
-                    {"appname": "core", "version": "-1", "imgfilename": "core.plb"},
-                ],
-                "row_class": "inclapp",
-            },
+            "starting_component": "fm_start",
+            "description": "Example application",
+            "included_applications": [
+                "gorak_included",
+                {"name": "finance", "image": "finance.pkg"},
+            ],
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
@@ -462,20 +446,12 @@ class TestAppExport:
             ),
         ]
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
-            "source_format": 2,
-            "included_applications": {
-                "row": [
-                    {"sequence": "1", "appname": "gorak_included", "version": "-1"},
-                    {
-                        "sequence": "2",
-                        "appname": "finance",
-                        "version": "-1",
-                        "imgfilename": "finance.pkg",
-                    },
-                    {"appname": "core", "version": "-1", "imgfilename": "core.plb"},
-                ],
-                "row_class": "inclapp",
-            },
+            "starting_component": "fm_start",
+            "description": "Example application",
+            "included_applications": [
+                "gorak_included",
+                {"name": "finance", "image": "finance.pkg"},
+            ],
         }
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (

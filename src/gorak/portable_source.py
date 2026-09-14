@@ -101,6 +101,8 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
 
     if is_complete(path):
         replacement = decode_component(path)
+        for query in replacement.findall("queries"):
+            replacement.remove(query)
         if replacement.get("name") != node.get("name") or replacement.get(
             "{http://www.w3.org/2001/XMLSchema-instance}type"
         ) != node.get("{http://www.w3.org/2001/XMLSchema-instance}type"):
@@ -111,6 +113,19 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
         node.attrib.update(replacement.attrib)
         node.text = replacement.text
         node[:] = list(replacement)
+        return node
+    from .contract_source import decode_component as decode_contract
+    from .contract_source import equivalent
+
+    # A readable no-op must not replace transport-only XML serialization, such
+    # as bitmap line wrapping. Queries are explicitly removed on re-encoding.
+    try:
+        unchanged = equivalent(decode_contract(path), node)
+    except ProjectError:
+        # A legacy baseline can retain source outside the standalone authoring
+        # surface. The overlay below still validates every requested change.
+        unchanged = False
+    if node.find("queries") is None and unchanged:
         return node
     original = parse_component_node(node)
     text = path.read_text()
@@ -206,12 +221,7 @@ def restore_component(path: Path) -> etree._Element:
     """Reconstruct only from versioned readable files, never cached XML."""
     from .xml_writer import new_component
 
-    try:
-        return new_component(path)
-    except ProjectError as ex:
-        raise ProjectError(
-            f"{ex}. For legacy exports, run gorak migrate-source first"
-        ) from ex
+    return new_component(path)
 
 
 def restore_application(folder: Path) -> etree._Element:
@@ -219,3 +229,50 @@ def restore_application(folder: Path) -> etree._Element:
     from .xml_writer import new_application
 
     return new_application(folder)
+
+
+def comparison_component(path: Path) -> etree._Element:
+    """Preserve unrepresented baseline details for three-way comparison only."""
+    from .readable_source import is_complete
+
+    if not is_complete(path):
+        baseline = cached_node(path.parent, "COMPONENT", path.stem)
+        if baseline is not None:
+            return overlay_component(deepcopy(baseline), path)
+    return restore_component(path)
+
+
+def comparison_application(folder: Path) -> etree._Element:
+    from .parser import parse_application_xml
+    from .project import read_json
+    from .xml_writer import document
+
+    desired = restore_application(folder)
+    if read_json(folder / "app.json").get("source_format") == 2:
+        return desired
+    baseline = cached_node(folder, "APPLICATION", folder.name)
+    if baseline is None:
+        return desired
+    old = parse_application_xml(etree.fromstring(document([baseline])))
+    new = parse_application_xml(etree.fromstring(document([desired])))
+    if (
+        old.application == new.application
+        and old.included_applications == new.included_applications
+    ):
+        return baseline
+    managed = {
+        "versshortremarks",
+        "included_apps",
+        "procstart",
+        "databasename",
+        "database_type",
+    }
+    for child in list(baseline):
+        if child.tag in managed:
+            baseline.remove(child)
+    baseline.extend(desired)
+    from .readable_source import APP_FIELDS
+
+    order = [tag for tag, _ in APP_FIELDS.values()]
+    baseline[:] = sorted(baseline, key=lambda child: order.index(str(child.tag)))
+    return baseline
