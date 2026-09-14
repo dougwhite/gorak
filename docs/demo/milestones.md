@@ -247,3 +247,13 @@ and commit messages. Automated tests must not contact developer services. Existi
 XML helpers remain supported until an explicitly validated replacement exists.
 Maintain the original walkthrough and historical acceptance evidence; new design
 choices must not retroactively imply prior verification or erase unresolved bugs.
+
+## Changed-source follow-up (2026-09-14)
+
+- [x] Bounded affected-object IDs certified by managed revision increment counts;
+  late lower-ID and missing-event ranges explicitly fall back. Automated and
+  isolated live checks passed. See [selection evidence](../research/affected-source.md).
+- [ ] Resolve candidates to current supported components and decode procedure
+  descriptions/scripts against full XML before enabling changed-source reuse.
+- [ ] Measure first status after a small database edit, targeting under one second;
+  repeated quiet status is a separate measurement. Direct source writes excluded.
