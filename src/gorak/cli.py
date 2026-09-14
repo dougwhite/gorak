@@ -78,6 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     install_action.add_argument(
+        "--export-revision-sql",
+        metavar="PATH",
+        help="Export experimental revision extension SQL for DBA review; - for stdout",
+    )
+    install_action.add_argument(
         "--check", action="store_true", help="Check tracking inventory via ODBC"
     )
     install_parser.add_argument(
@@ -809,6 +814,24 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
         if parsed.command == "install":
             from .installation import export_installation_sql, installation_sql
 
+            if parsed.export_revision_sql is not None:
+                from .revision_installation import (
+                    export_revision_installation_sql,
+                    revision_installation_sql,
+                )
+
+                if parsed.upgrade:
+                    raise ProjectError(
+                        "--export-revision-sql cannot be combined with --upgrade"
+                    )
+                if parsed.export_revision_sql == "-":
+                    print(revision_installation_sql(), end="")
+                else:
+                    export_revision_installation_sql(Path(parsed.export_revision_sql))
+                    print(
+                        f"Exported experimental revision SQL to {parsed.export_revision_sql}; no database changes made"
+                    )
+                return
             if parsed.check and parsed.upgrade:
                 raise ProjectError("--check cannot be combined with --upgrade")
             if parsed.check:

@@ -67,3 +67,23 @@ def test_upgrade_sql_can_be_exported_without_connection(
     assert "Upgrade v1 to v2 only" in sql
     assert "create table gorak_journal_acks" in sql
     assert "create rule gorak_track_" not in sql
+
+
+def test_revision_export_without_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gorak.revision_installation import revision_installation_sql
+
+    monkeypatch.chdir(tmp_path)
+    cli.main(["install", "--export-revision-sql", "-"])
+    assert capsys.readouterr().out == revision_installation_sql()
+    path = tmp_path / "revisions.sql"
+    cli.main(["install", "--export-revision-sql", str(path)])
+    assert path.read_text() == revision_installation_sql()
+    assert "no database changes" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("option", ["--check", "--upgrade"])
+def test_revision_export_rejects_other_install_modes(option: str) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["install", "--export-revision-sql", "-", option])

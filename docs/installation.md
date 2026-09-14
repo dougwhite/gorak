@@ -221,3 +221,12 @@ missing/additional columns and missing catalog visibility.
 
 This adds a read-only health check; no schema upgrade is needed. A healthy column
 layout remains only one prerequisite for eventual incremental readiness.
+
+## Experimental revision SQL export
+
+`gorak install --export-revision-sql PATH` exports the optional revision extension
+for DBA review (`-` writes stdout). It makes no database changes and refuses to
+replace existing files. This is separate from the normal v2 installation and its
+`--check` result. Client counter-table MVCC/shared configuration is required before
+resuming writes; helpers do not inject it yet. See the
+[extension contract and live evidence](research/revision-extension.md) before use.

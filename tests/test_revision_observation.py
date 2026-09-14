@@ -101,3 +101,112 @@ def test_complete_sample_spans_fetch_chunks() -> None:
         assert len(sample.lanes) == sample.scanned_rows == 300
     finally:
         db.close()
+
+
+def test_installed_sample_binds_generation_and_rejects_parent_replacement() -> None:
+    from uuid import uuid4
+
+    from gorak.revision_observation import observe_installed_revisions
+
+    db, engine = server([])
+    parent, generation = str(uuid4()), str(uuid4())
+    db.execute('alter table "$ingres".counter rename to gorak_revision_lanes')
+    db.execute(
+        'create table "$ingres".gorak_tracking_install (schema_version,installation_id,mode)'
+    )
+    db.execute(
+        'create table "$ingres".gorak_revision_install (schema_version,revision_id,parent_installation_id)'
+    )
+    db.execute(
+        'insert into "$ingres".gorak_tracking_install values(2,?,"capture_only")',
+        (parent,),
+    )
+    db.execute(
+        'insert into "$ingres".gorak_revision_install values(1,?,?)',
+        (generation, parent),
+    )
+
+    def execute(statement: Any) -> Any:
+        sql = str(statement).strip()
+        if sql.startswith("set lockmode"):
+            assert "level=mvcc, readlock=shared" in sql
+            return []
+        match = re.match(r"select first (\d+) ", sql)
+        assert match
+        return db.execute("select " + sql[match.end() :] + " limit " + match[1])
+
+    engine.connect.return_value.__enter__.return_value.execute.side_effect = execute
+    try:
+        result = observe_installed_revisions(SETTINGS, engine_factory=lambda _: engine)
+        assert result.parent_installation_id == parent
+        assert result.revision_id == generation
+        assert result.sample.lanes == ()
+        db.execute('insert into "$ingres".gorak_revision_lanes values("s","a",1)')
+        assert observe_installed_revisions(
+            SETTINGS, engine_factory=lambda _: engine
+        ).sample.lanes == (("s", "a", 1),)
+        db.execute(
+            'update "$ingres".gorak_tracking_install set installation_id=?',
+            (str(uuid4()),),
+        )
+        with pytest.raises(ProjectError, match="binding"):
+            observe_installed_revisions(SETTINGS, engine_factory=lambda _: engine)
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "duplicate_marker",
+        "duplicate_parent",
+        "wrong_mode",
+        "wrong_version",
+        "zero_generation",
+        "missing_marker",
+    ],
+)
+def test_installed_binding_rejects_invalid_markers(fault: str) -> None:
+    from uuid import uuid4
+
+    from gorak.revision_observation import observe_installed_revisions
+
+    parent = str(uuid4())
+    row: list[Any] = [
+        1,
+        str(uuid4()),
+        parent,
+        2,
+        parent,
+        "capture_only",
+        1,
+        1,
+        None,
+        None,
+        None,
+    ]
+    changes = {
+        "duplicate_marker": (6, 2),
+        "duplicate_parent": (7, 2),
+        "wrong_mode": (5, "other"),
+        "wrong_version": (0, 2),
+        "zero_generation": (1, "00000000-0000-0000-0000-000000000000"),
+    }
+    if fault in changes:
+        index, value = changes[fault]
+        row[index] = value
+    cursor = MagicMock()
+    cursor.fetchmany.side_effect = (
+        [[], []] if fault == "missing_marker" else [[row], []]
+    )
+    engine = MagicMock()
+    engine.connect.return_value.__enter__.return_value.execute.side_effect = [
+        [],
+        [],
+        [],
+        cursor,
+    ]
+    with pytest.raises(ProjectError, match="binding"):
+        observe_installed_revisions(SETTINGS, engine_factory=lambda _: engine)
+    cursor.close.assert_called_once()
+    engine.dispose.assert_called_once()
