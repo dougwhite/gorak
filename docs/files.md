@@ -5,8 +5,10 @@
 ```text
 project/
 ├── gorak.json
+├── field_defaults.json       # authoritative repository defaults
 ├── app_name/
 │   ├── app.json
+│   ├── field_defaults.json   # differences from repository defaults
 │   ├── component.w4gl
 │   └── frame_component.wml
 └── .openroad/                 # ignored operational state
@@ -46,12 +48,27 @@ attributes; `_text` preserves meaningful text on structured metadata. These are
 parts of the source model, not a second copy of a component or its script.
 Unknown properties/types and incompatible row types are refused.
 
-Field-default palettes are represented once in each frame's
-`[framesource.fielddefaults]` metadata. Format 2 does not inherit legacy
-`field_defaults.json` files: layout values and palette metadata are explicit.
-This preserves absent properties, duplicate style rows and container metadata
-without guessing which default style was intended. Migration folds existing
-repository/application/frame defaults into the complete frame metadata.
+Field defaults inherit through three layers:
+
+1. Repository `field_defaults.json` is authoritative.
+2. Application `field_defaults.json` contains only differences from the repository.
+3. A frame's `[fielddefaults]` table contains only differences from its application.
+
+Frames using this chain declare `defaults_inherited = true`. When the frame has
+no overrides, its W4GL contains no palette table. Changes to an unoverridden root
+property propagate to all inheriting applications/frames. An app override wins
+over the root; a frame override wins over its app.
+
+The established `common_model_container` and `field_styles` representation is
+retained. `structure` records palette group/container metadata that the old
+projection omitted, while style `attributes` retain native row/column metadata.
+These metadata follow the same inheritance chain and are not repeated in frames.
+Migration adds missing structural metadata and restores native whitespace omitted
+by the old projection without replacing meaningful user property values.
+
+Property deletion is an explicit `{ "_delete": true }` override. Duplicate styles
+use `occurrence` when needed; changes to style membership/order use `_order` and
+sparse `_changes`, retaining only changed properties. Unknown shapes are refused.
 
 Optional `script_prefix` and `script_suffix` preserve native leading/trailing
 whitespace only. Edit the script below `===`; it appears in exactly one place.
@@ -103,7 +120,7 @@ git diff
 This local command reads the old companions or cached export, applies pending
 readable edits and legacy field-default inheritance, then verifies exact
 reconstruction from the proposed format-2 files before installing them. It removes
-legacy `.gorak-source` files and consumed field-default JSON, preserving before-images
+legacy `.gorak-source` files, preserving inherited field-default JSON and before-images
 and the migration plan under `.openroad/migrations/`. It never changes the database,
 its synchronization baseline, target binding, revision checkpoint or generation.
 Locks, pending operations and quarantine must be resolved before migration.
@@ -112,6 +129,8 @@ Do not delete old XML before migrating: incomplete legacy projections cannot
 recover information they never contained. Unknown legacy source shapes cause an
 explicit refusal before source replacement. Keep the recovery evidence and extend
 schema support for that shape. New exports never create `.gorak-source`.
+
+Migration also converts the earlier flat format-2 preview to inherited defaults.
 
 The earlier compact procedure/class authoring syntax remains supported for new
 components. Existing legacy exports should be migrated before ordinary sync;

@@ -50,7 +50,9 @@ def is_complete(path: Path) -> bool:
     return metadata(path).get("source_format") == 2
 
 
-def encode_component(node: etree._Element) -> tuple[str, str | None]:
+def encode_component(
+    node: etree._Element, *, defaults: dict[str, Any] | None = None
+) -> tuple[str, str | None]:
     kind = node.get(XSI, "")
     if kind not in COMPONENT_TYPES:
         raise ProjectError(f"Unsupported component type: {kind}")
@@ -58,6 +60,13 @@ def encode_component(node: etree._Element) -> tuple[str, str | None]:
         raise ProjectError("Unexpected component text")
     props = encode_properties(node, kind, {"script", *FRAME_MARKUP_CHILDREN})
     doc: dict[str, Any] = {"source_format": 2}
+    overrides = None
+    if defaults is not None and node.find("fielddefaults") is not None:
+        from .palette import difference, encode
+
+        overrides = difference(defaults, encode(node.find("fielddefaults")))
+        props.pop("fielddefaults", None)
+        doc["defaults_inherited"] = True
     script = node.find("script")
     body = None
     if script is not None:
@@ -73,6 +82,8 @@ def encode_component(node: etree._Element) -> tuple[str, str | None]:
             doc["script_suffix"] = suffix
     # The component table must precede other tables for legacy model readers.
     doc[kind] = props
+    if overrides:
+        doc["fielddefaults"] = overrides
     attributes = {k: v for k, v in node.attrib.items() if k not in {XSI, "name"}}
     if attributes:
         doc["component_attributes"] = attributes
@@ -83,7 +94,9 @@ def encode_component(node: etree._Element) -> tuple[str, str | None]:
     from .importer import signature
 
     if signature(
-        decode_component_text(str(node.get("name", "")), text, markup)
+        decode_component_text(
+            str(node.get("name", "")), text, markup, defaults=defaults
+        )
     ) != signature(node):
         raise ProjectError(
             "Component cannot be represented losslessly as readable source"
@@ -99,10 +112,16 @@ def decode_component(path: Path) -> etree._Element:
         if "framesource" in values
         else None
     )
-    return decode_component_text(path.stem, text, markup)
+    from .palette import parent_defaults
+
+    return decode_component_text(
+        path.stem, text, markup, defaults=parent_defaults(path.parent)
+    )
 
 
-def decode_component_text(name: str, text: str, markup: str | None) -> etree._Element:
+def decode_component_text(
+    name: str, text: str, markup: str | None, *, defaults: dict[str, Any] | None = None
+) -> etree._Element:
     from .importer import validate_name
 
     validate_name(name)
@@ -118,6 +137,8 @@ def decode_component_text(name: str, text: str, markup: str | None) -> etree._El
         "script_prefix",
         "script_suffix",
         "component_attributes",
+        "defaults_inherited",
+        "fielddefaults",
     }:
         raise ProjectError("Unsupported readable source metadata")
     props = values[kind]
@@ -128,6 +149,21 @@ def decode_component_text(name: str, text: str, markup: str | None) -> etree._El
             "Scripts and layout must be authored in their readable sections"
         )
     node = decode_value("COMPONENT", props, kind)
+    if "defaults_inherited" in values:
+        from .palette import decode, merge
+
+        if (
+            values["defaults_inherited"] is not True
+            or kind != "framesource"
+            or "fielddefaults" in props
+        ):
+            raise ProjectError("Invalid inherited defaults declaration")
+        overrides = values.get("fielddefaults", {})
+        if not isinstance(overrides, dict):
+            raise ProjectError("Frame defaults must be a table")
+        node.append(decode(merge(defaults or {}, overrides)))
+    elif "fielddefaults" in values:
+        raise ProjectError("Field-default overrides require defaults_inherited=true")
     node.set("name", name)
     node.set(XSI, kind)
     attributes = values.get("component_attributes", {})

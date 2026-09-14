@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from shutil import copy2
 from uuid import uuid4
 
 from .errors import ProjectError
@@ -14,7 +15,6 @@ from .readable_source import (
     decode_component,
     encode_application,
     encode_component,
-    is_complete,
 )
 from .safe_pull import apply_files, fingerprint
 
@@ -28,6 +28,9 @@ def migrate_source(root: Path) -> Path | None:
         operation = root / ".openroad/migrations" / uuid4().hex
         stage = operation / "stage"
         changes: dict[Path, bytes | None] = {}
+        stage.mkdir(parents=True)
+        if (root / "field_defaults.json").is_file():
+            copy2(root / "field_defaults.json", stage / "field_defaults.json")
         for app_file in sorted(root.glob("*/app.json")):
             folder = app_file.parent
             if folder.name.startswith("."):
@@ -43,11 +46,16 @@ def migrate_source(root: Path) -> Path | None:
                 if signature(decode_application(target)) != signature(node):
                     raise ProjectError("Application migration verification failed")
                 changes[app_file] = content
-            for path in sorted(folder.glob("*.w4gl")):
-                if is_complete(path):
-                    continue
-                node = legacy_component(path)
-                text, markup = encode_component(node)
+            from .palette import prepare
+
+            if (folder / "field_defaults.json").is_file():
+                copy2(folder / "field_defaults.json", target / "field_defaults.json")
+            sources = [
+                (path, legacy_component(path)) for path in sorted(folder.glob("*.w4gl"))
+            ]
+            defaults = prepare(stage, target, [node for _, node in sources])
+            for path, node in sources:
+                text, markup = encode_component(node, defaults=defaults)
                 destination = target / path.name
                 destination.write_text(text, encoding="utf-8", newline="\n")
                 if markup is not None:
@@ -61,6 +69,10 @@ def migrate_source(root: Path) -> Path | None:
                 changes[path] = text.encode()
                 if markup is not None:
                     changes[path.with_suffix(".wml")] = markup.encode()
+            if (target / "field_defaults.json").is_file():
+                changes[folder / "field_defaults.json"] = (
+                    target / "field_defaults.json"
+                ).read_bytes()
             companion = folder / DIRECTORY
             for path in companion.rglob("*"):
                 if path.is_file():
@@ -84,14 +96,17 @@ def migrate_source(root: Path) -> Path | None:
                             "Orphaned companion: restore its readable component before migration"
                         )
                     changes[path] = None
-            defaults = folder / "field_defaults.json"
-            if defaults.is_file():
-                changes[defaults] = None
+        if (stage / "field_defaults.json").is_file():
+            changes[root / "field_defaults.json"] = (
+                stage / "field_defaults.json"
+            ).read_bytes()
+        changes = {
+            p: data
+            for p, data in changes.items()
+            if (p.read_bytes() if p.exists() else None) != data
+        }
         if not changes:
             return None
-        defaults = root / "field_defaults.json"
-        if defaults.is_file():
-            changes[defaults] = None
         if fingerprint(root) != snapshot:
             raise ProjectError("Source changed during migration; no files installed")
         marker = root / ".openroad/pull-pending.json"

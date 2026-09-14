@@ -12,8 +12,9 @@ normal frames and constants have complete readable representations. Scripts,
 metadata, class attributes/methods, tagged values and structured metadata are
 editable. Component deletion pushes remain unsupported.
 
-Frame `.w4gl` contains the frame script and metadata, including complete palette
-metadata. `.wml` contains layout, explicit properties, array wrappers and field
+Frame `.w4gl` contains the frame script, metadata and only its field-default
+overrides. Root defaults are authoritative, application JSON overrides the root,
+and frame `[fielddefaults]` overrides the application. `.wml` contains layout, explicit properties, array wrappers and field
 events. Controls can be added, removed or reordered. Keep field names unique and
 scripts consistent with their scopes. New controls must specify their intended
 properties; no hidden XML or inferred default style fills them in.

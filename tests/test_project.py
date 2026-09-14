@@ -50,7 +50,9 @@ def test_create_project_creates_default_project_skeleton(
     assert (project.root / ".env.example").read_text() == (
         FIXTURE_ROOT / ".env.example"
     ).read_text()
-    assert not (project.root / "field_defaults.json").exists()
+    assert (project.root / "field_defaults.json").read_text() == (
+        FIXTURE_ROOT / "field_defaults.json"
+    ).read_text()
     assert (project.root / ".gitignore").read_text() == ".env\n.openroad/\n"
     assert "gorak sync --push && gorak test" in (project.root / "AGENTS.md").read_text()
     assert calls == [(["git", "init"], project.root)]

@@ -168,8 +168,10 @@ def diff_defaults(parent: JsonObject, child: JsonObject) -> JsonObject:
             nested_diff = diff_defaults(parent_value, child_value)
             if nested_diff:
                 diff[key] = nested_diff
-        elif key == "field_styles" and isinstance(parent_value, list) and isinstance(
-            child_value, list
+        elif (
+            key == "field_styles"
+            and isinstance(parent_value, list)
+            and isinstance(child_value, list)
         ):
             field_style_diff = diff_field_styles(parent_value, child_value)
             if field_style_diff:
@@ -282,10 +284,21 @@ def flatten_app_defaults(root: Path) -> FlattenResult:
 
     repo_path = root / "field_defaults.json"
     repo_defaults = read_defaults(repo_path)
-    write_defaults(repo_path, merge_defaults(repo_defaults, shared_defaults))
+    if "structure" in repo_defaults:
+        from .palette import difference, merge
 
-    for path, defaults in zip(app_paths, app_defaults, strict=True):
-        write_defaults(path, remove_defaults(defaults, shared_defaults))
+        promoted = merge(repo_defaults, shared_defaults)
+        layers = [
+            difference(promoted, merge(repo_defaults, defaults))
+            for defaults in app_defaults
+        ]
+        write_defaults(repo_path, promoted)
+        for path, layer in zip(app_paths, layers, strict=True):
+            write_defaults(path, layer)
+    else:
+        write_defaults(repo_path, merge_defaults(repo_defaults, shared_defaults))
+        for path, defaults in zip(app_paths, app_defaults, strict=True):
+            write_defaults(path, remove_defaults(defaults, shared_defaults))
 
     return FlattenResult(
         promoted_values=count_leaf_values(shared_defaults),

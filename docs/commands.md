@@ -210,7 +210,7 @@ or baseline changes occur. See [migration details](files.md#migrating-existing-p
 
 ### `gorak defaults flatten`
 
-Legacy format only. Identifies common field defaults and promotes them to app and project
+Identifies common field defaults and promotes them to app and project
 `field_defaults.json` files.
 
 Flags: none.

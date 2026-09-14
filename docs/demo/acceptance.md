@@ -233,3 +233,18 @@ This supersedes the format-1 companion requirement in the historical M1 rehearsa
 Before reusing a legacy demo checkout, run `gorak migrate-source`, inspect its
 Git diff and retain `.openroad/migrations` recovery evidence. Do not delete XML
 before migration or remove target bindings/baselines as a reset shortcut.
+
+
+### Inherited defaults correction
+
+- Restored authoritative repository defaults, sparse application JSON overrides,
+  and sparse frame `[fielddefaults]` overrides. Native palette structure follows
+  the same hierarchy; reconstruction still needs no preserved XML.
+- Verified 19 existing corpus frame exports against the original repository/app
+  defaults with exact reconstructed source comparisons, without modifying them.
+- An independent Git clone with no XML/cache created two isolated applications,
+  passed tests, then accepted root and app default edits through verified imports.
+  Tests passed again and the subsequent push was unchanged.
+- Updated the demo preview: its frame W4GL is 24 lines, the application defaults
+  are `{}`, and the root retains the shared palette plus necessary native metadata.
+  Exact source comparison was unchanged and the two runtime tests passed.

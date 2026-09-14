@@ -196,7 +196,9 @@ def test_migration_detects_concurrent_edit(
     source = legacy_project(tmp_path)
     original_encoder = encode_component
 
-    def encode_and_edit(node: etree._Element) -> tuple[str, str | None]:
+    def encode_and_edit(
+        node: etree._Element, **kwargs: object
+    ) -> tuple[str, str | None]:
         result = original_encoder(node)
         source.write_text(source.read_text() + "\n// external edit\n")
         return result
@@ -232,3 +234,19 @@ def test_migration_keeps_unrecognized_local_files(tmp_path: Path) -> None:
         migrate_source(tmp_path)
     assert note.read_text() == "personal notes"
     assert source.read_bytes() == before
+
+
+def test_legacy_frame_can_migrate_with_upgraded_root(tmp_path: Path) -> None:
+    source = legacy_project(tmp_path)
+    original = source.read_bytes()
+    original_markup = source.with_suffix(".wml").read_bytes()
+    cache = tmp_path / ".openroad/example"
+    cache.mkdir(parents=True)
+    companion = source.parent / ".gorak-source/components" / f"{source.stem}.xml"
+    (cache / f"{source.stem}.xml").write_bytes(companion.read_bytes())
+    migrate_source(tmp_path)
+    expected = signature(restore_component(source))
+    source.write_bytes(original)
+    source.with_suffix(".wml").write_bytes(original_markup)
+    migrate_source(tmp_path)
+    assert signature(restore_component(source)) == expected

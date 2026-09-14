@@ -119,13 +119,26 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
     if original.type == "framesource":
         from .defaults_writer import overlay_defaults
 
-        desired = effective_defaults(
-            read_defaults(path.parent.parent / "field_defaults.json"),
-            read_defaults(path.parent / "field_defaults.json"),
-            edited.props.get("fielddefaults", {}),
-        )
-        if desired != defaults:
-            overlay_defaults(node, desired)
+        repo = read_defaults(path.parent.parent / "field_defaults.json")
+        app = read_defaults(path.parent / "field_defaults.json")
+        overrides = edited.props.get("fielddefaults", {})
+        if "structure" in repo or "structure" in app:
+            from .palette import decode, merge, upgrade_legacy
+            from .xml_shapes import order_children
+
+            inherited = merge(repo, app)
+            normalized = upgrade_legacy(overrides, inherited, metadata=False)
+            replacement = decode(merge(inherited, normalized))
+            current_defaults = node.find("fielddefaults")
+            if current_defaults is None:
+                node.append(replacement)
+                order_children(node, "framesource")
+            else:
+                node.replace(current_defaults, replacement)
+        else:
+            desired = effective_defaults(repo, app, overrides)
+            if desired != defaults:
+                overlay_defaults(node, desired)
     from .component_edits import overlay_metadata
     from .wml_writer import overlay_markup
 

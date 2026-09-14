@@ -245,8 +245,14 @@ def export_application_to_paths(
     if application_node is None or len(tree.findall("APPLICATION")) != 1:
         raise ProjectError("Expected one exported application")
     application_source = encode_application(application_node)
+    from .palette import prepare
+
+    defaults = prepare(
+        paths.source_dir.parent, paths.source_dir, tree.findall("COMPONENT")
+    )
     encoded = [
-        (str(n.get("name")), encode_component(n)) for n in tree.findall("COMPONENT")
+        (str(n.get("name")), encode_component(n, defaults=defaults))
+        for n in tree.findall("COMPONENT")
     ]
     if len({name.casefold() for name, _ in encoded}) != len(encoded):
         raise ProjectError("Duplicate exported component names")
@@ -280,7 +286,10 @@ def export_component_to_paths(
     node = tree[0]
     parsed_component = parse_xml(tree)
     normalize_component_xml_path(paths.xml_path, parsed_component.name)
-    text, markup = encode_component(node)
+    from .palette import prepare
+
+    defaults = prepare(paths.w4gl_path.parent.parent, paths.w4gl_path.parent, [node])
+    text, markup = encode_component(node, defaults=defaults)
     w4gl_path = write_component_w4gl(
         paths.w4gl_path.parent, parsed_component.name, text, progress
     )
