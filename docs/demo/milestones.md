@@ -51,8 +51,8 @@ and [sync behavior and timing](../synchronization.md).
 | M1 | Portable source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Cache-free clone restores equivalent source and runnable sample; broader types remain open |
 | M2a | Complete sync correctness and recovery | Substantial partial implementation | Both directions handle edits/additions/deletions; conflicts, branch switches, interruptions preserve work |
 | M2b | Install database change tracking | DBA SQL export implemented; capture-only, consumer/broad coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
-| M2c | Incremental ODBC status and fingerprinting | Opt-in quiet revision reuse implemented; large-corpus scaling pending | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
-| M2d | Direct source decoding | Research | ODBC → Gorak source matches reference exports across supported types without w4gldev |
+| M2c | Incremental ODBC status and fingerprinting | Opt-in quiet and simple changed-procedure reuse accepted; large-corpus scaling pending | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
+| M2d | Direct source decoding | Initial simple-procedure slice verified; broader forms pending | ODBC → Gorak source matches reference exports across supported types without w4gldev |
 | M2e | Direct source encoding and saving | Not started | Disk → DB → Workbench/run round trip preserves source and repository invariants |
 | M3 | ODBC onboarding and source dependency export | Partial existing configuration | Diagnosed install/setup and multiple-app export with include closure |
 | M4 | Locked Git dependencies | Not started | Clean checkout restores exact dependency revisions without discarding local edits |
@@ -173,7 +173,8 @@ and removed afterward. See [DBA installation](../installation.md).
 
 - [ ] Specify chunk assembly, string lengths/encodings, nulls, IDs/references, class
   layouts, version markers, and corruption handling for `ii_srcobj_encoded`.
-- [ ] Start with procedures; then classes/globals, remaining declarations and app metadata.
+- [x] Decode the initial simple uncompiled integer-procedure form, matching synthetic and Workbench description/script edits against full XML. See [changed-procedure acceptance](../research/changed-procedure-acceptance.md).
+- [ ] Broaden procedure layouts; then classes/globals, remaining declarations and app metadata.
 - [ ] Resolve external strings, Unicode, images, nested fields, scripts and frame graphs.
 - [ ] Separate source meaning from compiled IL and destination-local identifiers.
 - [ ] Validate against XML and Workbench using synthetic fixtures plus a private larger
@@ -253,7 +254,8 @@ choices must not retroactively imply prior verification or erase unresolved bugs
 - [x] Bounded affected-object IDs certified by managed revision increment counts;
   late lower-ID and missing-event ranges explicitly fall back. Automated and
   isolated live checks passed. See [selection evidence](../research/affected-source.md).
-- [ ] Resolve candidates to current supported components and decode procedure
-  descriptions/scripts against full XML before enabling changed-source reuse.
-- [ ] Measure first status after a small database edit, targeting under one second;
-  repeated quiet status is a separate measurement. Direct source writes excluded.
+- [x] Resolve candidates to current supported components and decode procedure
+  descriptions/scripts against full XML; explicit opt-in preserves unsupported fallbacks.
+- [x] First status after isolated Workbench description/script edits: 0.397/0.412 seconds
+  without XML exports; separate full oracles agreed. Larger-corpus latency remains
+  open. Direct source writes excluded. See [acceptance](../research/changed-procedure-acceptance.md).

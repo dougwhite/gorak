@@ -24,6 +24,7 @@ class AffectedSource:
     object_ids: tuple[int, ...] = ()
     maximum: int = 0
     fallback: str | None = None
+    history_queries: int = 0
 
 
 def revision_delta(
@@ -85,7 +86,9 @@ def select_affected(
             finally:
                 result.close()
         if len(rows) != count:
-            return AffectedSource(fallback="event_count_disagrees_with_revisions")
+            return AffectedSource(
+                fallback="event_count_disagrees_with_revisions", history_queries=1
+            )
         events = []
         seen: set[int] = set()
         objects: set[int] = set()
@@ -106,7 +109,9 @@ def select_affected(
                 raise ValueError
             seen.add(identity)
             if table.startswith("ii_stored_"):
-                return AffectedSource(fallback="shared_storage_ownership_unsupported")
+                return AffectedSource(
+                    fallback="shared_storage_ownership_unsupported", history_queries=1
+                )
             sides: list[dict[str, int | str | None]] = []
             for offset in (3, 3 + len(FIELDS)):
                 side: dict[str, int | str | None] = {}
@@ -126,17 +131,23 @@ def select_affected(
                         raise ValueError
                     objects.add(identity)
                 sides.append(side)
-            if not any(side["object_id"] is not None for side in sides):
-                return AffectedSource(fallback="missing_object_identity")
+            required_sides = (
+                (0,) if action == "d" else (1,) if action == "i" else (0, 1)
+            )
+            if any(sides[index]["object_id"] is None for index in required_sides):
+                return AffectedSource(
+                    fallback="missing_object_identity", history_queries=1
+                )
             events.append(JournalEvent(row[0], table, action, *sides))
         if len(objects) > MAX_OBJECTS:
-            return AffectedSource(fallback="object_budget_exceeded")
+            return AffectedSource(fallback="object_budget_exceeded", history_queries=1)
         return AffectedSource(
             tuple(sorted(events, key=lambda event: event.event_id)),
             tuple(sorted(objects)),
             max(seen),
+            history_queries=1,
         )
     except (ValueError, TypeError, IndexError):
-        return AffectedSource(fallback="invalid_candidate_rows")
+        return AffectedSource(fallback="invalid_candidate_rows", history_queries=1)
     finally:
         engine.dispose()

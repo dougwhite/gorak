@@ -316,3 +316,111 @@ def test_managed_direct_pull_preserves_another_operations_lock(
         assert lock.read_bytes() == owned
         assert not (root / ".openroad/pull.lock").exists()
     assert source.read_bytes() == original
+
+
+@pytest.fixture
+def decoded_project(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> tuple[Any, ...]:
+    from gorak import affected_source, procedure_snapshot
+    from gorak.affected_source import AffectedSource
+
+    root, connection, health, sample, current, exports = project
+    connection = replace(connection, source_decoding=True)
+    snapshot = {"maximum": 100, "objects": {}}
+    monkeypatch.setattr(procedure_snapshot, "bootstrap_procedures", lambda *a: snapshot)
+    monkeypatch.setattr(
+        affected_source, "select_affected", lambda *a: AffectedSource(maximum=101)
+    )
+
+    def refresh(*args: Any) -> tuple[dict[str, str], dict[str, Any]]:
+        from lxml import etree
+
+        inventory = sync_plan.semantic_hashes(
+            sync_plan.xml_inventory(etree.fromstring(current[0]), "example")
+        )
+        return inventory, dict(snapshot, maximum=101)
+
+    monkeypatch.setattr(procedure_snapshot, "refresh_procedures", refresh)
+    checkpoint.revision_plan(connection, root)
+    exports.clear()
+    current[0] = xml("RETURN 3;")
+    sample[0] = replace(sample[0], sample=RevisionSample((("server", "lane", 2),), 1))
+    return root, connection, health, sample, current, exports
+
+
+def test_dirty_decoded_status_and_conflict_match_full_oracle(
+    decoded_project: tuple[Any, ...],
+) -> None:
+    root, connection, _, _, _, exports = decoded_project
+    source = root / "example/proc.w4gl"
+    source.write_text(source.read_text().replace("RETURN 1", "RETURN 2"))
+    changes, report = checkpoint.revision_plan(connection, root)
+    assert report["mode"] == "odbc_procedure_refresh" and exports == []
+    assert next(c for c in changes if c.key == "example/proc").action == "conflict"
+    verified, report = checkpoint.revision_plan(connection, root, verify_reference=True)
+    assert verified == changes and report["reference_matches"] is True
+    assert exports == ["example"]
+
+
+def test_decoded_refresh_does_not_extend_full_oracle_expiry(
+    decoded_project: tuple[Any, ...],
+) -> None:
+    import json
+
+    root, connection, _, _, _, _ = decoded_project
+    path = root / ".openroad/revision-checkpoint.json"
+    created = json.loads(path.read_text())["payload"]["created"]
+    checkpoint.revision_plan(connection, root)
+    assert json.loads(path.read_text())["payload"]["created"] == created
+
+
+def test_decoded_fallback_keeps_full_comparison(
+    decoded_project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import procedure_snapshot
+    from gorak.encoded_source import UnsupportedSource
+
+    root, connection, _, _, _, exports = decoded_project
+
+    def unsupported(*args: Any) -> Any:
+        raise UnsupportedSource("unknown_graph")
+
+    monkeypatch.setattr(procedure_snapshot, "refresh_procedures", unsupported)
+    changes, report = checkpoint.revision_plan(connection, root)
+    assert report["mode"] == "full_refresh" and report["reason"] == "unknown_graph"
+    assert exports == ["example"]
+    assert next(c for c in changes if c.key == "example/proc").action == "pull"
+
+
+def test_writer_during_decoding_blocks_publication(
+    decoded_project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import procedure_snapshot
+
+    root, connection, _, sample, _, _ = decoded_project
+
+    def racing(*args: Any) -> tuple[Any, Any]:
+        sample[0] = replace(
+            sample[0], sample=RevisionSample((("server", "lane", 3),), 1)
+        )
+        return args[3], args[1]
+
+    monkeypatch.setattr(procedure_snapshot, "refresh_procedures", racing)
+    with pytest.raises(ProjectError, match="changed during"):
+        checkpoint.revision_plan(connection, root)
+    assert not (root / ".openroad/revision-checkpoint.json").exists()
+
+
+def test_decoded_oracle_mismatch_quarantines(
+    decoded_project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import procedure_snapshot
+
+    root, connection, _, _, _, _ = decoded_project
+    monkeypatch.setattr(
+        procedure_snapshot, "refresh_procedures", lambda *a: (a[3], a[1])
+    )
+    with pytest.raises(ProjectError, match="disagrees"):
+        checkpoint.revision_plan(connection, root, verify_reference=True)
+    assert (root / ".openroad/revision-quarantine.json").exists()

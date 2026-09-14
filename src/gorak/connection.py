@@ -34,6 +34,7 @@ class OpenRoadConnection:
     odbc_settings: OdbcSettings | None = None
     revision_generation: str | None = None
     writer_encoding: str = "cp1252"
+    source_decoding: bool = False
 
 
 def resolve_openroad_connection(
@@ -55,6 +56,11 @@ def resolve_openroad_connection(
             raise ProjectError("Invalid GORAK_REVISION_GENERATION") from None
         validate_writer(
             env_value(args, "database", env, "GORAK_DATABASE") or "", encoding
+        )
+    decoding = env.get("GORAK_SOURCE_DECODING", "")
+    if decoding not in {"", "procedures_v1"} or (decoding and not generation):
+        raise ProjectError(
+            "GORAK_SOURCE_DECODING requires procedures_v1 and managed revisions"
         )
     backend = resolve_backend(args, env)
     sql_backend = resolve_sql_backend(args, env, backend)
@@ -101,6 +107,7 @@ def resolve_openroad_connection(
         sql_backend=sql_backend,
         odbc_settings=odbc_settings,
         revision_generation=generation,
+        source_decoding=decoding == "procedures_v1",
         writer_encoding=encoding,
     )
 

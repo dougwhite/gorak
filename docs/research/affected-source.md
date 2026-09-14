@@ -1,7 +1,8 @@
 # Bounded affected-source selection
 
-The initial reader is implemented in `affected_source.py`. It is a building block,
-not yet permission for normal status to reuse unaffected source hashes.
+The reader is implemented in `affected_source.py`. It is a building block; the
+opt-in procedure observation layer additionally requires guarded metadata and
+full-XML enrollment before reusing unaffected hashes.
 
 A checkpoint may remember the maximum committed event ID alongside a complete
 managed revision vector. A later reader computes the sum of nonnegative per-lane
@@ -36,6 +37,7 @@ contract. Existing conflict checks and normal full-refresh behavior are unchange
   rows were removed. No source tables were written directly.
 - Full suite: 774 tests passed; Ruff and strict mypy passed.
 
-Next: resolve only bounded object identities, decode supported procedure source,
-verify complete semantic inventories against XML, then integrate dirty checkpoint
-refresh. No changed-source latency claim is made by this reader alone.
+The [procedure observation follow-up](changed-procedure-acceptance.md) resolves
+bounded current identities, checks complete metadata and decodes supported source
+against the XML oracle. That layer owns dirty checkpoint reuse and its separate
+latency evidence. The candidate reader alone cannot authorize it.

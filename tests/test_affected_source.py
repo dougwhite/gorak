@@ -127,3 +127,12 @@ def test_unsupported_candidates_discard_entire_selection(fault: str) -> None:
     assert result.events == () and result.object_ids == ()
     if fault == "budget":
         assert engine.queries == []
+
+
+def test_update_with_missing_old_identity_cannot_hide_previous_owner() -> None:
+    row = event(101)
+    row[3] = None
+    engine = Engine([row])
+    result = select_affected(SETTINGS, OLD, current(11), 100, lambda _: engine)
+    assert result.fallback == "missing_object_identity"
+    assert result.history_queries == 1

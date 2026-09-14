@@ -1,7 +1,8 @@
 """Whole-snapshot revision checkpoints; independent of journal receipts/retention.
 
-Only equal, complete revision vectors can reuse a snapshot. Any dirty vector uses
-full XML again. DBA generation rotation after restore/restart is mandatory.
+Equal complete vectors reuse a snapshot. Opt-in bounded procedure decoding can
+refresh dirty snapshots; unsupported or uncertified changes use full XML.
+DBA generation rotation after restore/restart is mandatory.
 """
 
 import hashlib
@@ -12,7 +13,7 @@ import time
 from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from .connection import OpenRoadConnection, require_odbc_settings
@@ -47,6 +48,13 @@ def canonical(value: object) -> bytes:
 def read_checkpoint(
     path: Path, binding: dict[str, object], now: float
 ) -> dict[str, str] | None:
+    payload = read_checkpoint_payload(path, binding, now)
+    return None if payload is None else payload["inventory"]
+
+
+def read_checkpoint_payload(
+    path: Path, binding: dict[str, object], now: float, *, changed: bool = False
+) -> dict[str, Any] | None:
     try:
         if path.is_symlink():
             return None
@@ -58,7 +66,12 @@ def read_checkpoint(
         payload = envelope["payload"]
         if hashlib.sha256(canonical(payload)).hexdigest() != envelope["sha256"]:
             return None
-        if payload["version"] != 1 or payload["binding"] != binding:
+        expected = dict(binding)
+        actual = dict(payload["binding"])
+        if changed:
+            expected.pop("sample", None)
+            actual.pop("sample", None)
+        if payload["version"] != 1 or actual != expected:
             return None
         created = payload["created"]
         if (
@@ -75,15 +88,21 @@ def read_checkpoint(
             for key, value in inventory.items()
         ):
             return None
-        return inventory
+        return cast(dict[str, Any], payload)
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
 
 
 def publish_checkpoint(
-    path: Path, binding: dict[str, object], inventory: dict[str, str], now: float
+    path: Path,
+    binding: dict[str, object],
+    inventory: dict[str, str],
+    now: float,
+    source_snapshot: dict[str, Any] | None = None,
 ) -> None:
     payload = {"version": 1, "binding": binding, "created": now, "inventory": inventory}
+    if source_snapshot is not None:
+        payload["source_snapshot"] = source_snapshot
     data = canonical(
         {"payload": payload, "sha256": hashlib.sha256(canonical(payload)).hexdigest()}
     )
@@ -127,6 +146,7 @@ def checkpoint_binding(
                 "scope": scope,
                 "sample": asdict(sample),
                 "configured_generation": connection.revision_generation,
+                "source_decoding": connection.source_decoding,
             }
         )
     )
@@ -142,10 +162,15 @@ def revision_plan(
 ) -> tuple[list[Change], dict[str, Any]]:
     """Return a fast quiet comparison or a fully revalidated fresh snapshot.
 
-    No journal cursor, max event ID, acknowledgment, pruning or consumer registration
-    is used. An expired/offline/old checkout performs a new full snapshot. The DBA
+    Quiet reuse has no journal query, acknowledgment or consumer registration.
+    Opt-in dirty decoding uses an event range certified by revision insert counts.
+    An expired/offline/old checkout performs a new full snapshot. The DBA
     must rotate generation after restore, restart, hook changes or counter maintenance.
     """
+    from .affected_source import select_affected
+    from .encoded_source import UnsupportedSource
+    from .procedure_snapshot import bootstrap_procedures, refresh_procedures
+    from .revision_observation import RevisionSample
     from .sync_guard import binding_status
 
     if not connection.revision_generation:
@@ -206,11 +231,57 @@ def revision_plan(
         path.parent.mkdir(parents=True, exist_ok=True)
         now = time.time()
         cached = read_checkpoint(path, binding, now) if before.sample.complete else None
+        source_snapshot = None
+        decoded = False
+        history_queries = 0
+        fallback = None
+        created = now
+        if cached is None and before.sample.complete and connection.source_decoding:
+            previous = read_checkpoint_payload(path, binding, now, changed=True)
+            if previous is not None and previous.get("source_snapshot") is not None:
+                try:
+                    raw = previous["binding"]["sample"]
+                    prior_sample = BoundRevisionSample(
+                        raw["revision_id"],
+                        raw["parent_installation_id"],
+                        RevisionSample(
+                            tuple(tuple(row) for row in raw["sample"]["lanes"]),
+                            raw["sample"]["scanned_rows"],
+                        ),
+                    )
+                    selection = select_affected(
+                        settings,
+                        prior_sample,
+                        before,
+                        previous["source_snapshot"]["maximum"],
+                    )
+                    history_queries += selection.history_queries
+                    cached, source_snapshot = refresh_procedures(
+                        settings,
+                        previous["source_snapshot"],
+                        selection,
+                        previous["inventory"],
+                    )
+                    # Dirty reuse never slides the full-oracle TTL.
+                    created = previous["created"]
+                    decoded = True
+                except (UnsupportedSource, KeyError, TypeError, ValueError) as ex:
+                    fallback = (
+                        str(ex)
+                        if isinstance(ex, UnsupportedSource)
+                        else "invalid_source_checkpoint"
+                    )
         sink: dict[str, str] = {}
         if cached is not None:
             changes = plan_project(connection, root, database_hashes=cached)
         else:
             changes = plan_project(connection, root, inventory_sink=sink)
+            if connection.source_decoding and before.sample.complete:
+                try:
+                    history_queries += 1
+                    source_snapshot = bootstrap_procedures(settings, scope, sink)
+                except UnsupportedSource as ex:
+                    fallback = str(ex)
         matched = None
         if verify_reference and cached is not None:
             reference = plan_project(connection, root, inventory_sink=sink)
@@ -246,17 +317,24 @@ def revision_plan(
             raise ProjectError(
                 "Database changed during revision comparison; retry with a fresh snapshot"
             )
-        if cached is None and before.sample.complete:
-            publish_checkpoint(path, binding, sink, now)
+        if decoded:
+            assert cached is not None
+            publish_checkpoint(path, binding, cached, created, source_snapshot)
+        elif cached is None and before.sample.complete:
+            publish_checkpoint(path, binding, sink, now, source_snapshot)
         # Do not slide TTL on reuse: periodic full snapshots bound latent coverage risk.
         return changes, {
-            "mode": "revision_reuse" if cached is not None else "full_refresh",
+            "mode": "odbc_procedure_refresh"
+            if decoded
+            else "revision_reuse"
+            if cached is not None
+            else "full_refresh",
             "reason": None
             if cached is not None
-            else "missing_expired_or_changed_checkpoint",
+            else fallback or "missing_expired_or_changed_checkpoint",
             "reference_matches": matched,
             "revision_lanes": before.sample.scanned_rows,
-            "history_queries": 0,
+            "history_queries": history_queries,
             "full_reference_required": cached is None or verify_reference,
             "checkpoint_ttl_seconds": CHECKPOINT_TTL,
         }

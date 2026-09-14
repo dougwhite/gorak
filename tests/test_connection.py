@@ -332,3 +332,25 @@ def test_connection_source_describes_local_and_remote() -> None:
         connection_source(OpenRoadConnection("local", "myvnode", "exampledb", None))
         == "local"
     )
+
+
+@pytest.mark.parametrize("mode", ["procedures_v1", "unknown"])
+def test_source_decoding_requires_managed_generation(mode: str) -> None:
+    with pytest.raises(ProjectError, match="SOURCE_DECODING"):
+        resolve_openroad_connection(
+            args(vnode="node", database="example"),
+            context({"GORAK_SOURCE_DECODING": mode}),
+        )
+
+
+def test_source_decoding_is_explicit_opt_in() -> None:
+    connection = resolve_openroad_connection(
+        args(vnode="node", database="example"),
+        context(
+            {
+                "GORAK_REVISION_GENERATION": "00000000-0000-0000-0000-000000000001",
+                "GORAK_SOURCE_DECODING": "procedures_v1",
+            }
+        ),
+    )
+    assert connection.source_decoding

@@ -114,4 +114,6 @@ Gorak is focused on:
 
 Optional [managed revision mode](docs/revision-mode.md) gives status and push a
 verified quiet path using ODBC revision tokens. It requires the documented writer
-and DBA generation contract; changed tokens still use full XML comparison.
+and DBA generation contract. An explicit experimental procedure decoder can also
+refresh supported description/script changes through ODBC; other changes retain
+full XML comparison. See the [scope and measured acceptance](docs/research/changed-procedure-acceptance.md).

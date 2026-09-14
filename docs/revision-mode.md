@@ -8,8 +8,8 @@ The initial implementation deliberately uses whole-snapshot invalidation. If a
 complete revision vector is unchanged, Gorak compares disk and baseline against
 compact semantic hashes from a verified database snapshot. Any changed vector,
 expired checkpoint, different scope or damaged cache triggers another full XML
-comparison. It does not yet selectively refresh changed applications or decode
-`ii_srcobj_encoded`.
+comparison. The optional experimental procedure decoder described below can
+refresh a strictly supported subset of dirty observations through ODBC.
 
 ## Deployment contract
 
@@ -162,6 +162,45 @@ broken-hook quarantine, and database application deletion/conflict blocking. See
 The quiet database path performs no XML export and no event/receipt-history scan.
 Local source and baseline comparison still parses/hashes local files; large-source
 performance is not yet bounded independently of local source bytes. The small
-acceptance timings are not a gigabyte-scale performance claim. Dirty vectors and
-periodic expiry still pay the XML cost. Native encoded-source decoding and later
-selective refresh can reduce that cost without changing this checkpoint contract.
+acceptance timings are not a gigabyte-scale performance claim. Unsupported dirty vectors and periodic expiry still pay the XML cost. The
+experimental procedure slice below retains this checkpoint contract.
+
+## Experimental changed-procedure reads
+
+`GORAK_SOURCE_DECODING=procedures_v1` explicitly opts a managed project into the
+first direct-source slice. Omit it to retain whole-snapshot dirty refresh. A full
+XML bootstrap enrolls only bounded, current procedures whose **complete** decoded
+component signatures equal the oracle. No source baseline or portable source file
+is advanced by enrollment or status.
+
+On a dirty vector, a bounded journal range must agree exactly with the revision
+insert count before candidate reads are allowed. This detects a late lower-ID
+commit instead of assuming sequence order is commit order. Every affected identity
+must already resolve to an enrolled procedure, with entity/base identity and all
+source-bearing component metadata unchanged. Only version descriptions and the
+supported encoded script form are decoded. Component-row replacement is checked through its complete final row. Application
+save bookkeeping is accepted only while all source-bearing application metadata
+remains unchanged. Added/deleted/replaced entity identities, application source
+changes, unknown ownership, shared storage, unsupported graphs and budgets retain
+explicit XML fallback.
+
+The initial decoder accepts only the observed uncompiled integer-procedure graph
+with empty auxiliary bags and ASCII inline scripts. It does not yet cover compiled
+IL, classes, frames, Unicode storage, external strings or general source graphs.
+See [encoded-source research](research/encoded-source.md). Changing unsupported
+content must not be interpreted as an unchanged procedure.
+
+Successful dirty reads report `observation.mode: odbc_procedure_refresh`. Both
+quiet and decoded observations remain bracketed by complete revision vectors and
+installation checks. The original full-oracle timestamp is retained across dirty
+refreshes, so the 15-minute expiry cannot be postponed by repeated edits. Explicit
+`gorak journal --verify-revision` still compares the entire hash inventory and plan
+against XML; disagreement quarantines the generation. Existing mutation-time
+conflict checks, compilation, post-import verification and full-XML pull staging
+remain in force. There are no direct SQL source writes.
+
+This mode is experimental. Isolated first-status samples after Workbench description
+and script saves took 0.397 and 0.412 seconds with separate full-XML agreement.
+See [acceptance evidence and limits](research/changed-procedure-acceptance.md).
+These small samples do not establish larger-project or tail latency. Enrollment is
+currently capped at 128 procedures; exceeding that cap disables the shortcut.

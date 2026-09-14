@@ -115,3 +115,11 @@ several seconds. Repeated status on that same snapshot is fast. Changed-source
 latency remains a separate acceptance gate: object-level invalidation and direct
 ODBC semantic comparison must avoid XML startup while preserving full-reference
 agreement and explicit fallback for unsupported cases.
+
+## Changed-procedure follow-up
+
+The optional procedure decoder now handles the initial Workbench description/script
+save path with bounded ODBC reads. First-status samples were 0.397 and 0.412 seconds
+without XML exports, followed by full-reference agreement and a blocked conflicting
+push. Default dirty refresh and unsupported forms still use XML. See the
+[scope, method and limits](changed-procedure-acceptance.md).
