@@ -85,6 +85,11 @@ def build_parser() -> argparse.ArgumentParser:
     install_action.add_argument(
         "--check", action="store_true", help="Check tracking inventory via ODBC"
     )
+    install_action.add_argument(
+        "--check-revision",
+        action="store_true",
+        help="Check experimental revision extension structure via ODBC",
+    )
     install_parser.add_argument(
         "--upgrade", action="store_true", help="Upgrade tracking schema v1 to v2"
     )
@@ -832,6 +837,22 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                         f"Exported experimental revision SQL to {parsed.export_revision_sql}; no database changes made"
                     )
                 return
+            if parsed.check_revision:
+                from .connection import require_odbc_settings
+                from .revision_check import check_revision_installation
+
+                if parsed.upgrade:
+                    raise ProjectError(
+                        "--check-revision cannot be combined with --upgrade"
+                    )
+                connection = resolve_openroad_connection(
+                    parsed, load_context(Path.cwd())
+                )
+                revision_report = check_revision_installation(
+                    require_odbc_settings(connection)
+                )
+                print(json.dumps(revision_report.as_dict(), indent=2))
+                raise SystemExit(1 if revision_report.issues else 0)
             if parsed.check and parsed.upgrade:
                 raise ProjectError("--check cannot be combined with --upgrade")
             if parsed.check:

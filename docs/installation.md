@@ -230,3 +230,12 @@ replace existing files. This is separate from the normal v2 installation and its
 `--check` result. Client counter-table MVCC/shared configuration is required before
 resuming writes; helpers do not inject it yet. See the
 [extension contract and live evidence](research/revision-extension.md) before use.
+
+The optional `gorak install --check-revision` reports extension structural health
+using ODBC, including parent tracking health, columns, rule/procedure definitions
+and generation binding. It returns exit status 1 for missing/damaged structures and
+0 for `revision_structure_verified`; connection/query failures remain errors.
+This check is read-only and cannot be combined with another install action or
+`--upgrade`. Ordinary `--check` continues to validate the parent without requiring
+this experimental extension. Structural health does not enable fast status:
+`incremental_ready` remains false. See the extension contract for unchecked gates.

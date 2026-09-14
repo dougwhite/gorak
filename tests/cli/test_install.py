@@ -87,3 +87,39 @@ def test_revision_export_without_project(
 def test_revision_export_rejects_other_install_modes(option: str) -> None:
     with pytest.raises(SystemExit):
         cli.main(["install", "--export-revision-sql", "-", option])
+
+
+@pytest.mark.parametrize("issues,code", [([], 0), (["Missing revision rule"], 1)])
+def test_revision_check_outputs_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    issues: list[str],
+    code: int,
+) -> None:
+    import json
+
+    from gorak import connection, revision_check
+
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *args: None)
+    monkeypatch.setattr(connection, "require_odbc_settings", lambda *args: None)
+    monkeypatch.setattr(
+        revision_check,
+        "check_revision_installation",
+        lambda *args: revision_check.RevisionCheck(
+            "incomplete" if issues else "revision_structure_verified", issues
+        ),
+    )
+    with pytest.raises(SystemExit) as caught:
+        cli.main(["install", "--check-revision"])
+    assert caught.value.code == code
+    report = json.loads(capsys.readouterr().out)
+    assert report["issues"] == issues
+    assert report["incremental_ready"] is False
+
+
+@pytest.mark.parametrize(
+    "option", ["--check", "--upgrade", "--export-sql", "--export-revision-sql"]
+)
+def test_revision_check_rejects_other_actions(option: str) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["install", "--check-revision", option])

@@ -89,6 +89,34 @@ The disposable app and extension objects were removed afterward. Existing parent
 identity and capture definition/column checks remained healthy. No working checkout
 or ordinary source database was upgraded.
 
-Next: extension inventory/definition/layout validation, backend startup artifact
-lifecycle, and binding into diagnostic snapshot publication. Retain conservative
-fallbacks while those gates and identity/retention acceptance remain open.
+## Structural diagnostics
+
+`gorak install --check-revision` checks the optional extension over ODBC. It first
+checks the parent tracking installation, then verifies owner tables, ordered column
+names/types/widths/nullability/scale, the capture rule target and stored SQL, the
+counter procedure SQL, and the singleton generation marker's parent binding.
+Missing or damaged objects return `incomplete` with exit status 1. An intact
+extension returns `revision_structure_verified` with exit status 0. An absent
+extension does not change the ordinary `gorak install --check` contract.
+
+The check reads catalogs and at most two extension marker rows; it does not scan
+counter lanes, source, event history or receipts. It closes the read-only catalog
+transaction before configuring the marker's MVCC/shared read, as required by Ingres.
+Catalog inspection, parent checking and marker reads are separate phases: this is a
+diagnostic report, not a certificate against concurrent DDL or a later source read.
+SQL/connection failures remain errors, never successful health reports.
+
+`incremental_ready` remains false. Keys, indexes, check constraints, writer startup,
+permission policy, capture coverage and restart/restore continuity are not certified
+by this check. The internal sample reader does not automatically perform this check.
+Integration must enforce the complete trust contract before using a quiet sample to
+skip reference work.
+
+Live fault injection against a disposable extension passed: healthy definitions,
+missing capture rule, modified procedure increment, extra lane column, invalid parent
+binding and restoration of the original healthy generation. The extension was then
+removed and the original parent installation identity and checks remained intact.
+
+Next: backend startup artifact lifecycle and binding into diagnostic snapshot
+publication. Retain conservative fallbacks while those gates and identity/retention
+acceptance remain open.

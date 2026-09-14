@@ -55,15 +55,21 @@ def expected_columns() -> dict[str, tuple[Column, ...]]:
     }
 
 
-def column_issues(connection: Any, present_tables: set[str]) -> list[str]:
+def column_issues(
+    connection: Any,
+    present_tables: set[str],
+    *,
+    layouts: dict[str, tuple[Column, ...]] | None = None,
+    query: str = COLUMN_SQL,
+) -> list[str]:
     """Missing objects are reported by inventory; missing catalog rows fail closed."""
-    expected = expected_columns()
+    expected = expected_columns() if layouts is None else layouts
     requested = present_tables & expected.keys()
     if not requested:
         return []
     actual: dict[str, list[tuple[int, Column, int]]] = {}
     try:
-        for row in connection.execute(text(COLUMN_SQL)):
+        for row in connection.execute(text(query)):
             table = str(row[0]).strip()
             nulls = str(row[4]).strip().upper()
             if nulls not in {"Y", "N"}:
