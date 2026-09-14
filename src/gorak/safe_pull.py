@@ -3,6 +3,7 @@
 import hashlib
 import json
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from shutil import copy2
 from uuid import uuid4
@@ -17,6 +18,7 @@ from .export import (
 from .importer import signature
 from .portable_source import read_document
 from .project import GorakContext, ProjectError
+from .project_lock import project_lock
 from .sync import SyncResult
 from .sync_guard import guard_sync
 from .sync_plan import baseline_inventory
@@ -105,10 +107,23 @@ def sync_project(
     connection: OpenRoadConnection,
     context: GorakContext,
     progress: Callable[[str], None] | None = None,
+    *,
+    lock_held: bool = False,
 ) -> SyncResult:
     if context.project is None:
         raise ProjectError("Sync requires a gorak project")
     root = context.project.root
+    # CLI callers already own the mutation lock. Direct callers must acquire it
+    # before creating pull.lock, so revision planning never reacquires either lock.
+    with nullcontext() if lock_held else project_lock(root, "sync pull"):
+        return _sync_project(connection, root, progress)
+
+
+def _sync_project(
+    connection: OpenRoadConnection,
+    root: Path,
+    progress: Callable[[str], None] | None,
+) -> SyncResult:
     directory = root / ".openroad/pulls"
     directory.mkdir(parents=True, exist_ok=True)
     lock = root / ".openroad/pull.lock"
@@ -122,7 +137,7 @@ def sync_project(
             handle.write(str(operation))
             handle.flush()
             before = fingerprint(root)
-            plan = guard_sync(connection, root, push=False)
+            plan = guard_sync(connection, root, push=False, lock_held=True)
             # guard_sync can establish a binding only for a previously empty cache.
             if set(before) - fingerprint(root).keys():
                 raise ProjectError("Project changed while planning pull")

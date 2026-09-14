@@ -261,3 +261,58 @@ def test_odbc_endpoint_change_invalidates_checkpoint_without_storing_password(
     _, report = checkpoint.revision_plan(updated, root)
     assert report["mode"] == "full_refresh"
     assert len(exports) > before
+
+
+@pytest.mark.parametrize("through_cli", [False, True])
+def test_managed_pull_reuses_owned_lock_and_installs_changed_source(
+    project: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch, through_cli: bool
+) -> None:
+    from gorak import cli, export, safe_pull
+    from gorak.domain import Application
+    from gorak.project import load_context
+
+    root, connection, _, _, current, _ = project
+    (root / "gorak.json").write_text('{"name":"example"}')
+    current[0] = xml("RETURN 2;")
+
+    def backup(c: Any, app: str, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(current[0])
+
+    monkeypatch.setattr(export, "backup_application_xml", backup)
+    monkeypatch.setattr(safe_pull, "backup_application_xml", backup)
+    monkeypatch.setattr(
+        safe_pull, "read_applications", lambda _: [Application("example", "", "")]
+    )
+    if through_cli:
+        monkeypatch.chdir(root)
+        monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *_: connection)
+        cli.main(["sync"])
+    else:
+        safe_pull.sync_project(connection, load_context(root))
+    assert "RETURN 2;" in (root / "example/proc.w4gl").read_text()
+    for filename in ("mutation.lock", "pull.lock", "pull-pending.json"):
+        assert not (root / ".openroad" / filename).exists()
+    changes, _ = checkpoint.revision_plan(connection, root)
+    assert all(c.action == "unchanged" for c in changes)
+
+
+def test_managed_direct_pull_preserves_another_operations_lock(
+    project: tuple[Any, ...],
+) -> None:
+    from gorak import safe_pull
+    from gorak.project import load_context
+    from gorak.project_lock import project_lock
+
+    root, connection, _, _, _, _ = project
+    (root / "gorak.json").write_text('{"name":"example"}')
+    source = root / "example/proc.w4gl"
+    original = source.read_bytes()
+    with project_lock(root, "other operation"):
+        lock = root / ".openroad/mutation.lock"
+        owned = lock.read_bytes()
+        with pytest.raises(ProjectError, match="Another Gorak operation"):
+            safe_pull.sync_project(connection, load_context(root))
+        assert lock.read_bytes() == owned
+        assert not (root / ".openroad/pull.lock").exists()
+    assert source.read_bytes() == original

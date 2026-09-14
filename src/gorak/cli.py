@@ -786,7 +786,7 @@ def sync_command(args: argparse.Namespace) -> str:
     if getattr(args, "dry_run", False):
         raise ProjectError("--dry-run requires --push")
     print(f"Syncing from {connection_source(connection)}")
-    result = sync_project(connection, context, progress=print)
+    result = sync_project(connection, context, progress=print, lock_held=True)
     component_label = "component" if result.exported == 1 else "components"
     return (
         f"Sync complete: checked {result.checked}, "

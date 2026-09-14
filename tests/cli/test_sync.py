@@ -36,7 +36,10 @@ def test_sync_command_runs_project_sync(
         connection: OpenRoadConnection,
         context: GorakContext,
         progress: Callable[[str], None] | None,
+        *,
+        lock_held: bool = False,
     ) -> SyncResult:
+        assert lock_held
         calls.append((connection, context.project.root if context.project else None))
         return SyncResult(checked=2, changed=1, exported=1)
 

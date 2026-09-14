@@ -95,3 +95,23 @@ Quiet comparisons read no database XML and no event/receipt history. Local basel
 and source parsing still scales with local source bytes. No gigabyte-scale latency,
 new physical-restore rehearsal, additional manual Workbench save-path coverage, or
 multi-server certification is claimed by these measurements.
+
+## Managed pull integration follow-up
+
+A manual procedure-remark edit was detected through revision invalidation and agreed
+with the full XML oracle. Ordinary pull then exposed nested lock acquisition:
+CLI sync held the mutation lock, while pull planning attempted to acquire it again.
+The failure occurred before source installation; the operation released its locks.
+
+Pull now explicitly reuses CLI lock ownership, and direct service calls acquire the
+mutation lock before creating the pull marker. Regressions exercise real managed
+planning and staged installation through both entry points, plus rejection of a
+competing operation without removing its lock. The full suite passed 758 tests;
+Ruff and mypy passed. Live retry pulled the single procedure change and subsequent
+status reported no differences using revision reuse.
+
+A first status after even a remark edit still performs full XML refresh and can take
+several seconds. Repeated status on that same snapshot is fast. Changed-source
+latency remains a separate acceptance gate: object-level invalidation and direct
+ODBC semantic comparison must avoid XML startup while preserving full-reference
+agreement and explicit fallback for unsupported cases.
