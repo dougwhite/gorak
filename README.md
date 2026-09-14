@@ -111,3 +111,7 @@ Gorak is focused on:
 - Human-readable, text-based OpenROAD source and metadata.
 - Git source control for OpenROAD applications.
 - Two-way sync between local source files and OpenROAD repositories.
+
+Optional [managed revision mode](docs/revision-mode.md) gives status and push a
+verified quiet path using ODBC revision tokens. It requires the documented writer
+and DBA generation contract; changed tokens still use full XML comparison.

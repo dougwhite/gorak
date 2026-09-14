@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
-from .project import ProjectError
+from .errors import ProjectError
 from .revision_installation import REVISION_TABLE
 from .writer_init import compose_writer_init
 from .writer_settings import environment_keys, installation_startup_value

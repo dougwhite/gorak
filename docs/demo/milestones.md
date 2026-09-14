@@ -1,10 +1,19 @@
 # Delivery milestones and gap ledger
 
-Updated 2026-09-13 after source-storage and development-loop research. This is the
+Updated 2026-09-14 after managed revision integration and live acceptance. This is the
 implementation backlog, not a claim that the proposed commands exist. Preserve
 existing IDs for earlier evidence; M2 is now split into explicit work packages.
 Implementation, automated validation, live acceptance, and presenter acceptance
 are separate gates.
+
+## Latest completed delivery slice
+
+The four managed-revision milestones are implemented: execution-host writer
+integration; compact diagnostic snapshots; a whole-snapshot continuity/expiry
+protocol independent of event receipts; and opt-in normal status/push integration.
+See [deployment contract](../revision-mode.md) and [live acceptance](../research/managed-revision-acceptance.md).
+This uses full refresh on any dirty vector. It does not claim selective dirty
+refresh, automatic physical-restore detection, or gigabyte-scale local comparison.
 
 ## Target and evidence
 
@@ -42,7 +51,7 @@ and [sync behavior and timing](../synchronization.md).
 | M1 | Portable source and fresh-clone reconstruction | Representative CLI and owner visual acceptance passed | Cache-free clone restores equivalent source and runnable sample; broader types remain open |
 | M2a | Complete sync correctness and recovery | Substantial partial implementation | Both directions handle edits/additions/deletions; conflicts, branch switches, interruptions preserve work |
 | M2b | Install database change tracking | DBA SQL export implemented; capture-only, consumer/broad coverage pending | Transaction-safe journal covers all source changes with bounded save overhead |
-| M2c | Incremental ODBC status and fingerprinting | Research | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
+| M2c | Incremental ODBC status and fingerprinting | Opt-in quiet revision reuse implemented; large-corpus scaling pending | Sub-second no-change target on a large corpus; no full-source fetch; trustworthy invalidation |
 | M2d | Direct source decoding | Research | ODBC → Gorak source matches reference exports across supported types without w4gldev |
 | M2e | Direct source encoding and saving | Not started | Disk → DB → Workbench/run round trip preserves source and repository invariants |
 | M3 | ODBC onboarding and source dependency export | Partial existing configuration | Diagnosed install/setup and multiple-app export with include closure |
@@ -153,7 +162,7 @@ and removed afterward. See [DBA installation](../installation.md).
 - [x] Optional revision structural check validates parent health, owner columns, rule/procedure definitions and generation binding; live damage/restoration checks passed. Keys/indexes, writer configuration and continuity remain outside this diagnostic.
 - [x] Execution-host startup artifact lifecycle implemented and Windows-tested around import/compile, including paths with spaces and an uncommitted counter holder. Database-name scoping preserves general startup settings; Transport integration and runtime-database acceptance remain pending.
 - [x] Execution-host symbol fallback resolves named settings from the selected Ingres installation; Windows SQL and OpenROAD acceptance confirmed process precedence, including empty-value fallback, and preserved installation/include state.
-- [ ] Complete general writer initialization handling before enabling revision counters; initial bounded reads must fall back safely without online counter deletion.
+- [x] Integrate execution-host startup resolution and lifecycle into local and SSH OpenROAD launches, with helper version checks and matching-generation validation. Bounded vectors fall back to full snapshots; lane reset is offline-only with generation rotation.
 - [ ] Implement and validate the [compact checkpoint protocol](../research/checkpoint-protocol.md), including transaction closure and restore/retention contracts.
 - [ ] Certify snapshot continuity and invalidation before permitting selective status/sync without the full-export reference. Same-identity restore detection and atomic export boundaries remain unresolved.
 - [ ] Large-corpus benchmark with cold/warm and tail latency; count queries, transferred

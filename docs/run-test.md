@@ -16,7 +16,7 @@ These commands do not import, sync, or replace source. They use `w4gldev rundbap
 and accept the standard local/remote connection flags. ODBC is an independent
 metadata backend; application execution always uses OpenROAD locally or via SSH.
 Local execution requires an initialized OpenROAD environment. Remote execution
-requires Windows PowerShell and helper version 3 (`gorak remote install`).
+requires Windows PowerShell and helper version 7 (`gorak remote install`).
 
 RunDBApp uses the application's saved runtime database; this command does not
 override it. `--database` selects the source repository. Test applications may
@@ -95,3 +95,9 @@ terminates its launched process tree on timeout.
 
 The test XML can be used by compatible JUnit tooling. VS Code test discovery,
 source navigation adapters and keybindings are not installed by these commands.
+
+
+With [managed revision mode](revision-mode.md), run/test validates the configured
+revision generation and uses the shared execution-host startup worker. SSH requires
+Python 3.12+ and current helpers. Test result semantics are unchanged, including
+intentional failures and the fact that testing does not implicitly sync source.

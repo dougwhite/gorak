@@ -15,6 +15,7 @@ from .connection import OpenRoadConnection, require_remote_host
 from .project import ProjectError
 from .remote import build_upload_command
 from .runner import TestApplication
+from .writer_launch import local_writer_command
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,8 @@ def execute_application(
         raise ProjectError("Invalid starting component name")
     if not 1 <= suite.timeout_seconds <= 86400:
         raise ProjectError("Timeout must be between 1 and 86400 seconds")
+    from .revision_check import validate_revision_target
+
     mode = env.get("GORAK_TRACE_MODE", "persistent")
     if mode not in {"persistent", "temp"}:
         raise ProjectError("GORAK_TRACE_MODE must be persistent or temp")
@@ -66,6 +69,15 @@ def execute_application(
     }
     if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) for key in runtime_env):
         raise ProjectError("Invalid runtime environment variable name")
+    if connection.revision_generation and any(
+        key.upper() in {"II_SYSTEM", "II_CONFIG", "II_INSTALLATION"}
+        or key.upper().startswith("II_GCN")
+        for key in runtime_env
+    ):
+        raise ProjectError(
+            "Managed runs cannot override Ingres installation or routing settings"
+        )
+    validate_revision_target(connection)
     artifacts.mkdir(parents=True, exist_ok=False)
     database = (
         f"{connection.vnode}::{connection.database}"
@@ -74,7 +86,17 @@ def execute_application(
     )
     if connection.backend == "local":
         result = execute_local(
-            database, suite, env, runtime_env, artifacts, testing, mode
+            database,
+            suite,
+            env,
+            runtime_env,
+            artifacts,
+            testing,
+            mode,
+            writer_database=connection.database
+            if connection.revision_generation
+            else None,
+            writer_encoding=connection.writer_encoding,
         )
     else:
         result = execute_remote(
@@ -106,6 +128,9 @@ def execute_local(
     artifacts: Path,
     testing: bool,
     mode: str,
+    *,
+    writer_database: str | None = None,
+    writer_encoding: str = "cp1252",
 ) -> RunResult:
     with tempfile.TemporaryDirectory(prefix="gorak-run-") as temporary:
         trace_root = (
@@ -126,6 +151,9 @@ def execute_local(
                 OR_UNITTEST_STATSFILE=str(trace_root / f"{token}.stats.log"),
             )
         command = ["w4gldev", *command_args(database, suite, str(trace.resolve()))]
+        if writer_database:
+            child_env["GORAK_WRITER_TEMP_ROOT"] = temporary
+        command = local_writer_command(command, writer_database, writer_encoding)
         with subprocess.Popen(
             command,
             env=child_env,
@@ -169,6 +197,10 @@ def execute_remote(
     mode: str,
 ) -> RunResult:
     host = require_remote_host(connection)
+    if connection.revision_generation:
+        from .remote import verify_remote_helpers
+
+        verify_remote_helpers(host)
     if not re.fullmatch(r"[A-Za-z]:\\[A-Za-z0-9_ .\\-]+", host.gorak_root):
         raise ProjectError(
             "Runner helper root must be a Windows path without shell metacharacters"
@@ -184,6 +216,10 @@ def execute_remote(
         "trace_mode": mode,
         "testing": testing,
         "environment": runtime_env,
+        "writer_database": connection.database
+        if connection.revision_generation
+        else None,
+        "writer_encoding": connection.writer_encoding,
     }
     with tempfile.TemporaryDirectory(prefix="gorak-request-") as tmp:
         path = Path(tmp) / "request.json"

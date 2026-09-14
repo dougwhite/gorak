@@ -7,7 +7,7 @@ set "LIB=%II_SYSTEM%\ingres\lib;%LIB%"
 set "INCLUDE=%II_SYSTEM%\ingres\files;%INCLUDE%"
 set "II_W4GLAPPS_SYS=%II_SYSTEM%\ingres\w4glapps\"
 set "LOG=%~4.log"
-w4gldev backupapp in "%~1" "%~2" "%~4" -nowindows -c%~3 -xml -nreplace -f -TALL,logonly -L"%LOG%"
+call "%~dp0writer-command.bat" backupapp in "%~1" "%~2" "%~4" -nowindows -c%~3 -xml -nreplace -f -TALL,logonly -L"%LOG%"
 set "GORAK_IMPORT_EXIT=%ERRORLEVEL%"
 if exist "%LOG%" type "%LOG%"
 if not "%GORAK_IMPORT_EXIT%"=="0" exit /b %GORAK_IMPORT_EXIT%

@@ -228,7 +228,8 @@ layout remains only one prerequisite for eventual incremental readiness.
 for DBA review (`-` writes stdout). It makes no database changes and refuses to
 replace existing files. This is separate from the normal v2 installation and its
 `--check` result. Client counter-table MVCC/shared configuration is required before
-resuming writes; helpers do not inject it yet. See the
+resuming writes. Configured managed launches now inject it through helper version 7;
+existing Workbench sessions still require configuration. See the
 [extension contract and live evidence](research/revision-extension.md) before use.
 
 The optional `gorak install --check-revision` reports extension structural health
@@ -239,3 +240,17 @@ This check is read-only and cannot be combined with another install action or
 `--upgrade`. Ordinary `--check` continues to validate the parent without requiring
 this experimental extension. Structural health does not enable fast status:
 `incremental_ready` remains false. See the extension contract for unchecked gates.
+
+
+## Managed revision checkpoints and offline reset
+
+[Managed revision mode](revision-mode.md) documents the optional deployment contract,
+normal status/push integration and diagnostic verification. Setting a matching
+`GORAK_REVISION_GENERATION` enables it after deployment validation; `--check-revision`
+alone still does not certify capture coverage or activate fast status.
+
+`gorak install --export-revision-reset-sql PATH` exports a guarded offline generation
+rotation and lane reset (`-` for stdout). It does not execute the reset and refuses
+an existing output file. Stop/drain writers and run it after restore/restart or
+capture maintenance, before reconnecting clients. Source and event history remain
+intact. Old configured generations fail closed; new ones require full snapshots.

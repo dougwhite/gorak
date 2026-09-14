@@ -148,3 +148,20 @@ def test_optional_capture_retains_exact_xml_without_altering_baseline(
     }
     assert next(c for c in changes if c.key == "example/proc").action == "pull"
     assert (tmp_path / ".openroad/example/example.xml").read_bytes() == baseline
+
+
+def test_compact_signatures_preserve_xml_comment_and_processing_instruction_content() -> (
+    None
+):
+    from lxml import etree
+
+    def digest(content: str) -> dict[str, str]:
+        root = etree.fromstring(
+            f'<OPENROAD><COMPONENT name="proc">{content}</COMPONENT></OPENROAD>'
+        )
+        return sync_plan.semantic_hashes(sync_plan.xml_inventory(root, "example"))
+
+    assert digest("<!--one--><?test value?>") == digest("<!--one--><?test value?>")
+    assert digest("<!--one-->") != digest("<!--two-->")
+    assert digest("<?test one?>") != digest("<?test two?>")
+    assert digest("<!--one-->") != digest("<comment>one</comment>")

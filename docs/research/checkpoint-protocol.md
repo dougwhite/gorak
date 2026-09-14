@@ -1,6 +1,12 @@
 # Compact checkpoint protocol: requirements and decision gates
 
-Status: design requirements, not an implemented protocol. The first live
+Status: requirements and historical design gates. The first implemented protocol
+is described in [managed revision mode](../revision-mode.md): whole-snapshot
+checkpoints, full refresh on dirty vectors, no event cursor/receipts, bounded expiry
+and an explicit offline DBA generation transition. Selective consumption and online
+retention remain separate future work.
+
+Historical context: The first live
 experiments rejected naive global and source-partitioned revision rows; see
 [revision-token acceptance](revision-token-acceptance.md). The current diagnostic
 retains exact event receipts, full-history observations and a full-export oracle.

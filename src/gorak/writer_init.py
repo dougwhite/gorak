@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from pathlib import PurePosixPath, PureWindowsPath
 
-from .project import ProjectError
+from .errors import ProjectError
 
 # This scanner validates statement boundaries, not the complete Ingres SET grammar.
 _TOKEN = re.compile(

@@ -93,5 +93,13 @@ The export helper prints the remote XML path. Gorak downloads that file with
 
 - Paths and names with spaces or shell metacharacters need more real-world
   hardening.
-- Gorak does not check helper script versions before each remote operation.
+- Ordinary operations do not check helper versions on every call. Managed revision
+  exports/imports and run/test verify the current manifest before launching.
   Run `gorak remote check` when you want to verify the installed helper set.
+
+
+Managed revision mode requires helper version 7 and Python 3.12+ on the Windows
+host. `gorak remote install` builds `gorak-writer.pyz` from packaged production
+modules and installs the manifest last. `writer-command.bat` dispatches configured
+OpenROAD commands through it; unconfigured calls keep their existing behavior.
+See [the deployment and restore contract](revision-mode.md).

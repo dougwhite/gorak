@@ -1,5 +1,6 @@
 """Read-only three-way source comparison shared by synchronization commands."""
 
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
@@ -113,6 +114,8 @@ def plan_project(
     *,
     capture_dir: Path | None = None,
     reuse_xml: dict[str, Path] | None = None,
+    database_hashes: dict[str, str] | None = None,
+    inventory_sink: dict[str, str] | None = None,
 ) -> list[Change]:
     """Inspect disk and fresh XML without writing project state or database source."""
     if capture_dir is not None:
@@ -142,35 +145,45 @@ def plan_project(
                 disk[key] = signature(restore_component(source))
             except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
                 invalid[key] = str(ex)
-    available = {app.name.casefold(): app.name for app in read_applications(connection)}
-    database: dict[str, object] = {}
-    with TemporaryDirectory(prefix="gorak-status-") as temporary:
-        names = sorted({app.casefold() for app in apps} & available.keys())
+    if database_hashes is not None:
+        baseline = dict(semantic_hashes(baseline))
+        disk = dict(semantic_hashes(disk))
+        database: dict[str, object] = dict(database_hashes)
+    else:
+        available = {
+            app.name.casefold(): app.name for app in read_applications(connection)
+        }
+        database = {}
+        with TemporaryDirectory(prefix="gorak-status-") as temporary:
+            names = sorted({app.casefold() for app in apps} & available.keys())
 
-        def export_one(item: tuple[int, str]) -> dict[str, object]:
-            index, name = item
-            path = Path(temporary) / f"{index}.xml"
-            if reuse_xml is not None and name in reuse_xml:
-                copyfile(reuse_xml[name], path)
-            else:
-                backup_application_xml(connection, available[name], path)
-            inventory = xml_inventory(read_document(path), name)
+            def export_one(item: tuple[int, str]) -> dict[str, object]:
+                index, name = item
+                path = Path(temporary) / f"{index}.xml"
+                if reuse_xml is not None and name in reuse_xml:
+                    copyfile(reuse_xml[name], path)
+                else:
+                    backup_application_xml(connection, available[name], path)
+                inventory = xml_inventory(read_document(path), name)
+                if capture_dir is not None:
+                    copyfile(path, capture_dir / f"{index}.xml")
+                return inventory
+
+            # Independent applications have separate export paths. Consume in sorted
+            # order and wait for every worker before cleaning the temporary directory.
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                for inventory in executor.map(export_one, enumerate(names)):
+                    database.update(inventory)
             if capture_dir is not None:
-                copyfile(path, capture_dir / f"{index}.xml")
-            return inventory
-
-        # Independent applications have separate export paths. Consume in sorted
-        # order and wait for every worker before cleaning the temporary directory.
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            for inventory in executor.map(export_one, enumerate(names)):
-                database.update(inventory)
-        if capture_dir is not None:
-            (capture_dir / "applications.json").write_text(
-                json.dumps(
-                    {name: f"{index}.xml" for index, name in enumerate(names)}, indent=2
-                ),
-                encoding="utf-8",
-            )
+                (capture_dir / "applications.json").write_text(
+                    json.dumps(
+                        {name: f"{index}.xml" for index, name in enumerate(names)},
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+        if inventory_sink is not None:
+            inventory_sink.update(semantic_hashes(database))
     changes = [
         compare(key, baseline.get(key), disk.get(key), database.get(key))
         for key in sorted(
@@ -206,3 +219,31 @@ def plan_project(
 
 def format_plan(changes: list[Change]) -> list[dict[str, str]]:
     return [asdict(change) for change in changes if change.action != "unchanged"]
+
+
+def semantic_hashes(inventory: dict[str, object]) -> dict[str, str]:
+    """Compact exact semantic signatures without retaining XML/source in checkpoints."""
+    return {
+        key: hashlib.sha256(
+            json.dumps(
+                value,
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=xml_special_signature,
+            ).encode("ascii")
+        ).hexdigest()
+        for key, value in inventory.items()
+    }
+
+
+def xml_special_signature(value: object) -> dict[str, str]:
+    """Preserve special XML node kinds in JSON semantic signatures."""
+    for node, name in (
+        (etree.Comment, "comment"),
+        (etree.ProcessingInstruction, "processing_instruction"),
+        (etree.Entity, "entity"),
+    ):
+        if value is node:
+            return {"xml_node_kind": name}
+    raise TypeError("Unsupported XML signature value")

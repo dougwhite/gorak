@@ -40,7 +40,9 @@ from .remote import (
     get_component_list,
     get_include_list,
 )
+from .revision_route import validate_source_route
 from .sync_state import update_component_entries
+from .writer_launch import local_writer_command
 
 local_backup_application = local.backup_application
 local_backup_component = local.backup_component
@@ -285,9 +287,7 @@ def export_component_to_paths(
     )
     from .portable_source import write_companions
 
-    write_companions(
-        normalized_xml, paths.w4gl_path.parent
-    )
+    write_companions(normalized_xml, paths.w4gl_path.parent)
     return w4gl_path
 
 
@@ -331,7 +331,23 @@ def backup_application_xml(
 ) -> None:
     """Run the correct backend-specific full application XML export."""
 
+    validate_source_route(connection)
+
     if connection.backend == "local":
+        if connection.revision_generation:
+            local.backup_application(
+                connection.vnode,
+                connection.database,
+                app,
+                xml_path,
+                run_cmd=lambda command, input_text: local.run_subprocess(
+                    local_writer_command(
+                        command, connection.database, connection.writer_encoding
+                    ),
+                    input_text,
+                ),
+            )
+            return
         local_backup_application(
             vnode=connection.vnode,
             database=connection.database,
@@ -358,7 +374,24 @@ def backup_component_xml(
 ) -> None:
     """Run the correct backend-specific single component XML export."""
 
+    validate_source_route(connection)
+
     if connection.backend == "local":
+        if connection.revision_generation:
+            local.backup_component(
+                connection.vnode,
+                connection.database,
+                app,
+                component,
+                xml_path,
+                run_cmd=lambda command, input_text: local.run_subprocess(
+                    local_writer_command(
+                        command, connection.database, connection.writer_encoding
+                    ),
+                    input_text,
+                ),
+            )
+            return
         local_backup_component(
             vnode=connection.vnode,
             database=connection.database,

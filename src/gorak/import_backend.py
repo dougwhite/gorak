@@ -9,6 +9,7 @@ from lxml import etree
 from . import local, remote
 from .connection import OpenRoadConnection, require_remote_host
 from .project import ProjectError
+from .writer_launch import local_writer_command, remote_writer_prefix
 
 
 def checked_log(text: str) -> None:
@@ -30,6 +31,9 @@ def import_component_xml(
     create: bool = False,
 ) -> None:
     """Import only the named component; keep diagnostics even when execution fails."""
+    from .revision_check import validate_revision_target
+
+    validate_revision_target(connection)
     empty_app = component == "-" and not etree.parse(str(xml_path)).findall("COMPONENT")
     if connection.backend == "local":
         command = local.build_backup_component_command(
@@ -49,7 +53,13 @@ def import_component_xml(
         if component != "-":
             command.append("-f")
         try:
-            output = local.run_subprocess(command)
+            output = local.run_subprocess(
+                local_writer_command(
+                    command,
+                    connection.database if connection.revision_generation else None,
+                    connection.writer_encoding,
+                )
+            )
         except Exception as ex:
             with log_path.open("a") as log:
                 log.write(f"\n{ex}\n")
@@ -63,15 +73,21 @@ def import_component_xml(
         if component == "-" and not empty_app:
             compile_log = log_path.with_suffix(".compile.log")
             local.run_subprocess(
-                [
-                    "w4gldev",
-                    "compileapp",
-                    local.build_database_target(connection.vnode, connection.database),
-                    app,
-                    "-nowindows",
-                    "-TALL,logonly",
-                    f"-L{local.command_path(compile_log)}",
-                ]
+                local_writer_command(
+                    [
+                        "w4gldev",
+                        "compileapp",
+                        local.build_database_target(
+                            connection.vnode, connection.database
+                        ),
+                        app,
+                        "-nowindows",
+                        "-TALL,logonly",
+                        f"-L{local.command_path(compile_log)}",
+                    ],
+                    connection.database if connection.revision_generation else None,
+                    connection.writer_encoding,
+                )
             )
             if not compile_log.is_file():
                 raise ProjectError("OpenROAD did not create a compilation log")
@@ -79,6 +95,8 @@ def import_component_xml(
         return
 
     host = require_remote_host(connection)
+    if connection.revision_generation:
+        remote.verify_remote_helpers(host)
     # cmd.exe expands percent/exclamation characters even inside double quotes.
     # Restrict this initial write path rather than applying incomplete escaping.
     values = [connection.vnode, connection.database, app, component]
@@ -107,7 +125,8 @@ def import_component_xml(
         "ssh",
         "-T",
         host.ssh_target,
-        " ".join(f'"{value}"' for value in [f"{host.gorak_root}\\{helper}", *args]),
+        remote_writer_prefix(host.writer_database, host.writer_encoding)
+        + " ".join(f'"{value}"' for value in [f"{host.gorak_root}\\{helper}", *args]),
     ]
     try:
         output = remote.run_subprocess(command)

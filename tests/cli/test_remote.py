@@ -170,8 +170,11 @@ class TestRemoteInstallCommand:
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
             "get-include-list.bat",
+            "get-revision-generation.bat",
             "gorak-helpers.json",
             "import-component.bat",
+            "revision-generation.sql",
             "run-application.ps1",
             "update-application.bat",
+            "writer-command.bat",
         ]

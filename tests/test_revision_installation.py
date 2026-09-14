@@ -53,3 +53,57 @@ def test_export_refuses_overwrite(tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="overwrite"):
         export_revision_installation_sql(path)
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [None, "missing_parent", "duplicate_parent", "wrong_parent", "wrong_version"],
+)
+def test_offline_reset_is_guarded_and_atomic(fault: str | None) -> None:
+    from uuid import uuid4
+
+    from gorak.revision_installation import revision_reset_statements
+
+    db = sqlite3.connect(":memory:")
+    original, parent = str(uuid4()), str(uuid4())
+    db.create_function("uuid_create", 0, lambda: str(uuid4()))
+    db.create_function("uuid_to_char", 1, lambda value: value)
+    db.executescript("""
+    create table gorak_tracking_install(schema_version,installation_id,mode);
+    create table gorak_revision_install(schema_version,revision_id,parent_installation_id);
+    create table gorak_revision_lanes(server_id,session_id,revision);
+    insert into gorak_revision_lanes values('server','session',19);
+    """)
+    db.execute(
+        "insert into gorak_tracking_install values(2,?,'capture_only')", (parent,)
+    )
+    db.execute("insert into gorak_revision_install values(1,?,?)", (original, parent))
+    if fault == "missing_parent":
+        db.execute("delete from gorak_tracking_install")
+    elif fault == "duplicate_parent":
+        db.execute(
+            "insert into gorak_tracking_install select * from gorak_tracking_install"
+        )
+    elif fault == "wrong_parent":
+        db.execute("update gorak_revision_install set parent_installation_id='other'")
+    elif fault == "wrong_version":
+        db.execute("update gorak_revision_install set schema_version=99")
+    db.commit()
+    try:
+        db.execute("begin")
+        try:
+            for statement in revision_reset_statements()[2:]:
+                db.execute(statement)
+        except sqlite3.IntegrityError:
+            db.rollback()
+            assert fault is not None
+        else:
+            assert fault is None
+        identity = db.execute(
+            "select revision_id from gorak_revision_install"
+        ).fetchone()[0]
+        rows = db.execute("select count(*) from gorak_revision_lanes").fetchone()[0]
+        assert (identity == original) is (fault is not None)
+        assert rows == (1 if fault else 0)
+    finally:
+        db.close()

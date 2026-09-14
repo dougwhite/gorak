@@ -2,6 +2,7 @@ param([Parameter(Mandatory=$true)][string]$Request)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $temporary = $null
+$writerTemporary = $null
 try {
     $config = Get-Content -LiteralPath $Request -Raw -Encoding UTF8 | ConvertFrom-Json
     Remove-Item -LiteralPath $Request
@@ -38,6 +39,14 @@ try {
     $process.StartInfo.FileName = "$env:II_SYSTEM\ingres\bin\w4gldev.exe"
     $process.StartInfo.Arguments = 'rundbapp "' + $config.database + '" "' + $config.application + '" -nowindows -TALL,logonly -L"' + $trace + '"'
     if ($config.component) { $process.StartInfo.Arguments += ' -c' + $config.component }
+    if ($config.writer_database) {
+        if ($config.writer_database -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,31}$' -or $config.writer_encoding -notmatch '^[A-Za-z0-9_-]{1,32}$') { throw 'Invalid writer configuration' }
+        $writerTemporary = Join-Path ([IO.Path]::GetTempPath()) ("gorak-writer-" + $token)
+        New-Item -ItemType Directory -Path $writerTemporary | Out-Null
+        $env:GORAK_WRITER_TEMP_ROOT = $writerTemporary
+        $process.StartInfo.FileName = 'python'
+        $process.StartInfo.Arguments = '"' + (Join-Path $root 'gorak-writer.pyz') + '" --database "' + $config.writer_database + '" --encoding "' + $config.writer_encoding + '" -- ' + $process.StartInfo.Arguments
+    }
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.CreateNoWindow = $true
     $process.StartInfo.RedirectStandardOutput = $true
@@ -58,5 +67,6 @@ try {
     $process.Dispose()
     $result | ConvertTo-Json -Compress
 } finally {
+    if ($writerTemporary -and (Test-Path -LiteralPath $writerTemporary)) { Remove-Item -LiteralPath $writerTemporary -Recurse -Force }
     if ($temporary -and (Test-Path -LiteralPath $temporary)) { Remove-Item -LiteralPath $temporary -Recurse -Force }
 }

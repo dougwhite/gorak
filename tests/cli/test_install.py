@@ -123,3 +123,22 @@ def test_revision_check_outputs_json(
 def test_revision_check_rejects_other_actions(option: str) -> None:
     with pytest.raises(SystemExit):
         cli.main(["install", "--check-revision", option])
+
+
+def test_offline_revision_reset_export_is_explicit_and_exclusive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gorak.revision_installation import revision_reset_sql
+
+    monkeypatch.chdir(tmp_path)
+    cli.main(["install", "--export-revision-reset-sql", "-"])
+    assert capsys.readouterr().out == revision_reset_sql()
+    path = tmp_path / "reset.sql"
+    cli.main(["install", "--export-revision-reset-sql", str(path)])
+    assert path.read_text() == revision_reset_sql()
+    with pytest.raises(SystemExit) as caught:
+        cli.main(["install", "--export-revision-reset-sql", str(path)])
+    assert caught.value.code == 1
+    assert "Refusing to overwrite" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        cli.main(["install", "--export-revision-reset-sql", "-", "--check"])

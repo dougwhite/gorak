@@ -1,7 +1,7 @@
 """Resolve OpenROAD backend settings from CLI arguments and Gorak context."""
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, cast
 
 from .database import OdbcSettings
@@ -32,12 +32,30 @@ class OpenRoadConnection:
     remote_host: RemoteHost | None
     sql_backend: SqlBackend | None = None
     odbc_settings: OdbcSettings | None = None
+    revision_generation: str | None = None
+    writer_encoding: str = "cp1252"
 
 
 def resolve_openroad_connection(
     args: argparse.Namespace, context: GorakContext
 ) -> OpenRoadConnection:
     env = context.env
+    generation = env.get("GORAK_REVISION_GENERATION") or None
+    encoding = env.get("GORAK_WRITER_ENCODING", "cp1252")
+    if generation:
+        from uuid import UUID
+
+        from .writer_launch import validate_writer
+
+        try:
+            if not UUID(generation).int:
+                raise ValueError
+            generation = str(UUID(generation))
+        except ValueError:
+            raise ProjectError("Invalid GORAK_REVISION_GENERATION") from None
+        validate_writer(
+            env_value(args, "database", env, "GORAK_DATABASE") or "", encoding
+        )
     backend = resolve_backend(args, env)
     sql_backend = resolve_sql_backend(args, env, backend)
 
@@ -72,12 +90,18 @@ def resolve_openroad_connection(
                 user=cast(str, remote_values["user"]),
                 host=cast(str, remote_values["host"]),
                 gorak_root=cast(str, remote_values["gorak_root"]),
+                writer_database=cast(str, openroad_values["database"])
+                if generation
+                else None,
+                writer_encoding=encoding,
             )
             if needs_remote_host
             else None
         ),
         sql_backend=sql_backend,
         odbc_settings=odbc_settings,
+        revision_generation=generation,
+        writer_encoding=encoding,
     )
 
 
@@ -187,7 +211,15 @@ def connection_hint(key: str) -> str:
 def require_remote_host(connection: OpenRoadConnection) -> RemoteHost:
     if connection.remote_host is None:
         raise ProjectError("Remote host is required for remote OpenROAD backend")
-    return connection.remote_host
+    return (
+        replace(
+            connection.remote_host,
+            writer_database=connection.database,
+            writer_encoding=connection.writer_encoding,
+        )
+        if connection.revision_generation
+        else connection.remote_host
+    )
 
 
 def require_odbc_settings(connection: OpenRoadConnection) -> OdbcSettings:

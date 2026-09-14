@@ -15,7 +15,7 @@ if "%~5"=="create-empty" set "COMPILE="
 set "COMPONENT=-c%~3"
 if "%~3"=="-" set "COMPONENT="
 if "%~3"=="-" set "COMPILE="
-w4gldev backupapp in "%~1" "%~2" "%~4" -nowindows %COMPONENT% -xml %CONFLICT% %COMPILE% -TALL,logonly -L"%LOG%"
+call "%~dp0writer-command.bat" backupapp in "%~1" "%~2" "%~4" -nowindows %COMPONENT% -xml %CONFLICT% %COMPILE% -TALL,logonly -L"%LOG%"
 set "GORAK_IMPORT_EXIT=%ERRORLEVEL%"
 if exist "%LOG%" type "%LOG%"
 if not "%GORAK_IMPORT_EXIT%"=="0" exit /b %GORAK_IMPORT_EXIT%
@@ -25,7 +25,7 @@ if not errorlevel 1 exit /b 1
 if not "%~3"=="-" goto success
 if "%~5"=="create-empty" goto success
 set "LOG=%~4.compile.log"
-w4gldev compileapp "%~1" "%~2" -nowindows -e -TALL,logonly -L"%LOG%"
+call "%~dp0writer-command.bat" compileapp "%~1" "%~2" -nowindows -e -TALL,logonly -L"%LOG%"
 set "GORAK_COMPILE_EXIT=%ERRORLEVEL%"
 if exist "%LOG%" type "%LOG%"
 if not "%GORAK_COMPILE_EXIT%"=="0" exit /b %GORAK_COMPILE_EXIT%

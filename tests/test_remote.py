@@ -103,15 +103,19 @@ COMPONENT_SYNC_METADATA_OUTPUT = """
 REMOTE_MANIFEST_OUTPUT = dedent(
     """
         {
-          "version": "6",
+          "version": "7",
           "files": [
             "applist.sql",
+            "revision-generation.sql",
+            "get-revision-generation.bat",
             "backup-application.bat",
             "backup-component.bat",
             "import-component.bat",
     "create-source.bat",
     "update-application.bat",
             "run-application.ps1",
+            "writer-command.bat",
+            "gorak-writer.pyz",
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
@@ -318,12 +322,16 @@ class TestVerifyRemoteHelpers:
     def test_remote_helper_files_match_the_installed_manifest(self) -> None:
         assert REMOTE_HELPER_FILES == [
             "applist.sql",
+            "revision-generation.sql",
+            "get-revision-generation.bat",
             "backup-application.bat",
             "backup-component.bat",
             "import-component.bat",
             "create-source.bat",
             "update-application.bat",
             "run-application.ps1",
+            "writer-command.bat",
+            "gorak-writer.pyz",
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
@@ -353,7 +361,7 @@ class TestVerifyRemoteHelpers:
         with pytest.raises(RemoteCommandError) as ex:
             verify_remote_helpers(
                 REMOTE_HOST,
-                run_cmd=lambda command: '{"version": "6", "files": []}',
+                run_cmd=lambda command: '{"version": "7", "files": []}',
             )
 
         assert "missing or outdated" in str(ex.value)

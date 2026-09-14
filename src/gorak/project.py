@@ -12,6 +12,8 @@ from typing import Any, cast
 
 from dotenv import dotenv_values, set_key, unset_key
 
+from .errors import ProjectError as ProjectError
+
 PROJECT_MANIFEST = "gorak.json"
 DEFAULT_VERSION = "0.1.0"
 DEFAULT_STARTING_COMPONENT = "p4_init"
@@ -47,10 +49,6 @@ ENDDECLARE
     CurProcedure.Trace(text = 'Hello World!');
     RETURN ER_OK;
 }"""
-
-
-class ProjectError(RuntimeError):
-    """Raised when a gorak project operation fails."""
 
 
 @dataclass(frozen=True)

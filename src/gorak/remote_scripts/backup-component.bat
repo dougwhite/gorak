@@ -43,7 +43,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-w4gldev backupapp out "%EXPORT_DB%" "%EXPORT_APP%" "%EXPORT_DEST%" %FLAGS%
+call "%~dp0writer-command.bat" backupapp out "%EXPORT_DB%" "%EXPORT_APP%" "%EXPORT_DEST%" %FLAGS%
 set "W4GL_EXIT=%ERRORLEVEL%"
 
 if exist "%LOG%" (

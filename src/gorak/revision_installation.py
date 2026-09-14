@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .project import ProjectError
+from .errors import ProjectError
 
 REVISION_TABLE = "gorak_revision_lanes"
 
@@ -55,3 +55,39 @@ def export_revision_installation_sql(path: Path) -> None:
             stream.write(revision_installation_sql())
     except FileExistsError as ex:
         raise ProjectError(f"Refusing to overwrite existing SQL file: {path}") from ex
+
+
+def revision_reset_statements() -> list[str]:
+    """Offline DBA generation rotation; never use while source writers are active."""
+    return [
+        "set autocommit off",
+        "set session with on_error = rollback transaction",
+        "create table gorak_revision_reset_guard (valid integer not null check(valid=1))",
+        "insert into gorak_revision_reset_guard select case when count(*)=1 and min(r.schema_version)=1 and min(p.schema_version)=2 and min(p.mode)='capture_only' and min(r.parent_installation_id)=min(p.installation_id) then 1 else 0 end from gorak_revision_install r cross join gorak_tracking_install p",
+        "update gorak_revision_install set revision_id=uuid_to_char(uuid_create())",
+        "delete from gorak_revision_lanes",
+        "drop table gorak_revision_reset_guard",
+        "commit",
+        "select revision_id from gorak_revision_install",
+    ]
+
+
+def revision_reset_sql() -> str:
+    return (
+        "-- Gorak OFFLINE revision generation reset, run as $ingres.\n"
+        "-- Stop and drain ALL source writers before executing.\n"
+        "-- Required AFTER database restore, DBMS restart, hook changes, or lane maintenance\n"
+        "-- and BEFORE permitting source clients to reconnect. Do not run online.\n"
+        "-- Configure clients with the NEW generation; old checkpoints cannot be reused.\n"
+        "-- Source and journal history are preserved. Counter lanes are cleared.\n"
+        "-- Use II_TM_EXIT_ON_ERROR=rollback; stop on errors.\n\\nocontinue\n"
+        + "\n".join(s + ";\n\\g\n" for s in revision_reset_statements())
+    )
+
+
+def export_revision_reset_sql(path: Path) -> None:
+    try:
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(revision_reset_sql())
+    except FileExistsError:
+        raise ProjectError(f"Refusing to overwrite existing SQL file: {path}") from None

@@ -1,13 +1,17 @@
 {
-  "version": "6",
+  "version": "7",
   "files": [
     "applist.sql",
+    "revision-generation.sql",
+    "get-revision-generation.bat",
     "backup-application.bat",
     "backup-component.bat",
     "import-component.bat",
     "create-source.bat",
     "update-application.bat",
     "run-application.ps1",
+    "writer-command.bat",
+    "gorak-writer.pyz",
     "get-app-list.bat",
     "get-component-list.bat",
     "get-component-sync-metadata.bat",

@@ -6,7 +6,7 @@ import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 
-from .project import ProjectError
+from .errors import ProjectError
 
 _WINDOWS_ENV = os.name == "nt"
 

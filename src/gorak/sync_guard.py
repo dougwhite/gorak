@@ -66,11 +66,17 @@ def guard_sync(
     push: bool,
     bind: bool = False,
     dry_run: bool = False,
+    lock_held: bool = False,
 ) -> list[Change]:
     status = binding_status(connection, root)
     baseline, _ = baseline_inventory(root)
     has_sources = any(root.glob("*/app.json"))
-    changes = plan_project(connection, root) if has_sources or baseline else []
+    if connection.revision_generation and not bind and (has_sources or baseline):
+        from .revision_checkpoint import revision_plan
+
+        changes, _ = revision_plan(connection, root, lock_held=lock_held)
+    else:
+        changes = plan_project(connection, root) if has_sources or baseline else []
     if bind:
         changed = [c.key for c in changes if c.database != "unchanged"]
         if changed:

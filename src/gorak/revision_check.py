@@ -1,7 +1,11 @@
 """Read-only revision structure diagnostics; never certify fast-path eligibility."""
 
 from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from .connection import OpenRoadConnection
 
 from sqlalchemy import text
 
@@ -170,3 +174,24 @@ def check_revision_installation(
         columns_verified,
         not definitions,
     )
+
+
+def validate_revision_target(connection: "OpenRoadConnection") -> None:
+    """Reject configured managed writes after replacement or broken capture."""
+    from .connection import require_odbc_settings
+    from .errors import ProjectError
+
+    if not connection.revision_generation:
+        return
+    settings = require_odbc_settings(connection)
+    if settings.database != connection.database:
+        raise ProjectError("Revision SQL and source database targets differ")
+    report = check_revision_installation(settings)
+    if report.issues or report.revision_id != connection.revision_generation:
+        raise ProjectError(
+            "Managed writer requires a healthy matching revision generation"
+        )
+
+    from .revision_route import validate_source_route
+
+    validate_source_route(connection)

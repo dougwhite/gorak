@@ -58,6 +58,8 @@ class RemoteHost:
     user: str
     host: str
     gorak_root: str
+    writer_database: str | None = None
+    writer_encoding: str = "cp1252"
 
     @property
     def ssh_target(self) -> str:
@@ -66,15 +68,19 @@ class RemoteHost:
 
 RunCommand = Callable[[list[str]], str]
 REMOTE_HELPER_MANIFEST = "gorak-helpers.json"
-REMOTE_HELPER_VERSION = "6"
+REMOTE_HELPER_VERSION = "7"
 REMOTE_HELPER_FILES = [
     "applist.sql",
+    "revision-generation.sql",
+    "get-revision-generation.bat",
     "backup-application.bat",
     "backup-component.bat",
     "import-component.bat",
     "create-source.bat",
     "update-application.bat",
     "run-application.ps1",
+    "writer-command.bat",
+    "gorak-writer.pyz",
     "get-app-list.bat",
     "get-component-list.bat",
     "get-component-sync-metadata.bat",
@@ -92,7 +98,12 @@ def build_remote_command(remote: RemoteHost, script: str, args: list[str]) -> li
     """Build an SSH command that runs a gorak helper script remotely."""
 
     remote_script = f"{remote.gorak_root}\\{script}"
-    remote_command = f"{remote_script} {' '.join(args)}"
+    from .writer_launch import remote_writer_prefix
+
+    remote_command = (
+        remote_writer_prefix(remote.writer_database, remote.writer_encoding)
+        + f"{remote_script} {' '.join(args)}"
+    )
 
     return ["ssh", "-T", remote.ssh_target, remote_command]
 
@@ -181,7 +192,9 @@ def install_remote_helpers(
 ) -> list[str]:
     """Install local Windows helper files into the remote gorak root."""
 
-    files = sorted(helper_files, key=lambda path: path.name)
+    files = sorted(
+        helper_files, key=lambda path: (path.name == REMOTE_HELPER_MANIFEST, path.name)
+    )
     run_cmd(build_make_remote_dir_command(remote))
 
     for path in files:
@@ -235,6 +248,9 @@ def backup_component(
 ) -> str:
     """Export a component on the remote host and return the remote XML path."""
 
+    if remote.writer_database:
+        verify_remote_helpers(remote, run_cmd)
+
     command = build_remote_command(
         remote=remote,
         script="backup-component.bat",
@@ -253,6 +269,9 @@ def backup_application(
     run_cmd: RunCommand = run_subprocess,
 ) -> str:
     """Export a full application on the remote host and return the remote XML path."""
+
+    if remote.writer_database:
+        verify_remote_helpers(remote, run_cmd)
 
     command = build_remote_command(
         remote=remote,

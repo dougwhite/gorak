@@ -512,3 +512,11 @@ remain pending.
 
 See [checkpoint protocol requirements](research/checkpoint-protocol.md) for the
 next infrastructure gate. Normal status and sync still use their existing paths.
+
+
+## Revision checkpoint verification
+
+`gorak journal --verify-revision` is a separate whole-snapshot diagnostic for
+[managed revision mode](revision-mode.md). It compares a quiet checkpoint with full
+XML without using the journal receipt consumer. This does not change the historical
+`--verify-selective` diagnostic or its mandatory reference exports.

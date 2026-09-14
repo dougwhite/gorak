@@ -83,6 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Export experimental revision extension SQL for DBA review; - for stdout",
     )
     install_action.add_argument(
+        "--export-revision-reset-sql",
+        metavar="PATH",
+        help="Export offline DBA revision generation reset; - for stdout",
+    )
+    install_action.add_argument(
         "--check", action="store_true", help="Check tracking inventory via ODBC"
     )
     install_action.add_argument(
@@ -113,6 +118,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-selective",
         action="store_true",
         help="Verify selective snapshots against full exports",
+    )
+    journal_parser.add_argument(
+        "--verify-revision",
+        action="store_true",
+        help="Verify revision checkpoint against full XML",
     )
     journal_parser.add_argument(
         "--map", action="store_true", help="Show affected application candidates"
@@ -424,7 +434,14 @@ def install_packaged_remote_helpers(remote: RemoteHost) -> list[str]:
             stack.enter_context(as_file(resource))
             for resource in remote_script_resources()
         ]
-        return install_remote_helpers(remote, helper_files)
+        from tempfile import TemporaryDirectory
+
+        from .writer_launch import build_writer_archive
+
+        temporary = stack.enter_context(TemporaryDirectory(prefix="gorak-helper-"))
+        archive = Path(temporary) / "gorak-writer.pyz"
+        build_writer_archive(archive)
+        return install_remote_helpers(remote, [*helper_files, archive])
 
 
 def remote_script_resources() -> list[Traversable]:
@@ -745,6 +762,7 @@ def sync_command(args: argparse.Namespace) -> str:
                 push=getattr(args, "push", False),
                 bind=getattr(args, "bind", False),
                 dry_run=getattr(args, "dry_run", False),
+                lock_held=True,
             )
             if (
                 getattr(args, "push", False)
@@ -819,6 +837,21 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
         if parsed.command == "install":
             from .installation import export_installation_sql, installation_sql
 
+            if parsed.export_revision_reset_sql is not None:
+                from .revision_installation import (
+                    export_revision_reset_sql,
+                    revision_reset_sql,
+                )
+
+                if parsed.upgrade:
+                    raise ProjectError(
+                        "Revision reset export cannot be combined with --upgrade"
+                    )
+                if parsed.export_revision_reset_sql == "-":
+                    print(revision_reset_sql(), end="")
+                else:
+                    export_revision_reset_sql(Path(parsed.export_revision_reset_sql))
+                return
             if parsed.export_revision_sql is not None:
                 from .revision_installation import (
                     export_revision_installation_sql,
@@ -903,14 +936,32 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                         parsed.reconcile,
                         parsed.map,
                         parsed.verify_selective,
+                        parsed.verify_revision,
                         parsed.rebootstrap,
                     )
                 )
                 > 1
             ):
                 raise ProjectError(
-                    "Choose one journal mode: --map, --reconcile, --verify-selective, or --rebootstrap"
+                    "Choose one journal mode: --map, --reconcile, --verify-selective, --verify-revision, or --rebootstrap"
                 )
+            if parsed.verify_revision:
+                from .revision_checkpoint import revision_plan
+                from .sync_plan import format_plan
+
+                if not connection.revision_generation:
+                    raise ProjectError(
+                        "Revision verification requires GORAK_REVISION_GENERATION"
+                    )
+                changes, diagnostics = revision_plan(
+                    connection, root, verify_reference=True
+                )
+                print(
+                    json.dumps(
+                        {**diagnostics, "changes": format_plan(changes)}, indent=2
+                    )
+                )
+                return
             if parsed.verify_selective or parsed.rebootstrap:
                 from .journal_snapshot import verify_selective_snapshot
 
@@ -1026,14 +1077,25 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             if context.project is None:
                 raise ProjectError("Status requires a gorak project")
             connection = resolve_openroad_connection(parsed, context)
+            baseline_target = binding_status(connection, context.project.root)
+            status_diagnostics: dict[str, object] = {}
+            if connection.revision_generation:
+                from .revision_checkpoint import revision_plan
+
+                changes, status_diagnostics = revision_plan(
+                    connection, context.project.root
+                )
+            else:
+                changes = plan_project(connection, context.project.root)
             print(
                 json.dumps(
                     {
-                        "baseline_target": binding_status(
-                            connection, context.project.root
-                        ),
-                        "changes": format_plan(
-                            plan_project(connection, context.project.root)
+                        "baseline_target": baseline_target,
+                        "changes": format_plan(changes),
+                        **(
+                            {"observation": status_diagnostics}
+                            if status_diagnostics
+                            else {}
                         ),
                     },
                     indent=2,
