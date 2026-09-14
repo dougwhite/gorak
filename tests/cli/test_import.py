@@ -51,3 +51,47 @@ def test_import_cli_requires_project(
     with pytest.raises(SystemExit, match="1"):
         cli.main(["component", "import", "app", "example"])
     assert "Import requires a gorak project" in capsys.readouterr().err
+
+
+def test_malformed_import_source_reports_friendly_error_before_backend_calls(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    from gorak import importer
+
+    (tmp_path / "gorak.json").write_text('{"name":"demo"}')
+    folder = tmp_path / "app"
+    folder.mkdir()
+    (folder / "example.w4gl").write_text(
+        '[proc4glsource]\ndatatype = "unterminated\n===\nRETURN;'
+    )
+    cache = tmp_path / ".openroad/app"
+    cache.mkdir(parents=True)
+    (cache / "example.xml").write_text(
+        '<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><COMPONENT name="example" xsi:type="proc4glsource"><datatype>integer</datatype><script>RETURN 0;</script></COMPONENT></OPENROAD>'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        importer,
+        "backup_component_xml",
+        lambda *a: pytest.fail("must not contact backend"),
+    )
+    with pytest.raises(SystemExit, match="1"):
+        cli.main(
+            [
+                "component",
+                "import",
+                "app",
+                "example",
+                "--backend",
+                "local",
+                "--vnode",
+                "node",
+                "--database",
+                "demo",
+            ]
+        )
+    output = capsys.readouterr().err
+    assert "Cannot validate import source" in output
+    assert "example.w4gl" in output
+    assert "Traceback" not in output
+    assert not (tmp_path / ".openroad/imports").exists()

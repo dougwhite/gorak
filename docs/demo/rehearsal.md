@@ -128,7 +128,7 @@ recording the PR view. No successful-demo claim is made from an incomplete take.
   `gorak sync --push`: 8 verified component updates. An earlier invalid synthetic
   class fixture failed; its source and error logs were retained separately.
   This verifies declaration/source re-import, not execution of a 3GL library.
-- Automated validation: 975 pytest tests passed, Ruff and mypy passed. The wheel
+- Automated validation: 978 pytest tests passed, Ruff and mypy passed. The wheel
   built successfully and contains the agent instructions and XML protocol tables.
 - The fleet-bonus draft PR was published without merging. Switching back to `main`
   and pushing restored the 10-point baseline; OpenROAD tests passed again.
@@ -153,3 +153,19 @@ The private demo keeps `main` at `demo-baseline-10`, the manual rehearsal on
 `codex/rehearsal-manual`, and the feature on `codex/fleet-bonus`. The draft rehearsal
 PR targets the manual branch so `main` remains reusable. For recording against
 `main`, commit the manual edit there first, as described in the feature prompt.
+
+## PR review regression rehearsal
+
+The combined application-description and frame-position edit was repeated against
+Launch Score: `xleft="321"` returned as `323`, the whole-application push verified,
+canonical WML was installed, and the next push reported no changes. OpenROAD tests
+passed. The fleet-bonus branch was then pushed and tested, followed by a successful
+return to the clean 10-point baseline and another unchanged push. Each suite run
+reported 2 tests, no failures and no errors; this was CLI acceptance, not a new
+manual Workbench visual check.
+
+An initial overlong test description was truncated by OpenROAD and correctly
+failed verification. The retained export was checked, disk source was reconciled,
+and `gorak recover push` verified the result before the baseline was restored.
+The successful repeat used the short description “Launch Score review check”.
+Failure artifacts and target/recovery safeguards were retained throughout.

@@ -307,3 +307,72 @@ def test_late_disk_edit_keeps_cache_unadvanced_and_blocks_retry(
     with pytest.raises(ProjectError, match="interrupted push"):
         push.push_project(connection(), tmp_path)
     assert (folder / "notes.txt").read_text() == "concurrent edit"
+
+
+@pytest.mark.parametrize("unexpected_change", [False, True])
+def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unexpected_change: bool
+) -> None:
+    from lxml import etree
+
+    from gorak import importer
+    from gorak.parser import encode_w4gl, encode_wml, parse_component_node
+
+    folder = app(tmp_path, "example")
+    node = etree.fromstring(
+        b'<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="panel" xsi:type="framesource"><script>initialize()={}</script><topform><width>1000</width><childfields><row xsi:type="entryfield"><name>input</name><xleft>104</xleft></row><row_class>formfield</row_class></childfields></topform></COMPONENT>'
+    )
+    component = parse_component_node(node)
+    source = folder / "panel.w4gl"
+    source.write_text(encode_w4gl(component))
+    markup = source.with_suffix(".wml")
+    markup.write_text(
+        (encode_wml(component) or "").replace('xleft="104"', 'xleft="321"')
+    )
+    baseline = document([new_application(folder), node])
+    cache = tmp_path / ".openroad/example/example.xml"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(baseline)
+    (folder / "app.json").write_text('{"description":"Updated description"}')
+    monkeypatch.setattr(
+        push, "read_applications", lambda _: [Application("example", "", "")]
+    )
+    monkeypatch.setattr(
+        push,
+        "read_components",
+        lambda c, a: [ComponentInfo("example", "panel", "framesource", "")],
+    )
+    database = [baseline]
+    monkeypatch.setattr(
+        push, "backup_application_xml", lambda c, a, p: p.write_bytes(database[0])
+    )
+    monkeypatch.setattr(
+        importer, "backup_component_xml", lambda c, a, n, p: p.write_bytes(database[0])
+    )
+    imports = []
+
+    def importing(
+        c: Any, a: str, name: str, xml: Path, log: Path, *, create: bool
+    ) -> None:
+        assert name == "-" and not create
+        imports.append(xml.read_bytes())
+        database[0] = imports[-1].replace(b"<xleft>321</xleft>", b"<xleft>323</xleft>")
+        if unexpected_change:
+            database[0] = database[0].replace(
+                b"initialize()={}", b"initialize()={ MESSAGE 'unexpected'; }"
+            )
+
+    monkeypatch.setattr(push, "import_component_xml", importing)
+    if unexpected_change:
+        with pytest.raises(ProjectError, match="Existing component changed"):
+            push.push_project(connection(), tmp_path)
+        assert cache.read_bytes() == baseline
+        assert 'xleft="321"' in markup.read_text()
+        assert (tmp_path / ".openroad/push-pending.json").exists()
+    else:
+        assert "1 application updates" in push.push_project(connection(), tmp_path)
+        assert cache.read_bytes() == database[0]
+        assert 'xleft="323"' in markup.read_text()
+        assert not (tmp_path / ".openroad/push-pending.json").exists()
+        assert "no changes" in push.push_project(connection(), tmp_path)
+    assert len(imports) == 1

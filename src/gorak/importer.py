@@ -80,7 +80,10 @@ def import_component(
 
     from .portable_source import overlay_component
 
-    overlay_component(deepcopy(baseline), source)
+    try:
+        overlay_component(deepcopy(baseline), source)
+    except (ValueError, OSError, etree.XMLSyntaxError) as ex:
+        raise ProjectError(f"Cannot validate import source {source}: {ex}") from ex
 
     operations = root / ".openroad" / "imports"
     operations.mkdir(parents=True, exist_ok=True)

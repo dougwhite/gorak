@@ -358,7 +358,15 @@ def _push_project(
                 before_tree = etree.parse(str(submitted))
                 for node in before_tree.findall("COMPONENT"):
                     name = str(node.get("name"))
-                    if signature(component_tree(after, name)) != signature(node):
+                    actual_node = component_tree(after, name)
+                    normalized = None
+                    if (app, name) in prepared_edits:
+                        from .frame_geometry import normalized_markup
+
+                        normalized = normalized_markup(node, actual_node)
+                    if normalized is not None:
+                        cache_updates[root / app / f"{name}.wml"] = normalized.encode()
+                    if signature(actual_node) != signature(node) and normalized is None:
                         raise ProjectError(
                             f"Existing component changed during application update: {app}/{name}"
                         )
