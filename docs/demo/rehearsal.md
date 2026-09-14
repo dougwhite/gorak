@@ -153,4 +153,3 @@ The private demo keeps `main` at `demo-baseline-10`, the manual rehearsal on
 `codex/rehearsal-manual`, and the feature on `codex/fleet-bonus`. The draft rehearsal
 PR targets the manual branch so `main` remains reusable. For recording against
 `main`, commit the manual edit there first, as described in the feature prompt.
-
