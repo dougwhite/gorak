@@ -1,171 +1,118 @@
-# Files And Formats
+# Files and formats
 
-## Project Layout
+## Versioned source and local state
 
 ```text
 project/
 ├── gorak.json
-├── field_defaults.json
 ├── app_name/
 │   ├── app.json
 │   ├── component.w4gl
 │   └── frame_component.wml
-└── .openroad/
-    ├── gorak-state.json
-    └── app_name/
-        ├── app_name.xml
-        └── component.xml
+└── .openroad/                 # ignored operational state
 ```
 
-Commit the app folders and repo metadata. Do not commit `.openroad/`; it is a
-local XML/cache/state directory.
+Commit application folders and `gorak.json`. Keep `.env` and `.openroad/` out of
+Git. XML is an import/export transport and synchronization baseline under
+`.openroad/`; it supplies no missing source information for format 2.
+A fresh clone can reconstruct supported applications without XML, an old cache,
+or the original database. Required external source/image dependencies must be
+installed or included in the project.
 
-## `.w4gl`
+## Complete readable source (format 2)
 
-`.w4gl` stores component metadata as TOML front matter, followed by optional
-script text separated by `===`.
+New exports mark `.w4gl` front matter with `source_format = 2`. The component table
+contains named native metadata. The optional `===` body is the component script;
+frame layout and event scripts are in the corresponding `.wml` file.
 
 ```toml
-[framesource]
+source_format = 2
+
+[proc4glsource]
 datatype = "integer"
-templatename = "standard"
 
 ===
-
-initialize()=
+PROCEDURE p4_score(capsules = integer) =
 {
-    CurFrame.Trace(text = 'Hello');
+    RETURN capsules * 10;
 }
 ```
 
-Additional tables may appear when present in the XML:
+Complex metadata uses named nested tables and ordered `row` arrays. For example,
+class attributes contain `displayname`, `datatype`, `isnullable`, and any other
+exported properties. Array containers retain `row_class` and other native metadata.
+`_type` identifies an explicit native subtype; `_attributes` holds native element
+attributes; `_text` preserves meaningful text on structured metadata. These are
+parts of the source model, not a second copy of a component or its script.
+Unknown properties/types and incompatible row types are refused.
 
-```toml
-[attributes]
-Name = "VARCHAR(32)"
+Field-default palettes are represented once in each frame's
+`[framesource.fielddefaults]` metadata. Format 2 does not inherit legacy
+`field_defaults.json` files: layout values and palette metadata are explicit.
+This preserves absent properties, duplicate style rows and container metadata
+without guessing which default style was intended. Migration folds existing
+repository/application/frame defaults into the complete frame metadata.
 
-[methods]
-Load = "METHOD RETURNING INTEGER NOT NULL"
+Optional `script_prefix` and `script_suffix` preserve native leading/trailing
+whitespace only. Edit the script below `===`; it appears in exactly one place.
+`component_attributes` holds any additional native component attributes.
 
-[taggedvalues]
-db_name = "demo"
-```
+## Frame markup
 
-## `.wml`
-
-Frame visual markup is written to `.wml` beside the `.w4gl` file.
+Format 2 WML has `<frame source_format="2">`. Properties appear as attributes,
+structured properties as child elements, and native array wrappers retain their
+metadata. Typed rows use their concrete field names:
 
 ```xml
-<frame>
-  <startmenu />
-  <topform>
-    <entryfield
-      name="example_entryfield"
-      xleft="104"
-      ytop="104"
-      width="1417"
-    />
+<frame source_format="2">
+  <topform width="6000" height="4000">
+    <childfields row_class="formfield">
+      <entryfield name="capsules" datatype="integer"
+                  xleft="200" ytop="1000" width="1800" height="300"/>
+      <buttonfield name="calculate" textlabel="Calculate score"
+                   xleft="200" ytop="1500" width="1800" height="300">
+        <script><![CDATA[on click = { score = p4_score(capsules = capsules); }]]></script>
+      </buttonfield>
+    </childfields>
   </topform>
 </frame>
 ```
 
-Current `.wml` coverage includes:
+Keep identifiers and event scopes consistent. Explicitly supply the intended
+properties when adding controls; no hidden palette supplies missing layout.
+Native alignment such as `gravity` is preserved when present. See
+[component editing](component-editing.md) for geometry verification.
 
-- `startmenu`
-- `topform`
-- `mainbartop`
-- `mainbarbottom`
-- `mainbarleft`
-- `mainbarright`
-- nested `childfields` / `childmenufields`
-- field scripts as CDATA
+## Application metadata
 
-## `app.json`
+`app.json` uses `"source_format": 2`. It retains friendly scalar names such as
+`starting_component`, `description`, and `database_name`. Structured
+`included_applications` has an ordered `row` array with native `appname`,
+`imgfilename`, `version`, and `sequence` properties, plus `row_class`.
+The core include is explicit when exported. Other native application properties,
+such as `commandline`, `taggedvalues`, and `appflags`, occur once in this metadata.
+An absent property stays absent; an empty value remains explicitly empty.
 
-Application metadata lives in the app folder.
+## Migrating existing projects
 
-```json
-{
-  "starting_component": "fm_start",
-  "description": "Demo app",
-  "included_applications": [
-    "shared_app",
-    {"name": "image_include", "image": "image_include.pkg"}
-  ],
-  "database_name": "runtime_db",
-  "database_type": "1"
-}
+```sh
+gorak migrate-source
+git diff
 ```
 
-## Field Defaults
+This local command reads the old companions or cached export, applies pending
+readable edits and legacy field-default inheritance, then verifies exact
+reconstruction from the proposed format-2 files before installing them. It removes
+legacy `.gorak-source` files and consumed field-default JSON, preserving before-images
+and the migration plan under `.openroad/migrations/`. It never changes the database,
+its synchronization baseline, target binding, revision checkpoint or generation.
+Locks, pending operations and quarantine must be resolved before migration.
 
-New projects include repo-level defaults:
+Do not delete old XML before migrating: incomplete legacy projections cannot
+recover information they never contained. Unknown legacy source shapes cause an
+explicit refusal before source replacement. Keep the recovery evidence and extend
+schema support for that shape. New exports never create `.gorak-source`.
 
-```text
-field_defaults.json
-```
-
-Exports may also create app-level overrides:
-
-```text
-app_name/field_defaults.json
-```
-
-During export, frame defaults already represented by the repo/app defaults are
-omitted from the frame `.w4gl`; only overrides remain.
-
-Promote shared app-level overrides into the repo-level file:
-
-```bash
-gorak defaults flatten
-```
-
-## XML Cache
-
-Gorak caches exported OpenROAD XML under `.openroad/`.
-
-```text
-.openroad/app_name/app_name.xml
-.openroad/app_name/component.xml
-```
-
-This is useful for debugging and audit, but it is local generated state.
-
-## Portable XML source companions (format 1)
-
-Application exports now write this additional **tracked source** directory:
-
-```text
-app_name/.gorak-source/
-├── format                   # 1
-├── application.xml          # full application metadata
-└── components/
-    └── component.xml        # full XML for each exported component
-```
-
-Commit this directory. Unlike `.openroad`, it is independent of a database's
-synchronization state and is required to restore source structures not yet fully
-represented in readable files. A clean clone can use these companions to create
-applications containing exported frames, globals, 3GL declarations, and other
-preserved component types. Newly authored procedures/classes still need no XML.
-
-Readable app metadata overrides its represented XML fields. Component scripts,
-represented metadata, frame markup and existing field-default properties overlay
-the preserved component XML. Unedited opaque content is retained. See
-[component editing](component-editing.md) for supported shapes and acceptance.
-Unsupported edits are rejected before import.
-
-Do not edit companions independently of their readable files or rename component
-folders/files without updating source identities. A companion without its readable
-component is rejected; deletion reconciliation belongs to the sync-planning work.
-The format marker is checked on restore. Unknown versions and unrecognized XML
-root structures are rejected rather than partially imported.
-
-Full and component exports refresh their corresponding companions. Pushes need
-not rewrite them: reconstruction applies the current readable edits.
-OpenROAD XML contents are preserved without inventing IDs; deployment baselines,
-credentials, trace logs, and recovery files remain outside versioned source.
-
-After upgrading an existing export-only project, export its applications once to
-produce companions before attempting a cache-free clone restoration. Reconcile pending local edits before exporting. Ordinary `gorak sync` plans a
-safe pull and refuses conflicts; direct export is not a conflict-resolution tool.
+The earlier compact procedure/class authoring syntax remains supported for new
+components. Existing legacy exports should be migrated before ordinary sync;
+reconstruction no longer consults XML companions or caches.

@@ -18,9 +18,9 @@ The command accepts the same connection flags as component export.
 
 ## Readable edits and verification
 
-The importer overlays scripts, represented component metadata and frame markup
-onto preserved XML. See [component editing](component-editing.md) for the observed
-types, field defaults, layout behavior and limits. Unedited opaque XML is retained.
+The importer reconstructs format-2 components from readable source and uses the
+cached XML only for conflict detection and verification. See
+[component editing](component-editing.md) for types, layout behavior and limits.
 Creation belongs to [push](push.md), not this existing-component command.
 
 The baseline comes from the newest component or application export in the local
@@ -48,5 +48,5 @@ before reconciling. Gorak does not automatically restore an old export over a
 potentially newer Workbench change. Project push additionally maintains its pending
 recovery state; follow its reported `gorak recover push` guidance.
 
-Keep connection settings, XML caches and diagnostic logs out of Git. Portable
-source companions under each app's `.gorak-source/` are tracked separately.
+Keep connection settings, XML caches and diagnostic logs out of Git. Migrate old
+XML companions with `gorak migrate-source`; see [source formats](files.md).

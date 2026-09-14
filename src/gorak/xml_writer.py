@@ -31,6 +31,10 @@ def datatype(row: etree._Element, declaration: str) -> None:
 
 
 def new_component(path: Path) -> etree._Element:
+    from .readable_source import decode_component, is_complete
+
+    if is_complete(path):
+        return decode_component(path)
     validate_name(path.stem)
     text = path.read_text()
     component = parse_w4gl(text, path.stem)
@@ -104,6 +108,10 @@ def new_component(path: Path) -> etree._Element:
 def new_application(path: Path) -> etree._Element:
     validate_name(path.name)
     metadata = read_json(path / "app.json")
+    if metadata.get("source_format") == 2:
+        from .readable_source import decode_application
+
+        return decode_application(path)
     fields = {
         "starting_component": "procstart",
         "description": "versshortremarks",

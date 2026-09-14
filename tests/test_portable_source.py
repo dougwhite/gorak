@@ -6,7 +6,8 @@ from lxml import etree
 from gorak.export import apply_field_default_inheritance
 from gorak.importer import signature
 from gorak.parser import encode_w4gl, encode_wml, parse_component_node
-from gorak.portable_source import restore_component, write_companions
+from gorak.portable_source import legacy_component as restore_component
+from gorak.portable_source import write_companions
 from gorak.project import ProjectError
 
 
@@ -67,6 +68,7 @@ def test_unknown_format_rejected(tmp_path: Path) -> None:
     (companion / "components").mkdir()
     (companion / "components" / "proc.xml").write_text("<OPENROAD/>")
     (companion / "format").write_text("999")
+    (folder / "proc.w4gl").write_text("[proc4glsource]\n===\nRETURN 1;")
     with pytest.raises(ProjectError, match="format"):
         restore_component(folder / "proc.w4gl")
 

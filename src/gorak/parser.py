@@ -397,7 +397,9 @@ def serialize_wml(element: etree._Element, indent: int = 0) -> str:
         return f"{padding}<{element.tag}{inline_attrs(attrs)}/>"
 
     if element.tag == "script":
-        return f"{padding}<script><![CDATA[{text or ''}]]></script>"
+        content = (text or "").replace("]]>", "]]]]><![CDATA[>")
+        content = content.replace("\r", "]]>&#13;<![CDATA[")
+        return f"{padding}<script><![CDATA[{content}]]></script>"
 
     start = serialized_start_tag(element.tag, attrs, padding)
     end = f"{padding}</{element.tag}>"
@@ -438,7 +440,10 @@ def inline_attrs(attrs: list[tuple[str, str]]) -> str:
 
 
 def quoted_xml_attr(value: str) -> str:
-    return f'"{escape(value, quote=True)}"'
+    escaped = escape(value, quote=True)
+    for char, reference in [("\t", "&#9;"), ("\n", "&#10;"), ("\r", "&#13;")]:
+        escaped = escaped.replace(char, reference)
+    return f'"{escaped}"'
 
 
 def extract_props(

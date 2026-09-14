@@ -214,20 +214,16 @@ def test_fresh_push_restores_exported_frame_without_cache(
 ) -> None:
     from lxml import etree
 
-    from gorak.export import apply_field_default_inheritance
-    from gorak.parser import encode_w4gl, encode_wml, parse_component_node
-    from gorak.portable_source import write_companions
+    from gorak.readable_source import encode_component
 
     folder = app(tmp_path, "example")
-    xml = Path("tests/fixtures/fm_example_frame.xml")
-    node = etree.parse(str(xml)).find("COMPONENT")
+    node = etree.parse("tests/fixtures/fm_example_frame.xml").find("COMPONENT")
     assert node is not None
-    component = parse_component_node(node)
-    apply_field_default_inheritance(tmp_path, "example", [component])
-    source = folder / f"{component.name}.w4gl"
-    source.write_text(encode_w4gl(component))
-    source.with_suffix(".wml").write_text(encode_wml(component) or "")
-    write_companions(xml, folder)
+    source = folder / f"{node.get('name')}.w4gl"
+    text, markup = encode_component(node)
+    source.write_text(text)
+    source.with_suffix(".wml").write_text(markup or "")
+    assert not list(tmp_path.rglob("*.xml"))
     assert not (tmp_path / ".openroad").exists()
     monkeypatch.setattr(push, "read_applications", lambda _: [])
     imported: list[bytes] = []
@@ -310,8 +306,12 @@ def test_late_disk_edit_keeps_cache_unadvanced_and_blocks_retry(
 
 
 @pytest.mark.parametrize("unexpected_change", [False, True])
+@pytest.mark.parametrize("complete", [False, True])
 def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unexpected_change: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unexpected_change: bool,
+    complete: bool,
 ) -> None:
     from lxml import etree
 
@@ -322,18 +322,26 @@ def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
     node = etree.fromstring(
         b'<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="panel" xsi:type="framesource"><script>initialize()={}</script><topform><width>1000</width><childfields><row xsi:type="entryfield"><name>input</name><xleft>104</xleft></row><row_class>formfield</row_class></childfields></topform></COMPONENT>'
     )
+    from gorak.readable_source import encode_application, encode_component
+
     component = parse_component_node(node)
     source = folder / "panel.w4gl"
-    source.write_text(encode_w4gl(component))
-    markup = source.with_suffix(".wml")
-    markup.write_text(
-        (encode_wml(component) or "").replace('xleft="104"', 'xleft="321"')
+    text, wml = (
+        encode_component(node)
+        if complete
+        else (encode_w4gl(component), encode_wml(component))
     )
-    baseline = document([new_application(folder), node])
+    source.write_text(text)
+    markup = source.with_suffix(".wml")
+    markup.write_text((wml or "").replace('xleft="104"', 'xleft="321"'))
+    app_node = new_application(folder)
+    baseline = document([app_node, node])
     cache = tmp_path / ".openroad/example/example.xml"
     cache.parent.mkdir(parents=True)
     cache.write_bytes(baseline)
-    (folder / "app.json").write_text('{"description":"Updated description"}')
+    app_values = encode_application(app_node) if complete else {}
+    app_values["description"] = "Updated description"
+    (folder / "app.json").write_text(json.dumps(app_values))
     monkeypatch.setattr(
         push, "read_applications", lambda _: [Application("example", "", "")]
     )

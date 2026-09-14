@@ -28,7 +28,7 @@ from .domain import (
 )
 from .field_defaults import diff_defaults, effective_defaults
 from .local import LocalCommandError
-from .parser import encode_w4gl, encode_wml, parse_application_xml, parse_xml
+from .parser import encode_w4gl, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
     RemoteCommandError,
@@ -112,6 +112,8 @@ def write_app_metadata(
     path = root / application.name / "app.json"
     existing = read_json(path) if path.is_file() else {}
     path.parent.mkdir(parents=True, exist_ok=True)
+    if existing.get("source_format") == 2:
+        return path
     write_json(
         path,
         application_metadata(application, existing, included_applications),
@@ -230,26 +232,29 @@ def export_application_to_paths(
     progress_message(progress, "Exporting full application XML")
     backup_application_xml(connection, app, paths.xml_path)
 
-    exported = parse_application_xml(etree.parse(str(paths.xml_path)))
-    apply_field_default_inheritance(paths.source_dir.parent, app, exported.components)
-    for component in exported.components:
-        progress_message(progress, f"Encoding component {app}::{component.name}")
-        write_component_w4gl(
-            paths.source_dir,
-            component.name,
-            encode_w4gl(component),
-            progress,
-        )
-        write_component_wml(
-            paths.source_dir,
-            component.name,
-            encode_wml(component),
-            progress,
-        )
+    from .portable_source import read_document
+    from .readable_source import encode_application, encode_component
 
-    from .portable_source import write_companions
-
-    write_companions(paths.xml_path, paths.source_dir)
+    tree = read_document(paths.xml_path)
+    if tree.tag != "OPENROAD" or any(
+        n.tag not in {"APPLICATION", "COMPONENT"} for n in tree
+    ):
+        raise ProjectError("Unsupported export document structure")
+    exported = parse_application_xml(tree)
+    application_node = tree.find("APPLICATION")
+    if application_node is None or len(tree.findall("APPLICATION")) != 1:
+        raise ProjectError("Expected one exported application")
+    application_source = encode_application(application_node)
+    encoded = [
+        (str(n.get("name")), encode_component(n)) for n in tree.findall("COMPONENT")
+    ]
+    if len({name.casefold() for name, _ in encoded}) != len(encoded):
+        raise ProjectError("Duplicate exported component names")
+    for name, (text, markup) in encoded:
+        progress_message(progress, f"Encoding component {app}::{name}")
+        write_component_w4gl(paths.source_dir, name, text, progress)
+        write_component_wml(paths.source_dir, name, markup, progress)
+    write_json(paths.source_dir / "app.json", application_source)
     return exported
 
 
@@ -266,28 +271,20 @@ def export_component_to_paths(
     paths.w4gl_path.parent.mkdir(parents=True, exist_ok=True)
     backup_component_xml(connection, app, component, paths.xml_path)
 
-    parsed_component = parse_xml(etree.parse(str(paths.xml_path)))
-    normalized_xml = normalize_component_xml_path(paths.xml_path, parsed_component.name)
-    apply_field_default_inheritance(
-        paths.w4gl_path.parent.parent,
-        app,
-        [parsed_component],
-    )
-    w4gl_path = write_component_w4gl(
-        paths.w4gl_path.parent,
-        parsed_component.name,
-        encode_w4gl(parsed_component),
-        progress,
-    )
-    write_component_wml(
-        paths.w4gl_path.parent,
-        parsed_component.name,
-        encode_wml(parsed_component),
-        progress,
-    )
-    from .portable_source import write_companions
+    from .portable_source import read_document
+    from .readable_source import encode_component
 
-    write_companions(normalized_xml, paths.w4gl_path.parent)
+    tree = read_document(paths.xml_path)
+    if tree.tag != "OPENROAD" or len(tree) != 1 or tree[0].tag != "COMPONENT":
+        raise ProjectError("Expected a single exported component")
+    node = tree[0]
+    parsed_component = parse_xml(tree)
+    normalize_component_xml_path(paths.xml_path, parsed_component.name)
+    text, markup = encode_component(node)
+    w4gl_path = write_component_w4gl(
+        paths.w4gl_path.parent, parsed_component.name, text, progress
+    )
+    write_component_wml(paths.w4gl_path.parent, parsed_component.name, markup, progress)
     return w4gl_path
 
 
@@ -724,7 +721,7 @@ def write_component_w4gl(
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.w4gl"
     normalize_case_path(path, progress=progress, label="component")
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8", newline="\n")
     return path
 
 
@@ -742,5 +739,5 @@ def write_component_wml(
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.wml"
     normalize_case_path(path, progress=progress, label="component")
-    path.write_text(content + "\n")
+    path.write_text(content.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
     return path

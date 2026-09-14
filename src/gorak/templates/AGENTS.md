@@ -30,15 +30,15 @@ use a disposable source/runtime environment.
 
 ## Source ownership and safety
 
-- Track `.w4gl`, `.wml`, `app.json`, `gorak.json`, field-default JSON and exported
-  `.gorak-source/` XML companions. Companions preserve structures not represented
-  by readable source. Let Gorak maintain them; do not hand-edit their internals.
+- Track `.w4gl`, `.wml`, `app.json` and `gorak.json`. Format 2 contains complete
+  source; no XML companion or existing cache is needed for reconstruction.
 - `.env` contains local connection settings and secrets. Never commit it or print
-  credentials. `.openroad/` is ignored: it contains target bindings, XML baselines,
-  operation journals, locks, recovery evidence and run/test artifacts.
-- Edit field defaults deliberately: inherited values can affect multiple frames.
-  Unknown XML/property shapes are rejected rather than guessed. Newly authored
-  frames still require a preserved frame baseline; do not invent companion XML.
+  credentials. `.openroad/` is ignored: it contains target bindings, XML transport
+  and baselines, operation journals, locks, recovery evidence and run artifacts.
+- Keep all named metadata, typed rows and array wrappers intact unless changing
+  them deliberately. Frame palettes and layout properties are explicit. Unknown
+  source shapes are rejected rather than guessed. Run `gorak migrate-source`
+  once for legacy projects before ordinary sync; retain the migration evidence.
 - A conflict means disk and database changed relative to their common baseline.
   Stop, retain both versions, inspect the reported component and ask the owner
   which change to reconcile. There is no ordinary force/overwrite workflow.

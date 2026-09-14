@@ -24,9 +24,7 @@ def write_project(root: Path, env: str) -> None:
 def write_local_project(root: Path) -> None:
     write_project(
         root,
-        "GORAK_BACKEND=local\n"
-        "GORAK_VNODE=project-vnode\n"
-        "GORAK_DATABASE=project-db\n",
+        "GORAK_BACKEND=local\nGORAK_VNODE=project-vnode\nGORAK_DATABASE=project-db\n",
     )
 
 
@@ -107,26 +105,38 @@ class TestAppExport:
             ("backup", "project-vnode", "project-db", "sample_app", xml_path),
         ]
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
-            "starting_component": "fm_start",
-            "description": "Example application",
-            "included_applications": [
-                "gorak_included",
-                {"name": "finance", "image": "finance.pkg"},
-            ],
+            "source_format": 2,
+            "included_applications": {
+                "row": [
+                    {"sequence": "1", "appname": "gorak_included", "version": "-1"},
+                    {
+                        "sequence": "2",
+                        "appname": "finance",
+                        "version": "-1",
+                        "imgfilename": "finance.pkg",
+                    },
+                    {"appname": "core", "version": "-1", "imgfilename": "core.plb"},
+                ],
+                "row_class": "inclapp",
+            },
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
-        assert "[framesource]" in (
-            project_root / "sample_app" / "fm_complex_frame.w4gl"
-        ).read_text()
-        assert "[framesource]" in (
-            project_root / "sample_app" / "fm_example_frame.w4gl"
-        ).read_text()
-        assert "[proc4glsource]" in (
-            project_root / "sample_app" / "p4_example_procedure.w4gl"
-        ).read_text()
-        assert "[classsource]" in (
-            project_root / "sample_app" / "uc_example_userclass.w4gl"
-        ).read_text()
+        assert (
+            "[framesource]"
+            in (project_root / "sample_app" / "fm_complex_frame.w4gl").read_text()
+        )
+        assert (
+            "[framesource]"
+            in (project_root / "sample_app" / "fm_example_frame.w4gl").read_text()
+        )
+        assert (
+            "[proc4glsource]"
+            in (project_root / "sample_app" / "p4_example_procedure.w4gl").read_text()
+        )
+        assert (
+            "[classsource]"
+            in (project_root / "sample_app" / "uc_example_userclass.w4gl").read_text()
+        )
         assert capsys.readouterr().out == (
             "Exporting application sample_app from local\n"
             "Retrieving application metadata\n"
@@ -207,12 +217,20 @@ class TestAppExport:
             ("backup", "vnode", "db", "sample_app", xml_path),
         ]
         assert json.loads((output_dir / "sample_app" / "app.json").read_text()) == {
-            "starting_component": "fm_start",
-            "description": "Example application",
-            "included_applications": [
-                "gorak_included",
-                {"name": "finance", "image": "finance.pkg"},
-            ],
+            "source_format": 2,
+            "included_applications": {
+                "row": [
+                    {"sequence": "1", "appname": "gorak_included", "version": "-1"},
+                    {
+                        "sequence": "2",
+                        "appname": "finance",
+                        "version": "-1",
+                        "imgfilename": "finance.pkg",
+                    },
+                    {"appname": "core", "version": "-1", "imgfilename": "core.plb"},
+                ],
+                "row_class": "inclapp",
+            },
         }
         assert xml_path.read_text() == FULL_APP_FIXTURE_PATH.read_text()
         assert "[framesource]" in w4gl_path.read_text()
@@ -278,14 +296,14 @@ class TestAppExport:
 
         cli.main(["app", "export", "orders_mixedcase"])
 
-        xml_path = project_root / ".openroad" / "orders_mixedCase" / "orders_mixedCase.xml"
+        xml_path = (
+            project_root / ".openroad" / "orders_mixedCase" / "orders_mixedCase.xml"
+        )
         assert calls == [
             ("app", "project-vnode", "project-db"),
             ("backup", "project-vnode", "project-db", "orders_mixedCase", xml_path),
         ]
-        assert (
-            project_root / "orders_mixedCase" / "fm_example_frame.w4gl"
-        ).is_file()
+        assert (project_root / "orders_mixedCase" / "fm_example_frame.w4gl").is_file()
         assert capsys.readouterr().out == (
             "Exporting application orders_mixedcase from local\n"
             "Retrieving application metadata\n"
@@ -419,7 +437,9 @@ class TestAppExport:
             return local_path
 
         monkeypatch.setattr(export_module, "get_app_list", fake_get_app_list)
-        monkeypatch.setattr(export_module, "backup_application", fake_backup_application)
+        monkeypatch.setattr(
+            export_module, "backup_application", fake_backup_application
+        )
         monkeypatch.setattr(export_module, "download_file", fake_download_file)
 
         cli.main(["app", "export", "sample_app"])
@@ -442,12 +462,20 @@ class TestAppExport:
             ),
         ]
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
-            "starting_component": "fm_start",
-            "description": "Example application",
-            "included_applications": [
-                "gorak_included",
-                {"name": "finance", "image": "finance.pkg"},
-            ],
+            "source_format": 2,
+            "included_applications": {
+                "row": [
+                    {"sequence": "1", "appname": "gorak_included", "version": "-1"},
+                    {
+                        "sequence": "2",
+                        "appname": "finance",
+                        "version": "-1",
+                        "imgfilename": "finance.pkg",
+                    },
+                    {"appname": "core", "version": "-1", "imgfilename": "core.plb"},
+                ],
+                "row_class": "inclapp",
+            },
         }
         assert "[framesource]" in w4gl_path.read_text()
         assert capsys.readouterr().out == (

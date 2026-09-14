@@ -12,14 +12,12 @@ created from that metadata and their `.w4gl` files, without needing cached XML.
 New source includes are ordered before applications that depend on them. External
 image includes are passed through; the image must be available to OpenROAD.
 
-Supported creation includes empty applications, 4GL procedures, and user classes.
-Class attributes and methods support type declarations, arrays, nullability,
-private methods, and return types. Unknown metadata is rejected. Newly authored frames and other component types are not supported yet. Exported
-components of these types can be restored from tracked XML source companions; see
-[portable source format](files.md#portable-xml-source-companions-format-1).
+Format 2 supports reconstruction of all eight observed component types from
+readable files, including frames and their field events. No saved XML is required.
+New procedures/classes also support the earlier compact declaration syntax.
+Unknown source shapes are refused. See [source formats](files.md).
 
-Existing components use preserved XML overlays for scripts, represented metadata,
-frame layout and field events. See [component editing](component-editing.md).
+Existing components are rebuilt from the same readable representation.
 Database changes since the baseline cause a conflict. Application metadata updates
 preserve the latest full application XML, check for database drift, and bundle new
 components before importing. Compilation runs in a fresh OpenROAD process so newly

@@ -131,7 +131,11 @@ def import_component(
             from .frame_geometry import normalized_markup
 
             actual = component_tree(after, component)
-            normalized = normalized_markup(current, actual)
+            from .readable_source import is_complete
+
+            normalized = normalized_markup(
+                current, actual, complete=is_complete(source)
+            )
             if signature(actual) != signature(current) and normalized is None:
                 raise ProjectError(
                     "Post-import verification failed; database may have changed"

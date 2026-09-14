@@ -206,3 +206,30 @@ left no installation tables or rules. Documentation covers client-side DBA execu
 
 427 automated tests, Ruff, mypy, and diff checks passed. Runtime hook health,
 consumer lifecycle, retention, upgrades, and broad source/save acceptance remain open.
+
+
+## Complete readable source (format 2), 2026-09-14
+
+This supersedes the format-1 companion requirement in the historical M1 rehearsal.
+
+- Exported three applications to readable `.w4gl`, `.wml` and `app.json`; committed
+  and cloned them locally with no XML, companions or `.openroad` cache in the clone.
+- Created a new disposable Ingres database with OpenROAD catalogs using the
+  installation's `createdb TARGET -no_x100 -f ingres windows_4gl` command.
+- Created and compiled all three applications through the normal verified push.
+  The included test framework supplies the demo's external source dependency.
+- Tests passed before and after score and frame edits: two reported testcases,
+  zero failures, errors or skips on each run. A subsequent status was unchanged
+  and a second push performed no imports.
+- Repeated exports were byte-identical and created no source companions.
+- Separately created two uniquely named applications in the existing disposable
+  database, verified metadata edits across all eight observed component types,
+  and verified frame coordinate canonicalization plus a combined app/frame update.
+- Migrated a copy of the actual demo checkout while retaining pending readable
+  edits and exact reconstruction for all four components. The original demo
+  checkout and database application were left untouched.
+- Manual Workbench visual acceptance for this format change remains unperformed.
+
+Before reusing a legacy demo checkout, run `gorak migrate-source`, inspect its
+Git diff and retain `.openroad/migrations` recovery evidence. Do not delete XML
+before migration or remove target bindings/baselines as a reset shortcut.

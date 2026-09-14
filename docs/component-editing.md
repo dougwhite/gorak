@@ -1,38 +1,27 @@
 # Editing readable OpenROAD source
 
-The XML fallback is the ordinary compatibility path. Gorak overlays readable
-changes onto complete preserved XML, checks the current database against the
-baseline, imports the component, compiles it in a fresh process, and verifies a
-fresh full export. Managed revision and direct decoding remain optional.
+Gorak reconstructs format-2 source from readable files, checks the current database
+against its export baseline, imports transient XML, compiles in a fresh process,
+and verifies a fresh full export. XML baselines protect synchronization; they do
+not supply application source. Managed revision/direct decoding remain optional.
 
 ## Current editable surface
 
-The compatibility corpus contains classes, 4GL procedures, globals, 3GL procedure
-declarations, shared scripts, ghost frames, normal frames and constants. Existing
-components of these types can carry script changes and represented scalar metadata
-changes. Class attribute/method declarations and tagged values retain unedited
-native row metadata. Adding/removing declarations is different from deleting the
-component itself; component deletion pushes remain unsupported.
+Classes, 4GL procedures, globals, 3GL declarations, shared scripts, ghost frames,
+normal frames and constants have complete readable representations. Scripts,
+metadata, class attributes/methods, tagged values and structured metadata are
+editable. Component deletion pushes remain unsupported.
 
-Frame `.w4gl` contains frame scripts and metadata. Frame `.wml` contains layout,
-properties and field-event scripts. Existing field properties and scripts, nested
-controls, field additions/removals and sibling ordering are reconstructed against
-preserved XML. Keep field names unique and scripts consistent with their scopes.
-New fields with explicit `xleft` or `ytop` do not inherit palette gravity;
-set `gravity` explicitly when alignment relative to the parent is intended.
-Existing fields retain their native alignment.
-Changing a field's name or type is interpreted as replacing that field; include
-all intended properties and code in the replacement.
+Frame `.w4gl` contains the frame script and metadata, including complete palette
+metadata. `.wml` contains layout, explicit properties, array wrappers and field
+events. Controls can be added, removed or reordered. Keep field names unique and
+scripts consistent with their scopes. New controls must specify their intended
+properties; no hidden XML or inferred default style fills them in.
 
-Field defaults are inherited from repository, application and frame layers.
-Property edits to existing default styles are supported; inventing new default
-style/group identities is not. Unrepresented complex XML remains in companions.
-Do not turn an empty placeholder for opaque metadata into arbitrary text.
-Unknown types/properties and ambiguous structures are rejected explicitly.
-
-New procedure/class source can be authored without a companion. A newly authored
-frame still needs an exported frame baseline. Portable applications can restore
-other exported component types from their tracked companions. See [push](push.md).
+Unknown types/properties, incompatible row types and ambiguous structures fail
+explicitly. All supported exported types can be recreated from a clean clone.
+Newly authored source still needs valid OpenROAD semantics and installed external
+dependencies. See [file format and migration](files.md) and [push](push.md).
 
 ## Frame coordinates and verification
 
@@ -56,19 +45,17 @@ database; the ordinary pending/recovery gates apply.
 
 ## Evidence and remaining acceptance
 
-Local corpus reconstruction preserved all XML content for 157 available component
-baselines. Twelve frame position edits reconstructed schema-valid XML. One local
-3GL declaration had no cached baseline and was excluded from that result.
-These are local format checks. Separately, a synthetic application containing all
-eight types was created and compiled; description edits to all eight passed one
-live `gorak sync --push` with full export verification. This does not establish
-runtime behavior for every component or execute an external 3GL library.
+Format-2 reconstruction passed exact semantic comparison for 222 available
+component exports spanning all eight observed types and seven application exports.
+Synthetic fixture tests cover declarations, palettes, field events, typed rows,
+whitespace, incompatible types and migration recovery.
 
-See [the current rehearsal log](demo/rehearsal.md) for live import, test, geometry,
-and manual visual acceptance. Publication remains gated on a usable demo frame
-and the complete repeatable feature/PR loop.
+A real Git clone containing no XML or cache created three applications in a new
+disposable source database, compiled them and passed the configured test suite.
+Script/frame edits then passed push, tests, unchanged status and a no-op push.
+Repeated exports were byte-stable. A separate disposable rehearsal also verified
+metadata edits across all eight types and frame coordinate canonicalization.
 
-The packaged XML property-order and inheritance tables describe the installed
-OpenROAD 12 export schema used for these checks. They contain protocol type/field
-names rather than database storage definitions. Unobserved schema extensions are
-preserved untouched or refused when their order/shape cannot be reconstructed.
+These are automated database/runtime checks. Visual Workbench acceptance of the
+newly reconstructed frames has not been performed for this format change. Restart
+Workbench if its compiled component cache shows an older version.

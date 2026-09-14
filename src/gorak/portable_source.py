@@ -1,4 +1,4 @@
-"""Versioned XML source companions, independent of database synchronization state."""
+"""Readable reconstruction and explicit migration support for legacy companions."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -72,10 +72,13 @@ def cached_node(folder: Path, tag: str, name: str) -> etree._Element | None:
     return None
 
 
-def restore_component(path: Path) -> etree._Element:
+def legacy_component(path: Path) -> etree._Element:
     """Overlay readable edits over portable companions or legacy cached XML."""
+    from .readable_source import decode_component, is_complete
     from .xml_writer import new_component
 
+    if is_complete(path):
+        return decode_component(path)
     companion = path.parent / DIRECTORY / "components" / f"{path.stem}.xml"
     if companion.is_file():
         if (companion.parent.parent / "format").read_text().strip() != "1":
@@ -94,6 +97,21 @@ def restore_component(path: Path) -> etree._Element:
 
 def overlay_component(node: etree._Element, path: Path) -> etree._Element:
     """Apply editable source to a supplied baseline, preserving opaque XML."""
+    from .readable_source import decode_component, is_complete
+
+    if is_complete(path):
+        replacement = decode_component(path)
+        if replacement.get("name") != node.get("name") or replacement.get(
+            "{http://www.w3.org/2001/XMLSchema-instance}type"
+        ) != node.get("{http://www.w3.org/2001/XMLSchema-instance}type"):
+            raise ProjectError(
+                "Component identity or type cannot change during an edit"
+            )
+        node.attrib.clear()
+        node.attrib.update(replacement.attrib)
+        node.text = replacement.text
+        node[:] = list(replacement)
+        return node
     original = parse_component_node(node)
     text = path.read_text()
     edited = parse_w4gl(text, path.stem)
@@ -118,11 +136,14 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
     return node
 
 
-def restore_application(folder: Path) -> etree._Element:
+def legacy_application(folder: Path) -> etree._Element:
     """Preserve unknown app source properties while replacing represented metadata."""
+    from .project import read_json
     from .xml_writer import new_application
 
     edited = new_application(folder)
+    if read_json(folder / "app.json").get("source_format") == 2:
+        return edited
     companion = folder / DIRECTORY / "application.xml"
     if companion.is_file():
         if (companion.parent / "format").read_text().strip() != "1":
@@ -166,3 +187,22 @@ def restore_application(folder: Path) -> etree._Element:
         )
     node[:] = sorted(node, key=lambda child: order.index(str(child.tag)))
     return node
+
+
+def restore_component(path: Path) -> etree._Element:
+    """Reconstruct only from versioned readable files, never cached XML."""
+    from .xml_writer import new_component
+
+    try:
+        return new_component(path)
+    except ProjectError as ex:
+        raise ProjectError(
+            f"{ex}. For legacy exports, run gorak migrate-source first"
+        ) from ex
+
+
+def restore_application(folder: Path) -> etree._Element:
+    """Reconstruct application metadata without cache or companion lookup."""
+    from .xml_writer import new_application
+
+    return new_application(folder)
