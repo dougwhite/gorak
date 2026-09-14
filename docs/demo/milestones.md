@@ -302,3 +302,13 @@ choices must not retroactively imply prior verification or erase unresolved bugs
   rejected. See [CLI acceptance](../research/compiled-procedure-acceptance.md).
 - [ ] Manual compiled-procedure Workbench description/script/save/recompile checks.
   CLI identity replacement remains a fallback and is not a substitute for this gate.
+
+## Direct table replacement follow-up (2026-09-14)
+
+- [x] Lossless ASCII graph framing and re-encoding verified on all 111 captured
+  reference graphs, including large frames and bitmap field data. See
+  [scope and measurements](../research/direct-storage-roundtrip.md).
+- [ ] Interpret remaining class fields and external references; framing preserves
+  opaque values but does not certify semantic coverage or table-write safety.
+- [ ] Prove isolated direct reconstruction with allocation, relationships and
+  transactional recovery before integrating normal import/export replacement.
