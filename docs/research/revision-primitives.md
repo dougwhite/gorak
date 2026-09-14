@@ -73,3 +73,50 @@ Next: define and validate the optional schema/upgrade and startup artifact lifec
 then connect samples to the diagnostic snapshot protocol with generation binding.
 Retain the full reference until continuity and invalidation are certified. Normal
 status/sync behaviour remains unchanged.
+
+## Execution-host artifact lifecycle
+
+`writer_artifact.writer_environment()` is an internal context manager for launchers.
+It yields a copied child environment with a generated `ING_SET_<SOURCE_DATABASE>`
+include. Database scoping is deliberate: a run application can open runtime databases
+that do not contain the revision extension. General `ING_SET` and other environment
+values remain unchanged. This setting is database-name scoped, not vnode scoped;
+connections to another installation using the same database name need separate
+acceptance before this can be a general launcher policy.
+
+The caller supplies the execution host's environment, an installation-symbol lookup
+callback, and the startup encoding. Existing database-specific environment values
+win; otherwise the callback provides the installation value. Includes are read on
+that host with a 1 MiB budget and strict decoding. Invalid input fails before the
+child launches. The normalized SQL retains existing SET statements and appends the
+revision table's MVCC/shared setting. Output uses exclusive creation in a unique
+operation directory, strict encoding, no BOM and a bounded include path. On POSIX,
+the directory/file modes are 0700/0600; Windows access follows the chosen temporary
+root's ACL, which the launcher must secure.
+
+The child must terminate before leaving the context. Normal completion and Python
+exceptions remove the generated file and directory. The original include and input
+environment are never rewritten. Abrupt host/process termination can leave orphaned
+files; orphan recovery remains a backend responsibility. Startup contents are not
+added to regular source or diagnostic artifacts.
+
+This primitive does not yet resolve installation symbols itself, deploy a remote
+worker, verify extension health, or change any normal run/import command. It must
+execute on the OpenROAD host: an SSH client must not resolve remote paths locally.
+General launcher wiring is pending. Preserving effective configuration requires
+checking both process settings and Ingres installation symbols; reading only the
+process environment is insufficient. Actian documents the separate
+[installation and local settings](https://docs.actian.com/actianx/11.2/FormAppDevUser/Using_Logicals_2fEnvironment_Variables.htm)
+and [database-specific startup variable](https://docs.actian.com/actianx/12.0/SysAdmin/ING_SET_DBNAME.htm).
+
+Live Windows acceptance used the exact artifact/composer modules in a disposable
+Python harness around OpenROAD import, fresh-process compilation and cleanup. A
+pre-existing database-specific include was preserved, while general `ING_SET`
+retained the site's session settings. Generated include paths containing spaces
+worked. Both source operations completed while a separate MVCC transaction held a
+counter row uncommitted; the bounded reader returned its old committed value.
+Generated artifacts were absent after each child exited, and original startup file
+bytes were unchanged. The test app, extension and remote harness were removed;
+parent tracking identity and structural checks remained healthy. This acceptance
+used an explicit process setting, not installation-symbol fallback, and does not
+certify startup precedence on other OpenROAD versions or runtime database flows.
