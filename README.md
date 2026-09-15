@@ -8,6 +8,12 @@ and AI coding agents.
 > **Early alpha.** Gorak is still evolving. Use a disposable development source
 > database and keep backups; do not point it at production source yet.
 
+**Project updates:** Subscribe for email updates on the status of the Gorak project at
+[thingsdougmakes.au/projects/gorak/](https://thingsdougmakes.au/projects/gorak/).
+
+**Demo project:** The disposable OpenROAD application used for the Gorak demo is at
+[dougwhite/openroad_demo](https://github.com/dougwhite/openroad_demo).
+
 ## Setup
 
 We recommend [`uv`](https://docs.astral.sh/uv/) for the best development experience.
