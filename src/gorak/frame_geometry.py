@@ -49,7 +49,9 @@ def geometry_signature(node: etree._Element) -> object:
     return signature(copied)
 
 
-def normalized_markup(expected: etree._Element, actual: etree._Element) -> str | None:
+def normalized_markup(
+    expected: etree._Element, actual: etree._Element, *, complete: bool = False
+) -> str | None:
     """Return canonical WML only after complete pixel-equivalent XML verification."""
     from .importer import signature
 
@@ -60,6 +62,10 @@ def normalized_markup(expected: etree._Element, actual: etree._Element) -> str |
     component = parse_component_node(actual)
     if component.type != "framesource":
         return None
+    if complete:
+        from .readable_markup import encode_markup
+
+        return encode_markup(actual)
     # Markup was encoded with the native frame defaults before inheritance.
     markup = encode_wml(component)
     return markup + "\n" if markup is not None else None

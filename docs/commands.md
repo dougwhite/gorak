@@ -21,6 +21,7 @@ Brief reference for the commands currently exposed by the `gorak` CLI.
 - [Misc](#misc)
   - [`gorak debug audit [XML_FILE]`](#gorak-debug-audit-xml_file)
   - [`gorak defaults flatten`](#gorak-defaults-flatten)
+  - [`gorak migrate-source`](#gorak-migrate-source)
   - [`gorak encode XML_FILE`](#gorak-encode-xml_file)
 - [Gorak Remote](#gorak-remote)
   - [`gorak remote install`](#gorak-remote-install)
@@ -200,6 +201,13 @@ Flags:
 gorak debug audit frame.xml --missing-only
 ```
 
+### `gorak migrate-source`
+
+Locally converts the expanded preview or legacy companions into compact source.
+Pending readable edits are preserved and readable round-trip stability is checked before
+installation. Before-images live under `.openroad/migrations/`. No database writes
+or baseline changes occur. See [migration details](files.md#optional-migration).
+
 ### `gorak defaults flatten`
 
 Identifies common field defaults and promotes them to app and project
@@ -213,7 +221,9 @@ gorak defaults flatten
 
 ### `gorak encode XML_FILE`
 
-Encodes a single OpenROAD XML source file into `.w4gl` format.
+Encodes a single OpenROAD XML source file into the legacy `.w4gl` projection for
+inspection. This diagnostic command does not create a project with inherited defaults
+or accompanying frame WML. Use application/component export for portable source.
 
 Flags:
 

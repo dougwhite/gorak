@@ -231,6 +231,10 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status")
     add_openroad_connection_args(status_parser)
 
+    subparsers.add_parser(
+        "migrate-source", help="Convert legacy source without changing the database"
+    )
+
     sync_parser = subparsers.add_parser("sync")
     add_openroad_connection_args(sync_parser)
     sync_parser.add_argument(
@@ -1118,6 +1122,16 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             return
         if parsed.command == "sync":
             print(sync_command(parsed))
+            return
+        elif parsed.command == "migrate-source":
+            from .source_migration import migrate_source
+
+            operation = migrate_source(load_project(Path.cwd()).root)
+            print(
+                f"Source migrated; recovery files: {operation}"
+                if operation
+                else "Source already uses the complete readable format"
+            )
             return
 
         if parsed.command == "component" and parsed.component_command == "import":

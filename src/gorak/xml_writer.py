@@ -1,13 +1,12 @@
 """Generate OpenROAD XML for new applications and script components."""
 
 import re
-import tomllib
 from pathlib import Path
 
 from lxml import etree
 
 from .importer import validate_name
-from .parser import NS, parse_w4gl, split_w4gl
+from .parser import NS
 from .project import ProjectError, read_json
 
 
@@ -31,79 +30,25 @@ def datatype(row: etree._Element, declaration: str) -> None:
 
 
 def new_component(path: Path) -> etree._Element:
-    validate_name(path.stem)
-    text = path.read_text()
-    component = parse_w4gl(text, path.stem)
-    metadata = tomllib.loads(split_w4gl(text)[0])
-    if component.type not in {"proc4glsource", "classsource"}:
-        raise ProjectError(f"New component type is not supported: {component.type}")
-    if component.script is None:
-        raise ProjectError(f"Missing === script section: {path}")
-    allowed = {component.type, "attributes", "methods"}
-    if set(metadata) - allowed:
-        raise ProjectError(f"Unsupported component metadata: {path}")
-    node = etree.Element("COMPONENT", name=component.name, nsmap=NS)
-    node.set(f"{{{NS['xsi']}}}type", component.type)
-    allowed_props = (
-        {"datatype", "isnullable", "isarray", "versshortremarks"}
-        if component.type == "proc4glsource"
-        else {"superclass", "versshortremarks"}
-    )
-    for key, value in metadata[component.type].items():
-        if key not in allowed_props or not isinstance(value, (str, int, bool)):
-            raise ProjectError(f"Unsupported new component property: {key}")
-        scalar(node, key, str(int(value)) if isinstance(value, bool) else str(value))
-    scalar(node, "script", "")
-    node.find("script").text = etree.CDATA(component.script)
-    for table, row_class in [
-        ("attributes", "attributeobject"),
-        ("methods", "methodobject"),
-    ]:
-        if table not in metadata:
-            continue
-        if component.type != "classsource" or not isinstance(metadata[table], dict):
-            raise ProjectError(f"Invalid {table} table")
-        container = etree.SubElement(node, table)
-        for name, declaration in metadata[table].items():
-            validate_name(name)
-            if not isinstance(declaration, str):
-                raise ProjectError(f"Invalid declaration for {name}")
-            row = etree.SubElement(container, "row")
-            scalar(row, "displayname", name)
-            if table == "methods":
-                match = re.fullmatch(
-                    r"(PRIVATE )?METHOD(?: RETURNING (.+))?", declaration
-                )
-                if not match:
-                    raise ProjectError(f"Unsupported method declaration: {declaration}")
-                if match[1]:
-                    scalar(row, "isprivate", "1")
-                declaration = match[2] or ""
-            if declaration:
-                datatype(row, declaration)
-        for row in container:
-            order = ["displayname", "datatype", "isarray", "isnullable", "isprivate"]
-            row[:] = sorted(row, key=lambda child: order.index(str(child.tag)))
-        scalar(container, "row_class", row_class)
-    if component.type == "classsource" and node.find("superclass") is None:
-        raise ProjectError("A new class requires superclass metadata")
-    order = [
-        "versshortremarks",
-        "superclass",
-        "script",
-        "datatype",
-        "isarray",
-        "isnullable",
-        "attributes",
-        "methods",
-    ]
-    node[:] = sorted(node, key=lambda child: order.index(str(child.tag)))
-    return node
+    from .readable_source import decode_component, is_complete
+
+    if is_complete(path):
+        node = decode_component(path)
+        for query in node.findall("queries"):
+            node.remove(query)
+        return node
+    from .contract_source import decode_component as decode_contract
+
+    return decode_contract(path)
 
 
 def new_application(path: Path) -> etree._Element:
     validate_name(path.name)
     metadata = read_json(path / "app.json")
+    if metadata.get("source_format") == 2:
+        from .readable_source import decode_application
+
+        return decode_application(path)
     fields = {
         "starting_component": "procstart",
         "description": "versshortremarks",

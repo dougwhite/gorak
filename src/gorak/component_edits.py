@@ -8,7 +8,7 @@ from lxml import etree
 
 from .errors import ProjectError
 from .parser import encode_w4gl, parse_component_node, parse_w4gl, split_w4gl
-from .xml_shapes import order_children, set_scalar, shape
+from .xml_shapes import order_children, set_scalar, shape, shapes
 
 SUPPORTED_TYPES = {
     "classsource",
@@ -31,6 +31,10 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     edited = parse_w4gl(source, path.stem)
     before = tomllib.loads(split_w4gl(encode_w4gl(original))[0])
     after = tomllib.loads(split_w4gl(source)[0])
+    after.pop("queries", None)
+    after.get(original.type, {}).pop("queries", None)
+    for query in node.findall("queries"):
+        node.remove(query)
     kind = original.type
     if edited.type != kind:
         raise ProjectError("Changing component type is not supported")
@@ -47,6 +51,10 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     for key in set(before[kind]) | set(after[kind]):
         old, new = before[kind].get(key), after[kind].get(key)
         if old == new:
+            continue
+        # Compact projections spell empty object/array properties as "".
+        # OpenROAD removes empty containers on import; these spellings agree.
+        if new == "" and old is None and shape(kind).get(key) in shapes():
             continue
         if new is not None and not isinstance(new, (str, int, bool)):
             raise ProjectError(f"Component property must be scalar: {key}")
@@ -117,6 +125,22 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
                 if match[1]:
                     etree.SubElement(row, "isprivate").text = "1"
                 declaration = match[2] or ""
+            if table == "attributes":
+                explicit_null = bool(
+                    re.search(r" DEFAULT NULL$", declaration, re.IGNORECASE)
+                )
+                if explicit_null:
+                    declaration = re.sub(
+                        r" DEFAULT NULL$", "", declaration, flags=re.IGNORECASE
+                    )
+                    if declaration.upper().endswith(" NOT NULL"):
+                        raise ProjectError("DEFAULT NULL requires a nullable attribute")
+                if explicit_null or row.findtext("defaultvalue") == "2":
+                    for key in ("defaultvalue", "defaultstring"):
+                        for child in row.findall(key):
+                            row.remove(child)
+                if explicit_null:
+                    etree.SubElement(row, "defaultvalue").text = "2"
             if declaration:
                 datatype(row, declaration)
             order_children(row, row_kind)

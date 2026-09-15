@@ -18,16 +18,16 @@ The command accepts the same connection flags as component export.
 
 ## Readable edits and verification
 
-The importer overlays scripts, represented component metadata and frame markup
-onto preserved XML. See [component editing](component-editing.md) for the observed
-types, field defaults, layout behavior and limits. Unedited opaque XML is retained.
+The importer reconstructs compact components from readable source and uses the
+cached XML only for conflict detection and verification. See
+[component editing](component-editing.md) for types, layout behavior and limits.
 Creation belongs to [push](push.md), not this existing-component command.
 
 The baseline comes from the newest component or application export in the local
 cache. Before writing, Gorak exports the database component and requires exact
 agreement with that baseline. It imports the prepared XML, compiles the component
-in a fresh process, and verifies a fresh full export. Only the documented frame
-coordinate conversion permits non-identical XML. Verified canonical WML is staged
+in a fresh process, and verifies a fresh full export. Verification compares the supported readable representation. Unsupported queries
+are dropped; XML transport formatting need not be identical. Verified canonical WML is staged
 with the new cache, and should be reviewed in Git.
 
 Dry runs compare the database and prepare XML without importing or advancing the
@@ -48,5 +48,5 @@ before reconciling. Gorak does not automatically restore an old export over a
 potentially newer Workbench change. Project push additionally maintains its pending
 recovery state; follow its reported `gorak recover push` guidance.
 
-Keep connection settings, XML caches and diagnostic logs out of Git. Portable
-source companions under each app's `.gorak-source/` are tracked separately.
+Keep connection settings, XML caches and diagnostic logs out of Git. Migrate old
+XML companions with `gorak migrate-source`; see [source formats](files.md).

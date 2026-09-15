@@ -206,3 +206,73 @@ left no installation tables or rules. Documentation covers client-side DBA execu
 
 427 automated tests, Ruff, mypy, and diff checks passed. Runtime hook health,
 consumer lifecycle, retention, upgrades, and broad source/save acceptance remain open.
+
+
+## Historical experimental preview, 2026-09-14
+
+The following evidence describes the superseded expanded preview, not the normal
+source contract. Its `source_format = 2` machinery is retained only for preview
+compatibility, recovery and migration. See the current compact acceptance below.
+
+- Exported three applications to readable `.w4gl`, `.wml` and `app.json`; committed
+  and cloned them locally with no XML, companions or `.openroad` cache in the clone.
+- Created a new disposable Ingres database with OpenROAD catalogs using the
+  installation's `createdb TARGET -no_x100 -f ingres windows_4gl` command.
+- Created and compiled all three applications through the normal verified push.
+  The included test framework supplies the demo's external source dependency.
+- Tests passed before and after score and frame edits: two reported testcases,
+  zero failures, errors or skips on each run. A subsequent status was unchanged
+  and a second push performed no imports.
+- Repeated exports were byte-identical and created no source companions.
+- Separately created two uniquely named applications in the existing disposable
+  database, verified metadata edits across all eight observed component types,
+  and verified frame coordinate canonicalization plus a combined app/frame update.
+- Migrated a copy of the actual demo checkout while retaining pending readable
+  edits and exact reconstruction for all four components. The original demo
+  checkout and database application were left untouched.
+- Manual Workbench visual acceptance for this format change remains unperformed.
+
+For that experimental preview or an old companion-based checkout only, use
+`gorak migrate-source`, inspect its diff and retain migration recovery evidence.
+Existing compact projects require no migration. Never remove target bindings or
+baselines as a reset shortcut.
+
+
+### Inherited defaults correction
+
+- Restored authoritative repository defaults, sparse application JSON overrides,
+  and sparse frame `[fielddefaults]` overrides. Native palette structure follows
+  the same hierarchy; reconstruction still needs no preserved XML.
+- Verified 19 existing corpus frame exports against the original repository/app
+  defaults with exact reconstructed source comparisons, without modifying them.
+- An independent Git clone with no XML/cache created two isolated applications,
+  passed tests, then accepted root and app default edits through verified imports.
+  Tests passed again and the subsequent push was unchanged.
+- Updated the demo preview: its frame W4GL is 24 lines, the application defaults
+  are `{}`, and the root retains the shared palette plus necessary native metadata.
+  Exact source comparison was unchanged and the two runtime tests passed.
+
+
+## Current compact contract, 2026-09-15
+
+Normal source uses the established compact component tables, nested WML and
+repository → application → frame defaults. No `source_format` or
+`defaults_inherited` flags are emitted or required. Query-designer metadata is
+unsupported and dropped. Older declarations that omitted an explicit NULL
+initializer need an authoritative re-export to recover that missing information.
+
+- Fresh-database live acceptance compiled seven applications across eight observed
+  component types. With explicit NULL defaults recovered, two subsequent export
+  rounds matched all 181 readable files byte for byte.
+- Actual CLI status, push and scoped tests succeeded; runtime results were
+  444 tests, zero failures/errors and three skipped.
+- `tests/cli/test_compact_workflow.py` exercises an untouched synthetic ORAPI-era
+  project through actual CLI status, push, configured tests and repeated exports.
+  Only external services are mocked; planning, safety gates, reconstruction,
+  verification and export remain real. The test rejects preview codec calls and
+  compares all versioned source/default files byte for byte. It is a compatibility
+  regression, not evidence of OpenROAD runtime or visual behavior.
+
+**Manual Workbench visual acceptance of this compact reconstruction remains
+outstanding and is a merge gate.** Earlier preview/demo visual checks do not
+substitute for reviewing these reconstructed frames.

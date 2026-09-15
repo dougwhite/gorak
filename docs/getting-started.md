@@ -122,7 +122,7 @@ Interactive frames require an interactive session; SSH is suitable for headless
 procedures/tests, not proof of visible GUI behavior.
 
 For a single existing component, `gorak component import example_app p4_start`
-uses the same preserved-XML edit path and component conflict check. Prefer the
+uses the same readable reconstruction and component conflict check. Prefer the
 project-wide push loop for ordinary work.
 
 ## Failures and reset
@@ -134,8 +134,9 @@ a request to force the operation. Read the named `.openroad` artifacts and
 [recovery guide](synchronization.md).
 
 `.openroad/` stores ignored baselines, target binding, operation/recovery journals,
-locks and run logs/results. `.gorak-source/` is different: those tracked XML
-companions make an exported application portable. Keep both categories intact.
+locks and run logs/results. Supported readable source needs no XML
+companions. Run `gorak migrate-source` once for legacy projects; keep its recovery
+evidence under `.openroad`. See [formats and migration](files.md).
 
 To test a clean clone against another disposable database, use a **new checkout**,
 configure its own `.env`, install its required source/image dependencies, and run

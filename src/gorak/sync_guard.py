@@ -110,7 +110,9 @@ def guard_sync(
             blocked.append(change)
     if blocked:
         details = "; ".join(
-            f"{c.key}: disk {c.disk}, database {c.database}" for c in blocked
+            f"{c.key}: disk {c.disk}, database {c.database}"
+            + (f" ({c.reason})" if c.reason else "")
+            for c in blocked
         )
         raise ProjectError(
             "Sync stopped before writes. Reconcile pending changes; database deletion pushes are not supported yet. "

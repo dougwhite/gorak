@@ -434,8 +434,8 @@ def test_export_application_to_paths_uses_local_backend(
         "p4_example_procedure",
         "uc_example_userclass",
     ]
-    assert (tmp_path / "field_defaults.json").is_file()
-    assert (tmp_path / "sample_app" / "field_defaults.json").read_text() == "{}\n"
+    assert (tmp_path / "field_defaults.json").exists()
+    assert not (tmp_path / "sample_app" / ".gorak-source").exists()
     assert (tmp_path / "sample_app" / "fm_complex_frame.w4gl").is_file()
     assert (tmp_path / "sample_app" / "fm_complex_frame.wml").is_file()
     assert (tmp_path / "sample_app" / "fm_example_frame.w4gl").is_file()

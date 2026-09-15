@@ -270,7 +270,7 @@ class TestParseW4gl:
         markup = etree.fromstring(component.markup)
         entryfield = markup.find("./topform/entryfield")
         assert entryfield is not None
-        assert entryfield.attrib == {"name": "example_entryfield"}
+        assert entryfield.attrib == {"name": "example_entryfield", "gorak_style": "2"}
 
     def test_frame_markup_formats_dense_elements_across_multiple_lines(self) -> None:
         xml = _wrap_xml("""

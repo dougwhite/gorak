@@ -40,8 +40,12 @@ Story: "Keep using Workbench. Start getting readable source history and reviews.
 2. Create a Gorak project and configure ODBC source access and OpenROAD execution.
    In the target stack, install/check Gorak database tracking explicitly.
 3. Export selected applications and their source dependencies.
-4. Explain `.w4gl`, `.wml`, app metadata, and preserved source companions. XML
-   companions are the current implementation; direct decoding is the target.
+4. Explain the established compact `.w4gl`, nested `.wml`, app metadata and
+   inherited field defaults: these contain the supported readable source.
+   XML transport, baselines and recovery evidence stay under ignored `.openroad`.
+   Existing compact projects need no format migration or source-format flags.
+   Only earlier experimental preview/companion checkouts need `gorak migrate-source`;
+   review that conversion and preserve its binding and recovery state.
 5. Show that credentials, local synchronization state, and logs are ignored.
 6. Commit the exported project and inspect a readable component in Git.
 

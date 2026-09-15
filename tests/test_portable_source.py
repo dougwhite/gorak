@@ -6,7 +6,8 @@ from lxml import etree
 from gorak.export import apply_field_default_inheritance
 from gorak.importer import signature
 from gorak.parser import encode_w4gl, encode_wml, parse_component_node
-from gorak.portable_source import restore_component, write_companions
+from gorak.portable_source import legacy_component as restore_component
+from gorak.portable_source import write_companions
 from gorak.project import ProjectError
 
 
@@ -35,11 +36,11 @@ def test_frame_reconstruction_from_companion_or_legacy_cache(
         assert not (tmp_path / ".openroad").exists()
     assert signature(restore_component(source)) == signature(original)
     source.with_suffix(".wml").write_text("<frame />")
-    with pytest.raises(ProjectError, match="markup edits"):
+    with pytest.raises(ProjectError, match="topform"):
         restore_component(source)
 
 
-def test_preserves_opaque_properties_and_overlays_script(tmp_path: Path) -> None:
+def test_drops_unsupported_queries_and_overlays_script(tmp_path: Path) -> None:
     folder = tmp_path / "example"
     folder.mkdir()
     xml = tmp_path / "export.xml"
@@ -55,7 +56,7 @@ def test_preserves_opaque_properties_and_overlays_script(tmp_path: Path) -> None
     write_companions(xml, folder)
     xml.unlink()
     restored = restore_component(source)
-    assert restored.findtext("queries/row/opaque") == "keep me"
+    assert restored.find("queries") is None
     assert "RETURN 2" in restored.findtext("script", "")
 
 
@@ -67,6 +68,7 @@ def test_unknown_format_rejected(tmp_path: Path) -> None:
     (companion / "components").mkdir()
     (companion / "components" / "proc.xml").write_text("<OPENROAD/>")
     (companion / "format").write_text("999")
+    (folder / "proc.w4gl").write_text("[proc4glsource]\n===\nRETURN 1;")
     with pytest.raises(ProjectError, match="format"):
         restore_component(folder / "proc.w4gl")
 

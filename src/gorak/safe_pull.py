@@ -214,20 +214,6 @@ def _sync_project(
                 exported = export_application_to_paths(
                     connection, name, paths, progress
                 )
-                metadata = {
-                    "starting_component": exported.application.start_component,
-                    "description": exported.application.description,
-                    "included_applications": exported.included_applications,
-                }
-                for key, value in [
-                    ("database_name", exported.application.database_name),
-                    ("database_type", exported.application.database_type),
-                ]:
-                    if value:
-                        metadata[key] = value
-                (stage / name / "app.json").write_text(
-                    json.dumps(metadata, indent=4) + "\n"
-                )
                 staged_xml[app] = paths.xml_path
                 exported_count += len(exported.components)
             # Re-scan database inventory and compare the exact XML staged for installation.

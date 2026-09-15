@@ -20,7 +20,8 @@ from .parser import (
     parse_component_node,
 )
 from .portable_source import restore_application, restore_component
-from .project import ProjectError
+from .project import ProjectError, read_json
+from .readable_source import is_complete
 from .safe_pull import apply_files, fingerprint
 from .xml_writer import document, new_application, new_component
 
@@ -84,14 +85,7 @@ def _push_project(
         paths = sorted(folder.glob("*.w4gl"))
         if len({p.stem.casefold() for p in paths}) != len(paths):
             raise ProjectError(f"Component names collide ignoring case: {app}")
-        companion_dir = folder / ".gorak-source"
-        for companion in (companion_dir / "components").glob("*.xml"):
-            if not (folder / f"{companion.stem}.w4gl").is_file():
-                raise ProjectError(
-                    f"Source companion has no readable component: {companion}"
-                )
-        auxiliary = [p for p in companion_dir.rglob("*") if p.is_file()]
-        auxiliary.extend(folder.glob("*.wml"))
+        auxiliary = list(folder.glob("*.wml"))
         auxiliary.extend(
             p
             for p in [root / "field_defaults.json", folder / "field_defaults.json"]
@@ -123,8 +117,13 @@ def _push_project(
             disk_app = parse_application_xml(
                 etree.fromstring(document([new_application(folder)]))
             )
+            complete_app = read_json(folder / "app.json").get("source_format") == 2
+            app_source_changed = complete_app and signature(
+                etree.parse(str(app_cache)).find("APPLICATION")
+            ) != signature(new_application(folder))
             if (
-                previous_app.application != disk_app.application
+                app_source_changed
+                or previous_app.application != disk_app.application
                 or previous_app.included_applications != disk_app.included_applications
             ):
                 before = operation / f"{app}-before.xml"
@@ -151,6 +150,10 @@ def _push_project(
                     "databasename",
                     "database_type",
                 }
+                if complete_app:
+                    managed = {str(child.tag) for child in current_node}
+                    current_node.attrib.clear()
+                    current_node.attrib.update(replacement.attrib)
                 for child in list(current_node):
                     if child.tag in managed:
                         current_node.remove(child)
@@ -345,6 +348,17 @@ def _push_project(
             else:
                 backup_component_xml(connection, app, component, after)
             if component == "-":
+                actual_app = etree.parse(str(after)).find("APPLICATION")
+                expected_app = etree.parse(str(submitted)).find("APPLICATION")
+                if (
+                    actual_app is None
+                    or expected_app is None
+                    or (
+                        read_json(root / app / "app.json").get("source_format") == 2
+                        and signature(actual_app) != signature(expected_app)
+                    )
+                ):
+                    raise ProjectError(f"Application source verification failed: {app}")
                 exported = parse_application_xml(etree.parse(str(after)))
                 requested = parse_application_xml(etree.parse(str(submitted)))
                 if (
@@ -363,7 +377,11 @@ def _push_project(
                     if (app, name) in prepared_edits:
                         from .frame_geometry import normalized_markup
 
-                        normalized = normalized_markup(node, actual_node)
+                        normalized = normalized_markup(
+                            node,
+                            actual_node,
+                            complete=is_complete(root / app / f"{name}.w4gl"),
+                        )
                     if normalized is not None:
                         cache_updates[root / app / f"{name}.wml"] = normalized.encode()
                     if signature(actual_node) != signature(node) and normalized is None:
@@ -373,15 +391,12 @@ def _push_project(
             for source in sources:
                 actual_node = component_tree(after, source.stem)
                 expected_node = component_tree(submitted, source.stem)
-                if (
-                    source.parent
-                    / ".gorak-source"
-                    / "components"
-                    / f"{source.stem}.xml"
-                ).is_file():
+                if is_complete(source):
                     from .frame_geometry import normalized_markup
 
-                    normalized = normalized_markup(expected_node, actual_node)
+                    normalized = normalized_markup(
+                        expected_node, actual_node, complete=is_complete(source)
+                    )
                     if normalized is not None:
                         cache_updates[source.with_suffix(".wml")] = normalized.encode()
                     if (
@@ -390,6 +405,13 @@ def _push_project(
                     ):
                         raise ProjectError(
                             f"Portable XML verification failed: {source.stem}"
+                        )
+                if not is_complete(source):
+                    from .contract_source import equivalent
+
+                    if not equivalent(actual_node, expected_node):
+                        raise ProjectError(
+                            f"Readable source verification failed: {source.stem}"
                         )
                 actual = parse_component_node(actual_node)
                 expected = parse_component_node(expected_node)

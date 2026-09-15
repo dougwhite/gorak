@@ -36,6 +36,7 @@ def test_layout_roundtrip_preserves_unedited_xml(tmp_path: Path, edit: str) -> N
             parent,
             "entryfield",
             name="new_output",
+            gorak_style="1",
             xleft="300",
             ytop="700",
             width="1200",
@@ -81,7 +82,14 @@ def test_new_positioned_control_does_not_inherit_palette_alignment(
     tree = etree.fromstring((encode_wml(parse_component_node(node)) or "").encode())
     parent = tree.find(".//subform")
     assert parent is not None
-    etree.SubElement(parent, "entryfield", name="positioned", xleft="104", ytop="104")
+    etree.SubElement(
+        parent,
+        "entryfield",
+        name="positioned",
+        gorak_style="1",
+        xleft="104",
+        ytop="104",
+    )
     path = tmp_path / "frame.wml"
     path.write_bytes(etree.tostring(tree))
     overlay_markup(node, path)

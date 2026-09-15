@@ -59,14 +59,16 @@ def test_create_project_creates_default_project_skeleton(
     assert capsys.readouterr().err == ""
 
 
-def test_create_project_seeds_nested_field_default_subtrees(tmp_path: Path) -> None:
-    project = create_project(tmp_path / "my_project", run_cmd=lambda command, cwd: None)
-    defaults = json.loads((project.root / "field_defaults.json").read_text())
-    controlbutton = next(
-        style for style in defaults["field_styles"] if style["type"] == "controlbutton"
-    )
+def test_create_project_needs_no_source_cache(tmp_path: Path) -> None:
+    from gorak.portable_source import restore_application, restore_component
 
-    assert controlbutton["properties"]["optionmenu"]["bgcolor"] == "2"
+    project = create_project(tmp_path / "my_project", run_cmd=lambda command, cwd: None)
+    folder = project.root / "my_project"
+    assert restore_application(folder).findtext("procstart") == "p4_init"
+    assert "Hello World" in restore_component(folder / "p4_init.w4gl").findtext(
+        "script", ""
+    )
+    assert not list(project.root.rglob("*.xml"))
 
 
 def test_create_project_warns_when_git_init_fails(
