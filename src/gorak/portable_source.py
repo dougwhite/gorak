@@ -121,7 +121,9 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
     # as bitmap line wrapping. Queries are explicitly removed on re-encoding.
     try:
         unchanged = equivalent(decode_contract(path), node)
-    except ProjectError:
+    except ProjectError as ex:
+        if "gorak_style" in str(ex):
+            raise
         # A legacy baseline can retain source outside the standalone authoring
         # surface. The overlay below still validates every requested change.
         unchanged = False

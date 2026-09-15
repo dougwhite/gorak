@@ -115,6 +115,7 @@ def update_element(
 ) -> None:
     from .importer import signature
 
+    index.properties_for_markup(after)
     if signature(before) == signature(after):
         return
     if before.tag != after.tag:
@@ -139,9 +140,17 @@ def update_element(
         kind = node_kind(target, "mainbar")
     if (after.text or "").strip() != (before.text or "").strip():
         raise ProjectError("Only script elements support edited text content")
-    defaults = index.properties_for(str(before.tag), target)
-    for key in set(before.attrib) | set(after.attrib):
-        if before.get(key) == after.get(key):
+    defaults = index.properties_for_markup(after)
+    changed_defaults: set[str] = set()
+    if before.get("gorak_style") != after.get("gorak_style"):
+        changed_defaults.update(index.omitted_properties(after, defaults))
+        changed_defaults.update(
+            index.omitted_properties(before, index.properties_for_markup(before))
+        )
+    for key in (set(before.attrib) | set(after.attrib) | changed_defaults) - {
+        "gorak_style"
+    }:
+        if before.get(key) == after.get(key) and key not in changed_defaults:
             continue
         value = after.get(key)
         if key in native.attrib:
@@ -236,7 +245,7 @@ def new_element(
         child.set(XSI, tag)
         child_kind = tag
         # Populate the same default values that the WML encoder suppresses.
-        for key, value in index.properties_for(tag, child).items():
+        for key, value in index.properties_for_markup(supplied).items():
             if key in shape(tag) and key not in {
                 "name",
                 "script",

@@ -38,6 +38,10 @@ use a disposable source/runtime environment.
 - Keep component declarations, field names and event scopes consistent. Root `field_defaults.json` is authoritative; application
   defaults contain only differences, and frame `[fielddefaults]` contains only
   differences from its application. WML omits values equal to inherited defaults; imports reconstruct them.
+  Preserve `gorak_style="N"` on ambiguous controls: it selects the 1-based style
+  of that field type in effective palette order. Explicit attributes override it;
+  property-only defaults edits must not renumber it. Ambiguous historical WML
+  requires a known selector or an authoritative re-export before pushing.
   Query-designer metadata is unsupported and dropped. Existing compact source
   needs no format migration. Unknown source shapes are rejected.
 - A conflict means disk and database changed relative to their common baseline.

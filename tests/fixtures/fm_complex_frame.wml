@@ -247,6 +247,7 @@
             designbias="3"
             charsperline="36"
             lines="7"
+            gorak_style="2"
           />
         </row>
       </tabpagearray>

@@ -104,7 +104,7 @@ def test_unknown_frame_property_is_refused(tmp_path: Path) -> None:
         decode_component(path)
 
 
-def test_palette_selection_uses_explicit_differences(tmp_path: Path) -> None:
+def test_palette_selection_requires_explicit_selector(tmp_path: Path) -> None:
     folder = project(tmp_path)
     defaults = json.loads((tmp_path / "field_defaults.json").read_text())
     defaults["field_styles"] = [
@@ -123,10 +123,10 @@ def test_palette_selection_uses_explicit_differences(tmp_path: Path) -> None:
     path = folder / "panel.w4gl"
     path.write_text("[framesource]\n===\ninitialize()={}")
     path.with_suffix(".wml").write_text(
-        '<frame><topform><tablefield name="items" fgcolor="5"/></topform></frame>'
+        '<frame><topform><tablefield name="items" gorak_style="1" fgcolor="5"/></topform></frame>'
     )
     node = decode_component(path)
-    # fgcolor=5 is present precisely because it differs from the first palette.
+    # An explicit override must not switch the selected palette.
     assert node.findtext("topform/childfields/row/hasheaderbuttons") == "1"
 
 

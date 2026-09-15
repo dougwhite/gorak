@@ -58,3 +58,26 @@ Old files that omitted those initializers need an authoritative re-export to
 recover them; inference from the datatype alone is insufficient. Visual Workbench acceptance
 has not been performed. Restart Workbench if its compiled component cache shows
 an older version.
+
+### Ambiguous field styles
+
+Optional `gorak_style="N"` selectors preserve omitted values when multiple styles
+of the same type differ. See [numbering and precedence](files.md#field-defaults-and-wml).
+Historical ambiguous WML fails before writes until a known selector is supplied
+or the source is re-exported authoritatively. This qualifies the compatibility
+claim alongside the separately documented missing NULL initializers.
+
+Focused mocked tests check the two-style colour/header case, inherited and explicit
+overrides, harmless multiple styles, invalid selectors, existing-component
+comparison/import and rejection of changed properties despite identical projections.
+A focused disposable live probe imported an authoritative two-style tablefield
+export; it retained colour 5 and disabled header buttons, produced two identical
+re-exports, and finished with clean status and no-op pushes. Existing-component
+imports then selected style 1 with an explicit colour override (7, headers enabled)
+and restored style 2 (5, headers disabled), ending with clean status. OpenROAD omits the
+native zero-valued header flag from XML. An initial minimal authored probe was
+rejected because OpenROAD supplied additional native defaults; its artifacts were
+retained, and its verification was not bypassed.
+
+Manual Workbench visual acceptance, including the affected table control, remains
+outstanding and is required before merge.

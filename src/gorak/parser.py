@@ -10,6 +10,7 @@ import tomlkit
 from lxml import etree
 
 from .domain import Application, ApplicationExport, Component, IncludedApplication
+from .errors import ProjectError
 from .field_defaults import parse_field_defaults_node
 
 IGNORED_PROPERTIES = {
@@ -244,6 +245,18 @@ def frame_markup_element(
     copy_markup_attributes(node, element)
     default_properties = defaults_index.properties_for(tag, node)
     append_markup_content(element, node, defaults_index, default_properties, mapping)
+    if defaults_index.ambiguous(element):
+        candidates = defaults_index.field_styles[str(tag)]
+        element.set(
+            "gorak_style",
+            str(
+                next(
+                    i
+                    for i, properties in enumerate(candidates, 1)
+                    if properties is default_properties
+                )
+            ),
+        )
     return element
 
 
@@ -368,6 +381,61 @@ class MarkupDefaultsIndex:
             candidates,
             key=lambda properties: matching_default_count(properties, scalar_values),
         )
+
+    def omitted_properties(
+        self, element: etree._Element, properties: dict[str, Any]
+    ) -> dict[str, str]:
+        """Only scalar, omitted native values are inherited by compact WML."""
+        from .xml_shapes import shape, shapes
+
+        if not properties:
+            return {}
+        kind = (
+            shape("framesource")["topform"]
+            if element.tag == "topform"
+            else str(element.tag)
+        )
+        fields = shape(kind)
+        explicit = set(element.attrib) | {str(c.tag) for c in element}
+        return {
+            key: value
+            for key, value in properties.items()
+            if isinstance(value, str)
+            and key in fields
+            and fields[key] not in shapes()
+            and key not in explicit
+            and key != "name"
+        }
+
+    def ambiguous(self, element: etree._Element) -> bool:
+        candidates = self.field_styles.get(str(element.tag), [])
+        values = [self.omitted_properties(element, p) for p in candidates]
+        return any(value != values[0] for value in values[1:])
+
+    def properties_for_markup(self, element: etree._Element) -> dict[str, Any]:
+        """Resolve the unfiltered per-type style ordinal; never guess lost values."""
+        import re
+
+        tag = str(element.tag)
+        candidates = self.field_styles.get(tag, [])
+        selector = element.get("gorak_style")
+        field = f"{tag} {element.get('name', '<unnamed>')}"
+        if selector is not None:
+            if not re.fullmatch(r"[1-9][0-9]*", selector) or int(selector) > len(
+                candidates
+            ):
+                raise ProjectError(
+                    f"Invalid gorak_style={selector!r} on {field}; expected 1..{len(candidates)}"
+                )
+            return candidates[int(selector) - 1]
+        if tag == "topform":
+            return self.common_model_properties
+        if self.ambiguous(element):
+            raise ProjectError(
+                f"Ambiguous field defaults for {field}; select a known gorak_style (1..{len(candidates)}) "
+                "or re-export authoritative source"
+            )
+        return candidates[0] if candidates else {}
 
 
 def matching_default_count(

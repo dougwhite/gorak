@@ -68,7 +68,9 @@ def markup_node(
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
     if source.tag == "protofield":
-        keys = set(source.attrib) | {str(child.tag) for child in source}
+        keys = (set(source.attrib) - {"gorak_style"}) | {
+            str(child.tag) for child in source
+        }
         candidates = [
             candidate
             for candidate in ("entryfield", "optionfield", "togglefield")
@@ -82,24 +84,7 @@ def markup_node(
     node = etree.Element(tag)
     if (tag == "row" and source.tag != "row") or source.tag == "protofield":
         node.set(XSI, kind)
-    # Explicit WML values are differences from the selected palette. Matching
-    # the most explicit values selects the wrong style: those values would have
-    # been suppressed by the encoder. Prefer the candidate with fewest matches.
-    styles = index.field_styles.get(str(source.tag), [])
-    defaults = (
-        index.common_model_properties
-        if source.tag == "topform"
-        else min(
-            styles,
-            key=lambda values: sum(
-                values.get(key) == value
-                for key, value in source.attrib.items()
-                if key != "name"
-            ),
-        )
-        if styles
-        else {}
-    )
+    defaults = index.properties_for_markup(source)
     fields = shape(kind)
     for key, value in defaults.items():
         if (
@@ -115,6 +100,8 @@ def markup_node(
         ):
             node.append(value_node(key, value))
     for key, value in source.attrib.items():
+        if key == "gorak_style":
+            continue
         if key not in fields or fields[key] in shapes():
             raise ProjectError(
                 f"Unsupported markup property: {source.tag} ({kind})/{key}"
@@ -200,6 +187,24 @@ def decode_component(path: Path) -> etree._Element:
 
 def equivalent(left: etree._Element, right: etree._Element) -> bool:
     """Compare the supported readable contract; retain exact XML drift gates."""
-    from .parser import parse_component_node
+    from .importer import signature
+    from .parser import (
+        FRAME_MARKUP_CHILDREN,
+        frame_markup_element,
+        parse_component_node,
+    )
 
-    return parse_component_node(left) == parse_component_node(right)
+    if parse_component_node(left) != parse_component_node(right):
+        return False
+    # Do not let default suppression (or style selection) hide changed native
+    # scalar properties. Keep bitmap whitespace normalization from the parser.
+    empty = MarkupDefaultsIndex({}, {})
+
+    def effective_markup(node: etree._Element) -> list[object]:
+        return [
+            signature(frame_markup_element(child, empty))
+            for child in node
+            if child.tag in FRAME_MARKUP_CHILDREN
+        ]
+
+    return effective_markup(left) == effective_markup(right)
