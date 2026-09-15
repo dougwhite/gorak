@@ -100,7 +100,10 @@ gorak app export example_app
 gorak status
 ```
 
-An existing exported cache may need `gorak sync --bind`; this verifies its source
+The first successful export into a cache-free directory records its source target
+automatically, so the next `gorak sync` does not require `--bind`. This also works
+if the optional change-metadata query is unavailable.
+An older unbound cache still needs `gorak sync --bind`; this verifies its source
 against the configured database before recording the target. Do not erase caches
 when binding fails. A fresh cache-free synchronization can bind automatically.
 Export is an explicit source-writing operation: use a fresh/clean project for the

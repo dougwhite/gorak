@@ -59,6 +59,19 @@ def save_binding(connection: OpenRoadConnection, root: Path) -> None:
         staged.unlink(missing_ok=True)
 
 
+def can_bind_fresh_export(connection: OpenRoadConnection, root: Path) -> bool:
+    """Only attribute a new export when no older baseline needs verification."""
+
+    if binding_status(connection, root) != "unbound":
+        return False
+    cache = root / ".openroad"
+    # Presence is sufficient: even unreadable/empty older XML has unknown origin.
+    # Do not parse it merely to decide whether this is a first export.
+    return not (cache / "tracked-applications.json").exists() and not any(
+        cache.glob("*/*.xml")
+    )
+
+
 def guard_sync(
     connection: OpenRoadConnection,
     root: Path,

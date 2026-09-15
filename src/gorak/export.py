@@ -131,6 +131,9 @@ def export_application(
     """Export one OpenROAD application into a Gorak project or output directory."""
 
     root = export_root(context, output_path)
+    from .sync_guard import can_bind_fresh_export, save_binding
+
+    bind_after_export = can_bind_fresh_export(connection, root)
     progress_message(progress, "Retrieving application metadata")
     application = read_application(connection, app)
     normalize_application_paths(root, application.name, progress)
@@ -147,6 +150,8 @@ def export_application(
         merged_application,
         exported.included_applications,
     )
+    if bind_after_export:
+        save_binding(connection, root)
     record_component_sync_metadata_best_effort(
         connection,
         root,
@@ -200,6 +205,9 @@ def export_component(
                 connection, app, component, paths, progress
             )
 
+    from .sync_guard import can_bind_fresh_export, save_binding
+
+    bind_after_export = can_bind_fresh_export(connection, context.project.root)
     canonical_app = canonical_application_name(connection, context.project.root, app)
     normalize_application_paths(context.project.root, canonical_app, progress)
     paths = project_component_export_paths(context, canonical_app, component)
@@ -210,6 +218,8 @@ def export_component(
         paths,
         progress,
     )
+    if bind_after_export:
+        save_binding(connection, context.project.root)
     record_component_sync_metadata_best_effort(
         connection,
         context.project.root,

@@ -33,7 +33,12 @@ or explicitly re-export into an appropriate checkout before binding. Do not eras
 unknown baseline data just to bypass a conflict.
 
 The record is `.openroad/sync-target.json`, written atomically and excluded from
-Git with the rest of `.openroad`. A new cache-free sync can bind automatically;
+Git with the rest of `.openroad`. A successful first application export (including
+`--output`) or in-project component export records the configured target if there
+was no cached baseline or tracked application inventory before the export. Failure
+to query optional change metadata does not prevent this binding. Failed exports
+do not create a binding; existing unbound caches still require verified `--bind`.
+A new cache-free sync can also bind automatically;
 a dry run never creates the binding. The target includes backend, executing host,
 vnode, and database, without credentials. A changed configured target is rejected
 by status/sync and the CLI export/import commands. Use a fresh checkout/cache for a
