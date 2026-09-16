@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import pyodbc
 import pytest
 
 
@@ -19,7 +18,13 @@ def isolate_external_services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     def deny_database(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("Tests must mock database connections")
 
-    monkeypatch.setattr(pyodbc, "connect", deny_database)
+    # Native ODBC is optional; keep the connection guard when it is available.
+    try:
+        import pyodbc
+    except ImportError:
+        pass
+    else:
+        monkeypatch.setattr(pyodbc, "connect", deny_database)
     original_popen = subprocess.Popen
 
     def isolated_popen(command: Any, *args: Any, **kwargs: Any) -> Any:

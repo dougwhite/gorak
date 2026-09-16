@@ -4,10 +4,10 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
-import pyodbc
 from sqlalchemy import create_engine, text
 
 from .domain import Application, ComponentInfo, IncludedApplication
+from .odbc_runtime import load_pyodbc
 
 
 @dataclass(frozen=True)
@@ -138,6 +138,7 @@ def build_odbc_connection_string(settings: OdbcSettings) -> str:
 def create_odbc_engine(settings: OdbcSettings) -> Any:
     """Create a SQLAlchemy engine through pyodbc's Actian connection string."""
 
+    pyodbc = load_pyodbc()
     connection_string = build_odbc_connection_string(settings)
     return create_engine(
         "ingres://",
@@ -231,7 +232,9 @@ def components_from_rows(rows: Iterable[Mapping[str, object]]) -> list[Component
     ]
 
 
-def includes_from_rows(rows: Iterable[Mapping[str, object]]) -> list[IncludedApplication]:
+def includes_from_rows(
+    rows: Iterable[Mapping[str, object]],
+) -> list[IncludedApplication]:
     includes: list[IncludedApplication] = []
     for row in rows:
         name = clean_text(row["incl_name"])

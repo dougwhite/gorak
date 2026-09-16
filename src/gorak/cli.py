@@ -13,9 +13,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-import pyodbc
-from sqlalchemy.exc import SQLAlchemyError
-
 from .app_scaffold import create_application
 from .audit import (
     audit_project_xml,
@@ -42,6 +39,7 @@ from .export import (
 from .field_defaults import flatten_app_defaults
 from .importer import import_component
 from .local import LocalCommandError
+from .odbc_runtime import odbc_error_types
 from .project import (
     ProjectError,
     configure_project,
@@ -1245,7 +1243,7 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
     except ProjectError as ex:
         print(format_cli_error(ex), file=sys.stderr)
         raise SystemExit(1) from ex
-    except (LocalCommandError, RemoteCommandError, SQLAlchemyError, pyodbc.Error) as ex:
+    except odbc_error_types(LocalCommandError, RemoteCommandError) as ex:
         print(format_cli_error(ex), file=sys.stderr)
         raise SystemExit(1) from ex
     except FileNotFoundError as ex:
@@ -1263,7 +1261,7 @@ def format_cli_error(error: BaseException) -> str:
         return format_backend_error("Local backend error", error)
     if isinstance(error, RemoteCommandError):
         return format_backend_error("Remote backend error", error)
-    if isinstance(error, (SQLAlchemyError, pyodbc.Error)):
+    if isinstance(error, odbc_error_types()):
         return format_backend_error("ODBC backend error", error)
     if isinstance(error, FileNotFoundError):
         command = error.filename or str(error)
