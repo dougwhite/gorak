@@ -20,11 +20,9 @@ The demo shows the normal Gorak development loop end to end:
 - use an AI coding agent to make a real feature change; and
 - review the resulting source and Git diff.
 
-The disposable OpenROAD application used in the video is available at
-[dougwhite/openroad_demo](https://github.com/dougwhite/openroad_demo).
+[The disposable OpenROAD application used in the video](https://github.com/dougwhite/openroad_demo)
 
-**Project updates:** Subscribe for email updates on the status of the Gorak project at
-[thingsdougmakes.au/projects/gorak/](https://thingsdougmakes.au/projects/gorak/).
+[Follow the project or subscribe for email updates](https://thingsdougmakes.au/projects/gorak/)
 
 ## Setup
 
@@ -135,16 +133,15 @@ required for the normal workflow above.
 
 ## Actian OpenROAD Extension
 
-In the demo I am using an early-access version of the Actian OpenROAD VS Code
-extension. It provides OpenROAD 4GL editing in VS Code and can leverage GitHub
-Copilot for AI-assisted development. During the demo it is used as my primary
-OpenROAD editor, and it works well both alongside the normal OpenROAD Workbench
-workflow and with Gorak's native source files.
-
-Any queries about the OpenROAD VS Code extension should be directed to the Actian
-OpenROAD team.
-
 ![How Gorak fits into the OpenROAD workflow](docs/images/gorak_in_the_openroad_workflow.png)
+
+In the demo I am using an early-access version of the Actian OpenROAD VS Code extension. 
+
+It provides OpenROAD 4GL editing in VS Code and can leverage GitHub Copilot for AI-assisted development. 
+
+During the demo it is used as my primary OpenROAD editor. It works amazingly well for normal OpenROAD Workbench workflows, and has greatly improved my OpenROAD productivity. It also works quite well with Gorak's native source file formats.
+
+The Actian team has requested that any queries about the OpenROAD VS Code extension should be directed to them.
 
 ## Project Goals
 
