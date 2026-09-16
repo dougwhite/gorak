@@ -7,3 +7,7 @@ class ProjectError(RuntimeError):
 
 class SourceVerificationError(ProjectError):
     """An imported source result cannot be reconciled with the submitted XML."""
+
+
+class PostPushCompilationError(ProjectError):
+    """Source synchronization completed, but its subsequent compilation failed."""

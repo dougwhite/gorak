@@ -824,20 +824,19 @@ def sync_command(args: argparse.Namespace) -> str:
                     if getattr(args, "dry_run", False)
                     else "Push complete"
                 )
-                diagnostics = []
+                summary = f"{label}: no changes (verified comparison)"
                 if not getattr(args, "dry_run", False):
                     from uuid import uuid4
 
-                    from .compiler import compile_pending
+                    from .compiler import finish_push_compilation
 
-                    diagnostics = compile_pending(
+                    return finish_push_compilation(
                         connection,
                         context.project.root,
                         context.project.root / ".openroad/compiles" / uuid4().hex,
+                        summary,
                     )
-                return "\n".join(
-                    [f"{label}: no changes (verified comparison)", *diagnostics]
-                )
+                return summary
         if getattr(args, "bind", False):
             return "Sync baseline verified and bound to the configured target"
     if getattr(args, "push", False):

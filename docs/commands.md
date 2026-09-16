@@ -188,8 +188,9 @@ gorak compile APP [COMPONENT]
 gorak recover push [--take disk|database]
 ```
 
-Push verifies source before compilation. Compilation errors are reported without
-failing source synchronization. Explicit compile prints full database diagnostics
+Push verifies source before compilation. Compilation errors produce a nonzero push
+exit status while verified source synchronization stays complete, with no recovery
+marker. Explicit compile prints full database diagnostics
 and returns a failing exit status if compilation fails. Recovery side selection is
 project-wide, retains displaced versions, and preserves target/locking/revision
 checks. `--force` selects disk authority and cannot accompany `--dry-run` or `--bind`.

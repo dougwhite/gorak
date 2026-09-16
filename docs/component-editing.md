@@ -40,8 +40,9 @@ certified. Unexpected conversion still stops verification and retains evidence.
 
 Helper version 9 imports source without forcing compilation. Push verifies and
 installs all source before compiling; a compiler error is reported separately and
-does not require recovery. `gorak compile APP [COMPONENT]` compiles current database
-source and displays full diagnostics. Import/verification failures retain the
+does not require recovery, but the push command exits nonzero.
+`gorak compile APP [COMPONENT]` compiles current database source and displays full
+diagnostics. Import/verification failures retain the
 operation evidence and can be retried or reconciled as described in [push](push.md).
 
 ## Evidence and remaining acceptance

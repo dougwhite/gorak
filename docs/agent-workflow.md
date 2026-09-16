@@ -47,8 +47,9 @@ use a disposable source/runtime environment.
 - A conflict means disk and database changed relative to their common baseline.
   Stop, retain both versions, inspect the reported component and ask the owner
   which change to reconcile. Normal sync does not choose a winning side automatically.
-- Source imports and compilation are separate. Compiler errors do not block sync;
-  use `gorak compile APP COMPONENT` for full database compiler diagnostics.
+- Source imports and compilation are separate. Compiler errors make push exit nonzero
+  without undoing completed source sync or requiring recovery; use
+  `gorak compile APP COMPONENT` for full database compiler diagnostics.
 - An interrupted push can normally be retried with `gorak sync --push`; Gorak
   compares retained submissions with fresh exports before continuing. Preserve
   its artifacts. Independent database edits remain conflicts.

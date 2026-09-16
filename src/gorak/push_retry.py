@@ -8,7 +8,7 @@ from uuid import uuid4
 from lxml import etree
 
 from .connection import OpenRoadConnection
-from .errors import ProjectError
+from .errors import PostPushCompilationError, ProjectError
 from .export import backup_application_xml, read_applications
 from .importer import signature, validate_name
 from .portable_source import read_document
@@ -294,12 +294,22 @@ def finish_forced_push(
 
     marker = root / ".openroad/push-pending.json"
     marker.unlink(missing_ok=True)
+    compilation_error: PostPushCompilationError | None = None
     try:
-        result = push_project(connection, root)
+        try:
+            result = push_project(connection, root)
+        except PostPushCompilationError as ex:
+            # The source push is already committed. Complete authority recovery
+            # before propagating the separate compilation failure to the CLI.
+            compilation_error = ex
+            result = str(ex)
         (root / ".openroad/pull-pending.json").unlink(missing_ok=True)
         (operation / "resolved").write_text("Disk-authoritative push completed\n")
-        return f"{result}\nDisplaced source and tracking: {operation}"
     except Exception:
         if not marker.exists():
             mark_recovery(root, operation)
         raise
+    message = f"{result}\nDisplaced source and tracking: {operation}"
+    if compilation_error is not None:
+        raise PostPushCompilationError(message) from compilation_error
+    return message

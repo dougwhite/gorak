@@ -116,6 +116,8 @@ Baselines and canonical WML are staged until source verification succeeds. An
 interrupted installation remains a recovery condition because local tracking may
 be partially installed. Source is durably verified before compilation is attempted;
 compiler diagnostics and its retry queue are independent of source recovery.
+A post-push compilation failure still makes the push command exit nonzero so
+automated callers stop; verified source and baselines remain installed.
 
 ## No-change push cost
 

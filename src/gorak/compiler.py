@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from . import local, remote
 from .connection import OpenRoadConnection, require_remote_host
+from .errors import PostPushCompilationError
 from .import_backend import checked_log
 from .importer import validate_name
 from .project import ProjectError
@@ -197,3 +198,26 @@ def compile_pending(
     else:
         path.unlink()
     return diagnostics
+
+
+def finish_push_compilation(
+    connection: OpenRoadConnection, root: Path, operation: Path, summary: str
+) -> str:
+    """Signal unsuccessful compilation without changing completed source tracking."""
+    try:
+        diagnostics = compile_pending(connection, root, operation)
+    except (OSError, ProjectError) as ex:
+        raise PostPushCompilationError(
+            f"{summary}\nSource sync is complete; compilation status could not be saved: {ex}"
+        ) from ex
+    if diagnostics:
+        raise PostPushCompilationError(
+            "\n".join(
+                [
+                    summary,
+                    "Source sync is complete; compilation did not succeed.",
+                    *diagnostics,
+                ]
+            )
+        )
+    return summary

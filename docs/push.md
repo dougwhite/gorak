@@ -9,9 +9,11 @@ gorak sync --push
 
 Push validates readable source, imports all planned source, verifies fresh exports,
 and installs source baselines. Compilation runs afterward, in fresh processes.
-A compiler error does not undo a source import, fail the source sync exit status,
-or put the project into recovery. The summary names each failed component and
-prints the explicit compile command and saved log path.
+A compiler error makes `gorak sync --push` exit nonzero, but does not undo a
+verified source import or put the project into recovery. Source sync remains
+complete; the failing exit status lets agents, CI and shell workflows stop. The
+summary names each failed component and prints the explicit compile command and
+saved log path.
 
 ```sh
 gorak compile example_app widget
@@ -22,7 +24,8 @@ These commands compile **database source**, not unpushed disk files. They print 
 full diagnostics and retained log location, and exit nonzero on compilation failure.
 The component argument is optional; omitting it force-compiles the application.
 Failed/deferred push compilation remains in a separate queue and is retried by a
-later successful push, including an otherwise unchanged push.
+later push, including an otherwise unchanged push. That retry also exits nonzero
+if queued compilation still fails.
 
 New applications are built from `app.json` and readable components. Source includes
 are ordered before dependent applications. External image includes must be available
@@ -72,8 +75,9 @@ still requires a verified binding to the original configured target. It cannot
 bypass a live writer, invalid readable source, revision quarantine/generation checks,
 or post-import source verification. It clears recovery only after the selected
 source and tracking are installed successfully; compilation failure does not prevent
-that completion. `--force` requires `--push` and is not combined with `--bind` or
-`--dry-run`. A failed forced operation retains evidence and recovery status.
+that completion, although the command still exits nonzero when compilation fails.
+`--force` requires `--push` and is not combined with `--bind` or `--dry-run`. A failed
+forced source import or verification retains evidence and a pending source operation.
 
 New lock records identify the owning host, process, and process start time. A
 proven-dead local owner can be reclaimed; an active, remote, or unidentifiable owner

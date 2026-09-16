@@ -22,6 +22,7 @@ from gorak import (
 )
 from gorak.connection import OpenRoadConnection
 from gorak.domain import Application, ComponentInfo
+from gorak.errors import PostPushCompilationError
 from gorak.importer import signature
 from gorak.project import ProjectError
 from gorak.sync_guard import save_binding
@@ -136,18 +137,23 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     return World(tmp_path, monkeypatch)
 
 
-def test_all_sources_import_before_compile_and_compile_failure_does_not_block(
+def test_all_sources_import_before_compile_and_compile_failure_keeps_sync_complete(
     world: World,
 ) -> None:
     world.edit("caller", "new")
     world.edit("dependency", "new")
     world.compile_failure = True
-    result = world.push()
+    with pytest.raises(PostPushCompilationError) as error:
+        world.push()
+    result = str(error.value)
     assert world.imports == ["caller", "dependency"]
     assert world.compiles == ["caller", "dependency"]
     assert "caller.w4gl failed compilation" in result
     assert "gorak compile example caller" in result
     assert not (world.root / ".openroad/push-pending.json").exists()
+    with pytest.raises(PostPushCompilationError, match="no changes"):
+        world.push()
+    world.compile_failure = False
     assert "no changes" in world.push()
     assert len(world.imports) == 2
 
@@ -496,3 +502,86 @@ def test_force_rejects_incomplete_export_before_replacing_baseline(
         world.push(force=True)
     assert world.cache.read_bytes() == before
     assert not world.imports
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["sync", "--push"],
+        ["sync", "--push", "--force"],
+        ["recover", "push", "--take", "disk"],
+    ],
+)
+@pytest.mark.parametrize("failed_count", [1, 2])
+def test_cli_compile_failure_exits_nonzero_with_completed_source_tracking(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: list[str],
+    failed_count: int,
+) -> None:
+    world.edit("caller", "new")
+    world.edit("dependency", "new")
+    original_compile = world.compile
+
+    def compiling(c: Any, a: str, n: str, log: Path) -> compiler.CompileResult:
+        world.compile_failure = n == "caller" or failed_count == 2
+        return original_compile(c, a, n, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compiling)
+    with pytest.raises(SystemExit) as exited:
+        cli.main(command)
+    assert exited.value.code == 1
+    output = capsys.readouterr().err
+    assert "Source sync is complete" in output
+    assert "caller.w4gl failed compilation" in output
+    assert "gorak compile example caller" in output
+    assert world.imports == ["caller", "dependency"]
+    assert world.compiles == ["caller", "dependency"]
+    assert not (world.root / ".openroad/push-pending.json").exists()
+    assert not (world.root / ".openroad/pull-pending.json").exists()
+    assert not (world.root / ".openroad/mutation.lock").exists()
+    assert list((world.root / ".openroad/pushes").glob("*/verified"))
+    if command != ["sync", "--push"]:
+        assert list((world.root / ".openroad/pushes").glob("force-*/resolved"))
+    queue = world.root / ".openroad/compile-pending.json"
+    failed = ["caller", "dependency"][:failed_count]
+    assert json.loads(queue.read_text()) == [["example", name] for name in failed]
+    logs = list((world.root / ".openroad/pushes").glob("*/compiles/example/*.log"))
+    assert len(logs) == 2
+    assert sum("ERROR:" in p.read_text() for p in logs) == failed_count
+    assert all(
+        c.action == "unchanged" for c in sync_plan.plan_project(CONNECTION, world.root)
+    )
+
+    # An unchanged push still communicates a failed queued compile, without reimport.
+    baseline = sync_plan.baseline_inventory(world.root)
+    with pytest.raises(SystemExit) as repeated:
+        cli.main(["sync", "--push"])
+    assert repeated.value.code == 1
+    assert "no changes (verified comparison)" in capsys.readouterr().err
+    assert sync_plan.baseline_inventory(world.root) == baseline
+    assert not (world.root / ".openroad/push-pending.json").exists()
+    assert world.imports == ["caller", "dependency"]
+
+    # Once compilation succeeds, the same CLI path returns normally and clears the queue.
+    world.compile_failure = False
+    monkeypatch.setattr(compiler, "compile_source", original_compile)
+    cli.main(["sync", "--push"])
+    assert "no changes" in capsys.readouterr().out
+    assert not queue.exists()
+    assert world.imports == ["caller", "dependency"]
+
+
+def test_no_edit_executor_signals_queued_compile_failure_without_recovery(
+    world: World,
+) -> None:
+    world.edit("caller", "new")
+    world.edit("dependency", "new")
+    world.push()
+    compiler.queue_compilation(world.root, [("example", "caller")])
+    world.compile_failure = True
+    with pytest.raises(PostPushCompilationError, match="no changes"):
+        push.push_project(CONNECTION, world.root)
+    assert not (world.root / ".openroad/push-pending.json").exists()
+    assert world.imports == ["caller", "dependency"]

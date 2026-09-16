@@ -291,13 +291,13 @@ def _push_project(
         if path.read_bytes() != content:
             raise ProjectError(f"Local source changed during push preflight: {path}")
     if not ordered and not edits:
-        from .compiler import compile_pending
+        from .compiler import finish_push_compilation
 
-        return "\n".join(
-            [
-                f"Push complete: no changes. Artifacts: {operation}",
-                *compile_pending(connection, root, operation),
-            ]
+        return finish_push_compilation(
+            connection,
+            root,
+            operation,
+            f"Push complete: no changes. Artifacts: {operation}",
         )
     # Retain the baseline before any database mutation so a retry can distinguish
     # accepted submissions from independent database edits after a lost response.
@@ -482,8 +482,7 @@ def _push_project(
             f"Push stopped; earlier operations may have succeeded. Artifacts: {operation}\n{ex}"
         ) from ex
     # Source is committed before compilation. A failed compiler cannot undo sync.
-    from .compiler import compile_pending
+    from .compiler import finish_push_compilation
 
-    diagnostics = compile_pending(connection, root, operation)
     summary = f"Push complete: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} component updates. Artifacts: {operation}"
-    return "\n".join([summary, *diagnostics])
+    return finish_push_compilation(connection, root, operation, summary)
