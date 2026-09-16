@@ -180,6 +180,22 @@ Flags: none.
 gorak sync
 ```
 
+## Compilation and recovery
+
+```sh
+gorak sync --push --force
+gorak compile APP [COMPONENT]
+gorak recover push [--take disk|database]
+```
+
+Push verifies source before compilation. Compilation errors produce a nonzero push
+exit status while verified source synchronization stays complete, with no recovery
+marker. Explicit compile prints full database diagnostics
+and returns a failing exit status if compilation fails. Recovery side selection is
+project-wide, retains displaced versions, and preserves target/locking/revision
+checks. `--force` selects disk authority and cannot accompany `--dry-run` or `--bind`.
+See [push](push.md) for retry behavior, recovery scope, and helper version 9.
+
 ## Misc
 
 ### `gorak debug audit [XML_FILE]`

@@ -181,7 +181,11 @@ def revision_plan(
     settings = require_odbc_settings(connection)
     if settings.database != connection.database:
         raise ProjectError("Revision SQL and source database targets differ")
-    with nullcontext() if lock_held else project_lock(root, "revision comparison"):
+    with (
+        nullcontext()
+        if lock_held
+        else project_lock(root, "revision comparison", recover_push=True)
+    ):
         quarantine = root / ".openroad/revision-quarantine.json"
         if quarantine.exists():
             try:

@@ -56,10 +56,10 @@ Keep CLI handlers separate from domain logic. Main areas:
   existing-component and legacy migration overlays. `contract_source.py` implements
   compact reconstruction; `readable_source.py`, `readable_values.py` and
   `readable_markup.py` retain expanded-preview compatibility. `xml_shapes.py` supplies observed schema ordering/types.
-- `importer.py`, `import_backend.py`, `push.py`: verified compiled source imports.
+- `importer.py`, `import_backend.py`, `push.py`: verified source imports; `compiler.py` provides separate database compilation.
 - `safe_pull.py`, `sync_plan.py`, `sync_guard.py`: pull planning and safety.
 - `runner.py`, `run_backend.py`: application and configured test execution.
-- `remote_scripts/`: packaged Windows helpers, currently version 8. Keep a single
+- `remote_scripts/`: packaged Windows helpers, currently version 9. Keep a single
   packaged helper source and use `gorak remote install` after helper changes.
 - `writer_worker.py`, `writer_launch.py`: managed writers and generated zipapp.
 - Revision checkpoints, journal snapshots/ancestry/observers, native source and

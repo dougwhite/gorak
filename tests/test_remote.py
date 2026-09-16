@@ -103,7 +103,7 @@ COMPONENT_SYNC_METADATA_OUTPUT = """
 REMOTE_MANIFEST_OUTPUT = dedent(
     """
         {
-          "version": "8",
+          "version": "9",
           "files": [
             "applist.sql",
             "revision-generation.sql",
@@ -111,6 +111,7 @@ REMOTE_MANIFEST_OUTPUT = dedent(
             "backup-application.bat",
             "backup-component.bat",
             "import-component.bat",
+            "compile-source.bat",
     "create-source.bat",
     "update-application.bat",
             "run-application.ps1",
@@ -327,6 +328,7 @@ class TestVerifyRemoteHelpers:
             "backup-application.bat",
             "backup-component.bat",
             "import-component.bat",
+            "compile-source.bat",
             "create-source.bat",
             "update-application.bat",
             "run-application.ps1",
@@ -361,7 +363,7 @@ class TestVerifyRemoteHelpers:
         with pytest.raises(RemoteCommandError) as ex:
             verify_remote_helpers(
                 REMOTE_HOST,
-                run_cmd=lambda command: '{"version": "8", "files": []}',
+                run_cmd=lambda command: '{"version": "9", "files": []}',
             )
 
         assert "missing or outdated" in str(ex.value)
@@ -721,3 +723,20 @@ def test_ssh_session_reuses_private_transport_and_restores_state() -> None:
         assert remote.session_command(["sql", "db"]) == ["sql", "db"]
     assert remote.session_command(original) == original
     assert not directory.exists()
+
+
+def test_import_helpers_never_compile_and_creation_always_imports() -> None:
+    from importlib.resources import files
+
+    scripts = files("gorak.remote_scripts")
+    for name in ("import-component.bat", "update-application.bat", "create-source.bat"):
+        script = scripts.joinpath(name).read_text()
+        assert "compileapp" not in script
+        calls = [line for line in script.splitlines() if "backupapp in" in line]
+        assert len(calls) == 1
+        assert calls[0].startswith("call "), (
+            "Import must not depend on an empty-app branch"
+        )
+        assert "-f " not in calls[0]
+    assert "-nabort" in scripts.joinpath("create-source.bat").read_text()
+    assert "GORAK_COMPILE_OK" in scripts.joinpath("compile-source.bat").read_text()

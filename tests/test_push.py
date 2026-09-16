@@ -12,6 +12,18 @@ from gorak.project import ProjectError
 from gorak.xml_writer import document, new_application, new_component
 
 
+@pytest.fixture(autouse=True)
+def mock_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
+    from gorak import compiler
+
+    def compile_source(c: Any, a: str, n: str, log: Path) -> compiler.CompileResult:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("Compiled")
+        return compiler.CompileResult(True, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compile_source)
+
+
 def connection() -> OpenRoadConnection:
     return OpenRoadConnection(
         backend="local", vnode="node", database="source", remote_host=None

@@ -155,7 +155,7 @@ def test_remote_creation_uses_separate_helper(
     assert calls[1][-1].endswith('"create"')
 
 
-def test_application_update_compiles_in_fresh_process(
+def test_application_update_imports_without_compiling(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     source = tmp_path / "source.xml"
@@ -181,7 +181,7 @@ def test_application_update_compiles_in_fresh_process(
     )
     assert calls[0][1] == "backupapp"
     assert "-f" not in calls[0]
-    assert calls[1][1] == "compileapp"
+    assert len(calls) == 1
 
 
 def test_component_named_error_is_not_a_compiler_error() -> None:
@@ -214,7 +214,7 @@ def test_old_helpers_rejected_before_upload(
         )
 
 
-def test_existing_component_compiles_after_load(
+def test_existing_component_imports_without_compiling(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     log = tmp_path / "import.log"
@@ -234,6 +234,5 @@ def test_existing_component_compiles_after_load(
         tmp_path / "source.xml",
         log,
     )
-    assert [c[1] for c in calls] == ["backupapp", "compileapp"]
+    assert [c[1] for c in calls] == ["backupapp"]
     assert "-f" not in calls[0]
-    assert all(flag in calls[1] for flag in ["-cexample", "-f", "-e"])

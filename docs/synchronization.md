@@ -1,7 +1,7 @@
 # Synchronization status and safety gates
 
 M2 is in progress. The CLI uses a shared three-way planner and a staged pull
-executor. Push retains its existing executor behind conservative safety gates.
+executor. Push separates source verification from compilation and reconciles interrupted attempts before replanning.
 Bidirectional synchronization is not yet complete.
 
 ```sh
@@ -47,7 +47,7 @@ vnode remapping or database replacement under the same name.
 
 ## Current execution policy
 
-- Conflicts stop both directions before execution.
+- Ordinary conflicts stop both directions before execution; explicit recovery can choose disk or database authority.
 - Pull stops if disk has pending changes, even to unrelated components.
 - Push stops if the database has pending changes, even to unrelated components.
 - Pull supports database-side component and application deletions and application
@@ -55,11 +55,10 @@ vnode remapping or database replacement under the same name.
 - Push still blocks pending deletions.
 - Existing push metadata/type restrictions continue to apply.
 
-Older projects without source companions use their cached XML to reconstruct existing
-components and application metadata for comparison. This preserves opaque metadata
-and distinguishes unchanged legacy exports from genuinely new components. The cache
-is still required for those checkouts; portable, cache-free reconstruction requires
-source companions. Re-exporting is not required just to inspect legacy source.
+Existing compact projects use baseline-preserving overlays for comparisons and
+recovery verification. Standalone reconstruction is not an exact substitute for
+that comparison: exported XML may contain opaque metadata and explicit defaults
+that are intentionally absent from readable files.
 
 ## Staged pulls and recovery
 
@@ -73,8 +72,7 @@ Before-images and a change journal remain under the operation directory. A faile
 installation attempts to restore files it wrote, preserving subsequent external
 edits. `.openroad/pull-pending.json` blocks further source operations after an
 interrupted or failed installation: inspect the referenced journal and before-images
-and reconcile source/cache before removing that marker. Automatic recovery is not
-implemented. A stale `.openroad/pull.lock` likewise requires checking that no pull
+and use an explicit authority choice to reconcile source/cache; do not manually remove the marker. A stale legacy `.openroad/pull.lock` likewise requires checking that no pull
 process is still active before removal.
 
 File replacement is atomic per file, not across the whole project. Revalidation is
@@ -82,8 +80,8 @@ optimistic: external Workbench/file writes can still race the final checks. CLI 
 across planning, backend calls, and local installation. This includes sync/bind,
 component import, app/component export, scaffolding, configuration, defaults
 flattening, and encoding. An overlapping command fails immediately. The lock records
-its process ID and operation; an ordinary exception releases it. After a killed
-process, confirm that the recorded operation has stopped before removing its lock.
+its process ID and operation; an ordinary exception releases it. New locks carry host/process/start-time ownership, allowing proven-dead local owners
+to be reclaimed. Legacy or remote locks without provable ownership require inspection.
 Do not remove recovery markers merely to bypass this check.
 
 This is a checkout lock, not a database lock. Other checkouts, Workbench, editors,
@@ -102,33 +100,24 @@ before import to detect objects that appeared after planning. Application metada
 updates retain their full-application drift check; script imports retain their
 component baseline comparison.
 
-Before execution, push retains a plan and copies of cached baselines under
-`.openroad/pushes/OPERATION`. A `.openroad/push-pending.json` marker blocks later
-mutations and status/sync comparison if execution does not finish successfully.
-Inspect the plan, submitted/returned XML, import logs, and retained baselines before
-reconciling the database and local cache. Do not blindly retry a failed remote call:
-the database may have accepted it even if its response was lost.
+Before execution, push retains its plan, submitted XML, and cached baselines under
+`.openroad/pushes/OPERATION`. A pending record describes an interrupted attempt;
+normal sync reconciles recognizable database writes before replanning. It does not
+require compilation to succeed. Independent database edits remain conflicts.
 
-All push caches, including existing script imports, are staged until imports and
-source checks succeed. Cache installation uses before-images and attempts rollback
-on write failure, while preserving subsequent external edits. It is not a multi-file
-filesystem transaction; a killed process can still leave partial cache installation.
-The pending marker remains until installation completes. Snapshot checks remain
-optimistic and cannot exclude a Workbench change between a check and an import.
+Post-import source verification or baseline installation failure requires explicit
+recovery. `gorak recover push` verifies agreement without changing readable source;
+`gorak recover push --take disk` and `--take database` choose authority for the
+tracked project. `gorak sync --push --force` chooses disk and retains displaced
+source and tracking. None bypass target identity, active writers, revision quarantine,
+or source verification. See [push and recovery](push.md) for scope and examples.
 
-### Verify and finish an interrupted push
-
-Run `gorak recover push` in the affected project. It takes the checkout lock, requires
-the original verified target binding, and compares disk with fresh database exports.
-If both sides agree, it stages fresh baseline XML, rechecks the project and database,
-installs those baselines, and clears the pending push marker. Recovery artifacts and
-the original marker are retained under `.openroad/pushes/recovery-OPERATION`.
-
-Recovery never imports database source or rewrites readable disk source. If disk and
-database differ, it stops with the marker intact. A partially successful push still
-requires deliberate reconciliation; this command does not choose a winning side or
-roll back database writes. Pull recovery is still manual. A stale mutation/push lock
-from a killed process must be inspected separately before running recovery.
+Baselines and canonical WML are staged until source verification succeeds. An
+interrupted installation remains a recovery condition because local tracking may
+be partially installed. Source is durably verified before compilation is attempted;
+compiler diagnostics and its retry queue are independent of source recovery.
+A post-push compilation failure still makes the push command exit nonzero so
+automated callers stop; verified source and baselines remain installed.
 
 ## No-change push cost
 

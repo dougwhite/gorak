@@ -102,7 +102,7 @@ def markup_node(
     for key, value in source.attrib.items():
         if key == "gorak_style":
             continue
-        if key not in fields or fields[key] in shapes():
+        if key not in fields or (fields[key] in shapes() and value != ""):
             raise ProjectError(
                 f"Unsupported markup property: {source.tag} ({kind})/{key}"
             )
