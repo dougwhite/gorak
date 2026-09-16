@@ -123,6 +123,8 @@ def _sync_project(
     connection: OpenRoadConnection,
     root: Path,
     progress: Callable[[str], None] | None,
+    *,
+    take_database: bool = False,
 ) -> SyncResult:
     directory = root / ".openroad/pulls"
     directory.mkdir(parents=True, exist_ok=True)
@@ -137,7 +139,12 @@ def _sync_project(
             handle.write(str(operation))
             handle.flush()
             before = fingerprint(root)
-            plan = guard_sync(connection, root, push=False, lock_held=True)
+            if take_database:
+                from .sync_plan import plan_project
+
+                plan = plan_project(connection, root)
+            else:
+                plan = guard_sync(connection, root, push=False, lock_held=True)
             # guard_sync can establish a binding only for a previously empty cache.
             if set(before) - fingerprint(root).keys():
                 raise ProjectError("Project changed while planning pull")
@@ -149,6 +156,10 @@ def _sync_project(
             apps = {
                 c.key.split("/")[0] for c in plan if c.action in {"pull", "converged"}
             }
+            if take_database:
+                _, tracked_apps = baseline_inventory(root)
+                apps |= {a.casefold() for a in tracked_apps}
+                apps |= {p.parent.name.casefold() for p in root.glob("*/app.json")}
             if not apps:
                 return SyncResult(len(plan), 0, 0)
             operation.mkdir()
@@ -200,6 +211,9 @@ def _sync_project(
                     ):
                         if path.stem.casefold() == component:
                             old_files.add(path)
+                if take_database:
+                    old_files.update((root / name).glob("*.w4gl"))
+                    old_files.update((root / name).glob("*.wml"))
                 old_files.update((root / ".openroad" / name).glob("*.xml"))
                 for path in old_files:
                     if path.is_file():

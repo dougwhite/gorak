@@ -165,6 +165,7 @@ class TestRemoteInstallCommand:
             "applist.sql",
             "backup-application.bat",
             "backup-component.bat",
+            "compile-source.bat",
             "create-source.bat",
             "get-app-list.bat",
             "get-component-list.bat",

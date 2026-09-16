@@ -10,17 +10,44 @@ from .importer import validate_name
 from .project import ProjectError
 from .project_lock import project_lock
 from .safe_pull import apply_files, fingerprint
-from .sync_guard import binding_status
+from .sync_guard import binding_status, validate_tracking_health
 from .sync_plan import baseline_inventory, plan_project
 
 
-def recover_push(connection: OpenRoadConnection, root: Path) -> str:
-    with project_lock(root, "recover push", recover_push=True):
+def recover_push(
+    connection: OpenRoadConnection, root: Path, *, take: str | None = None
+) -> str:
+    with project_lock(
+        root, "recover push", recover_push=True, recover_pull=take is not None
+    ):
+        if take is not None:
+            if take not in {"disk", "database"}:
+                raise ProjectError("Recovery side must be disk or database")
+            from .push_retry import finish_forced_push, mark_recovery, prepare_tracking
+            from .safe_pull import _sync_project
+
+            operation = prepare_tracking(connection, root, force=True)
+            assert operation is not None
+            if take == "disk":
+                return finish_forced_push(connection, root, operation)
+            marker = root / ".openroad/push-pending.json"
+            marker.unlink(missing_ok=True)
+            try:
+                pulled = _sync_project(connection, root, None, take_database=True)
+                result = f"Recovery took database source: {pulled.exported} components exported"
+                (root / ".openroad/pull-pending.json").unlink(missing_ok=True)
+                (operation / "resolved").write_text(f"Authoritative side: {take}\n")
+                return f"{result}\nDisplaced source and tracking: {operation}"
+            except Exception:
+                if not marker.exists():
+                    mark_recovery(root, operation)
+                raise
         marker = root / ".openroad/push-pending.json"
         if not marker.is_file():
             raise ProjectError("No interrupted push to recover")
         if binding_status(connection, root, recover_push=True) != "verified":
             raise ProjectError("Push recovery requires a verified target binding")
+        validate_tracking_health(connection, root)
         initial = fingerprint(root)
         marker_bytes = marker.read_bytes()
         plan = plan_project(connection, root)
@@ -48,9 +75,9 @@ def recover_push(connection: OpenRoadConnection, root: Path) -> str:
         # Verify staged XML against disk, then repeat the live comparison before install.
         from .importer import signature
         from .portable_source import (
+            comparison_application,
+            comparison_component,
             read_document,
-            restore_application,
-            restore_component,
         )
         from .sync_plan import xml_inventory
 
@@ -61,10 +88,10 @@ def recover_push(connection: OpenRoadConnection, root: Path) -> str:
             actual = xml_inventory(
                 read_document(operation / f"{app}.xml"), app.casefold()
             )
-            expected = {app.casefold(): signature(restore_application(folder))}
+            expected = {app.casefold(): signature(comparison_application(folder))}
             expected.update(
                 {
-                    f"{app}/{p.stem}".casefold(): signature(restore_component(p))
+                    f"{app}/{p.stem}".casefold(): signature(comparison_component(p))
                     for p in folder.glob("*.w4gl")
                 }
             )

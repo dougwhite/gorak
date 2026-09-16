@@ -22,15 +22,15 @@ def target(connection: OpenRoadConnection) -> dict[str, str]:
 
 
 def binding_status(
-    connection: OpenRoadConnection, root: Path, *, recover_push: bool = False
+    connection: OpenRoadConnection,
+    root: Path,
+    *,
+    recover_push: bool = False,
+    recover_pull: bool = False,
 ) -> str:
-    if (root / ".openroad/pull-pending.json").exists():
+    if not recover_pull and (root / ".openroad/pull-pending.json").exists():
         raise ProjectError(
             "An interrupted pull requires recovery; inspect .openroad/pull-pending.json and its before-images before continuing"
-        )
-    if not recover_push and (root / ".openroad/push-pending.json").exists():
-        raise ProjectError(
-            "An interrupted push requires recovery; inspect .openroad/push-pending.json"
         )
     path = root / ".openroad/sync-target.json"
     if not path.exists():
@@ -44,6 +44,35 @@ def binding_status(
     except (ValueError, AttributeError) as ex:
         raise ProjectError("Invalid sync target record") from ex
     return "verified"
+
+
+def validate_tracking_health(connection: OpenRoadConnection, root: Path) -> None:
+    """Explicit recovery and compilation must preserve managed tracking gates."""
+    from uuid import UUID
+
+    from .revision_check import validate_revision_target
+
+    if not connection.revision_generation:
+        return
+    quarantine = root / ".openroad/revision-quarantine.json"
+    if quarantine.exists():
+        try:
+            blocked = json.loads(quarantine.read_text())["generation"]
+            if (
+                not isinstance(blocked, str)
+                or not UUID(blocked).int
+                or str(UUID(blocked)) != blocked
+            ):
+                raise ValueError
+        except (ValueError, KeyError, TypeError) as ex:
+            raise ProjectError(
+                "Invalid revision quarantine; repair tracking before continuing"
+            ) from ex
+        if blocked == connection.revision_generation:
+            raise ProjectError(
+                "Revision generation is quarantined; repair tracking before continuing"
+            )
+    validate_revision_target(connection)
 
 
 def save_binding(connection: OpenRoadConnection, root: Path) -> None:
@@ -80,8 +109,9 @@ def guard_sync(
     bind: bool = False,
     dry_run: bool = False,
     lock_held: bool = False,
+    force: bool = False,
 ) -> list[Change]:
-    status = binding_status(connection, root)
+    status = binding_status(connection, root, recover_pull=force)
     baseline, _ = baseline_inventory(root)
     has_sources = any(root.glob("*/app.json"))
     if connection.revision_generation and not bind and (has_sources or baseline):
@@ -105,6 +135,8 @@ def guard_sync(
         )
     blocked = []
     for change in changes:
+        if force and push and not change.reason and change.database == "unchanged":
+            continue
         if change.action == "conflict":
             blocked.append(change)
         elif push and change.action == "pull":

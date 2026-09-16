@@ -14,7 +14,7 @@ existing Gorak cache to point at a different database.
   uses the packaged Windows batch/PowerShell helpers. Linux clients can use SSH;
   an installed Linux Python package alone cannot run Windows OpenROAD.
 - SSH/SCP access and PowerShell on a remote Windows execution host. Current helper
-  version is 8; run `gorak remote install` after upgrading Gorak. Python 3.12 on the
+  version is 9; run `gorak remote install` after upgrading Gorak. Python 3.12 on the
   execution host is additionally required for managed-revision writer mode.
 - Ingres ODBC client/driver and its driver-manager registration when selecting
   `GORAK_SQL_BACKEND=odbc`. ODBC is required for managed revision/native tools,

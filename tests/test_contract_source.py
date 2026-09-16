@@ -186,3 +186,24 @@ def test_not_null_attribute_cannot_default_to_null(tmp_path: Path) -> None:
     )
     with pytest.raises(ProjectError, match="requires a nullable attribute"):
         decode_component(path)
+
+
+@pytest.mark.parametrize(
+    "kind", ["optionfield", "listfield", "radiofield", "palettefield"]
+)
+def test_exported_empty_structured_property_round_trips(kind: str) -> None:
+    from gorak.contract_source import markup_node
+    from gorak.parser import MarkupDefaultsIndex, frame_markup_element
+
+    index = MarkupDefaultsIndex({}, {})
+    original = etree.fromstring(
+        f'<row xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="{kind}"><valuelist/></row>'
+    )
+    markup = frame_markup_element(original, index)
+    assert markup.get("valuelist") == ""
+    restored = markup_node(markup, "row", kind, index)
+    assert restored.find("valuelist") is not None
+    assert len(restored.find("valuelist")) == 0
+    markup.set("valuelist", "not a structured value")
+    with pytest.raises(ProjectError, match="Unsupported markup property"):
+        markup_node(markup, "row", kind, index)

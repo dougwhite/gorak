@@ -46,10 +46,18 @@ use a disposable source/runtime environment.
   needs no format migration. Unknown source shapes are rejected.
 - A conflict means disk and database changed relative to their common baseline.
   Stop, retain both versions, inspect the reported component and ask the owner
-  which change to reconcile. There is no ordinary force/overwrite workflow.
-- A refused or interrupted push may have partially updated the database. Retain
-  its artifacts. `gorak recover push` can verify and finish only when both sides
-  agree; it does not choose a winner or roll back database writes.
+  which change to reconcile. Normal sync does not choose a winning side automatically.
+- Source imports and compilation are separate. Compiler errors make push exit nonzero
+  without undoing completed source sync or requiring recovery; use
+  `gorak compile APP COMPONENT` for full database compiler diagnostics.
+- An interrupted push can normally be retried with `gorak sync --push`; Gorak
+  compares retained submissions with fresh exports before continuing. Preserve
+  its artifacts. Independent database edits remain conflicts.
+- For damaged tracking or deliberate conflict resolution, `gorak recover push
+  --take disk|database` chooses source authority for the entire tracked project.
+  `gorak sync --push --force` chooses disk without deleting database-only source.
+  Use these only when the owner's instruction establishes that authority. A plain
+  `gorak recover push` finishes only when disk and database already agree.
 - Never bypass a refusal by deleting locks, caches, pending markers, quarantine,
   baselines, generation metadata or target bindings. Never use direct SQL writes
   as a shortcut. Escalate unresolved recovery to the owner.

@@ -16,7 +16,7 @@ These commands do not import, sync, or replace source. They use `w4gldev rundbap
 and accept the standard local/remote connection flags. ODBC is an independent
 metadata backend; application execution always uses OpenROAD locally or via SSH.
 Local execution requires an initialized OpenROAD environment. Remote execution
-requires Windows PowerShell and helper version 8 (`gorak remote install`).
+requires Windows PowerShell and helper version 9 (`gorak remote install`).
 
 RunDBApp uses the application's saved runtime database; this command does not
 override it. `--database` selects the source repository. Test applications may

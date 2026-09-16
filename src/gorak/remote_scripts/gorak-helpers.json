@@ -1,5 +1,5 @@
 {
-  "version": "8",
+  "version": "9",
   "files": [
     "applist.sql",
     "revision-generation.sql",
@@ -7,6 +7,7 @@
     "backup-application.bat",
     "backup-component.bat",
     "import-component.bat",
+    "compile-source.bat",
     "create-source.bat",
     "update-application.bat",
     "run-application.ps1",
