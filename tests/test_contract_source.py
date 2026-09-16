@@ -74,6 +74,54 @@ def test_compact_class_declarations_and_empty_structures(tmp_path: Path) -> None
     )
 
 
+@pytest.mark.parametrize(
+    ("attributes", "expected_gravity"),
+    [
+        ('xleft="500"', None),
+        ('ytop="700"', None),
+        ('xleft="100" ytop="200"', None),
+        ('xleft="500" gravity="17"', "17"),
+        ('ytop="700" gravity="19"', "19"),
+        ("", "17"),
+    ],
+)
+def test_compact_positioned_control_alignment_round_trip(
+    tmp_path: Path, attributes: str, expected_gravity: str | None
+) -> None:
+    folder = project(tmp_path)
+    defaults_path = tmp_path / "field_defaults.json"
+    defaults = json.loads(defaults_path.read_text())
+    defaults["field_styles"][0]["properties"].update(
+        {"gravity": "17", "xleft": "100", "ytop": "200"}
+    )
+    defaults_path.write_text(json.dumps(defaults))
+    path = folder / "panel.w4gl"
+    path.write_text("[framesource]\n===\ninitialize()={}\n")
+    path.with_suffix(".wml").write_text(
+        '<frame><topform><subform name="container"><buttonfield '
+        f'name="go" {attributes}/></subform></topform></frame>'
+    )
+
+    node = decode_component(path)
+    control = node.find(".//childfields/row[name='go']")
+    assert control is not None
+    assert control.findtext("gravity") == expected_gravity
+    coordinates = [control.findtext(key) for key in ("xleft", "ytop")]
+
+    # Encoding must preserve intentional gravity even when it equals the
+    # palette, and preserve positioning when coordinates equal the palette.
+    markup = parse_component_node(node).markup
+    assert markup is not None
+    encoded = etree.fromstring(markup.encode()).find(".//buttonfield")
+    assert encoded is not None
+    assert encoded.get("gravity") == expected_gravity
+    path.with_suffix(".wml").write_text(markup)
+    again = decode_component(path).find(".//childfields/row[name='go']")
+    assert again is not None
+    assert again.findtext("gravity") == expected_gravity
+    assert [again.findtext(key) for key in ("xleft", "ytop")] == coordinates
+
+
 def test_comparison_keeps_unrepresented_baseline_metadata(tmp_path: Path) -> None:
     folder = project(tmp_path)
     path = folder / "calculate.w4gl"
@@ -91,6 +139,30 @@ def test_comparison_keeps_unrepresented_baseline_metadata(tmp_path: Path) -> Non
     node = comparison_component(path)
     assert node.findtext("extension/row_class") == "object"
     assert node.findtext("script") == "return 12;"
+
+
+def test_removing_positioned_gravity_changes_existing_component(tmp_path: Path) -> None:
+    folder = project(tmp_path)
+    defaults_path = tmp_path / "field_defaults.json"
+    defaults = json.loads(defaults_path.read_text())
+    defaults["field_styles"][0]["properties"]["gravity"] = "17"
+    defaults_path.write_text(json.dumps(defaults))
+    path = folder / "panel.w4gl"
+    path.write_text("[framesource]\n===\ninitialize()={}\n")
+    markup = '<frame><topform><buttonfield name="go" xleft="500" gravity="17"/></topform></frame>'
+    path.with_suffix(".wml").write_text(markup)
+    document = etree.Element("OPENROAD")
+    document.append(decode_component(path))
+    cache = tmp_path / ".openroad" / "example"
+    cache.mkdir(parents=True)
+    (cache / "panel.xml").write_bytes(etree.tostring(document))
+
+    path.with_suffix(".wml").write_text(markup.replace(' gravity="17"', ""))
+    node = comparison_component(path)
+    control = node.find("topform/childfields/row")
+    assert control is not None
+    assert control.find("gravity") is None
+    assert control.findtext("xleft") == "500"
 
 
 def test_unknown_frame_property_is_refused(tmp_path: Path) -> None:
