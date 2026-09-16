@@ -1,30 +1,55 @@
 # Run applications and tests
 
-Run an application already stored in the configured OpenROAD source database:
+`gorak run` and `gorak test` execute source already stored in the configured
+OpenROAD database. They do not synchronize disk changes first.
+
+Push a source change before running it:
+
+```sh
+gorak sync --push
+gorak test
+```
+
+## Run an application
 
 ```sh
 gorak run example_app --component p4_start --timeout 120
 ```
 
-Run the OpenROAD unit framework's suite entry point:
+`--component` selects the entry point and `--timeout` sets the maximum runtime.
+`gorak run` prints the application's trace and process output.
+
+The command uses `w4gldev rundbapp`. A graphical frame needs an interactive
+OpenROAD session; a headless SSH run is suitable for procedures and tests but
+does not prove that a GUI opened correctly.
+
+## OpenROAD UnitTestFramework
+
+Gorak's test runner consumes XML results produced by Actian's
+[OpenROAD UnitTestFramework](https://github.com/ActianCorp/OpenROAD_UnitTestFramework).
+Install that framework and its required applications in the OpenROAD environment
+before running a Gorak test suite.
+
+Gorak does not install the framework or discover test applications automatically.
+It launches the test entry point, configures the framework's JUnit XML output, and
+turns the result into a useful command-line exit status.
+
+## Run one test suite
 
 ```sh
 gorak test --app example_tests --component runtests
 ```
 
-These commands do not import, sync, or replace source. They use `w4gldev rundbapp`
-and accept the standard local/remote connection flags. ODBC is an independent
-metadata backend; application execution always uses OpenROAD locally or via SSH.
-Local execution requires an initialized OpenROAD environment. Remote execution
-requires Windows PowerShell and helper version 9 (`gorak remote install`).
+The default timeout is 120 seconds. Override it when needed:
 
-RunDBApp uses the application's saved runtime database; this command does not
-override it. `--database` selects the source repository. Test applications may
-modify test data, including schema setup, just as when run from Workbench.
+```sh
+gorak test --app example_tests --component runtests --timeout 300
+```
 
-## Configured suites
+## Configure project test suites
 
-For `gorak test` without `--app`, configure one or more suites in `gorak.json`:
+To make bare `gorak test` run one or more suites, add a `tests` array to
+`gorak.json`:
 
 ```json
 {
@@ -39,65 +64,29 @@ For `gorak test` without `--app`, configure one or more suites in `gorak.json`:
 }
 ```
 
-String entries such as `"example_tests"` are also accepted. CLI component,
-and timeout flags override configured values. Applications run
-sequentially; a failed assertion does not prevent the next configured suite from
-running. Default timeout is 120 seconds. No automatic suite discovery is performed.
+Suites run sequentially. Command-line `--app`, `--component`, and `--timeout`
+override the project configuration.
 
-## Trace and runtime environment
+`gorak new app example_tests --test` creates an empty application directory and
+adds it to the project configuration. You must still add the framework dependency,
+test source, and a runnable entry component.
 
-Configure these local-only settings in project `.env`:
+## Results and troubleshooting
 
-```dotenv
-# Persistent is the default. Without TRACE_DIR, remote logs use the Gorak
-# installation's traces folder; local logs use the local run artifact folder.
-GORAK_TRACE_MODE=persistent
-GORAK_TRACE_DIR=C:\temp
+For each suite, Gorak prints the total tests, failures, errors, and skipped tests.
+It exits nonzero when:
 
-# Pass application-specific environment values to the execution host.
-GORAK_RUN_ENV_OR_UNITTEST_TESTDIR=C:\Development\tests
-GORAK_RUN_ENV_OR_UNITTEST_TMPDIR=C:\temp
-GORAK_RUN_ENV_II_LIBU3GL=kernel32.dll;user32.dll;gdi32.dll;advapi32.dll;comdlg.dll;ntdll.dll;msvcrt.dll
+- the OpenROAD process fails or times out;
+- the XML result is missing, empty, or malformed; or
+- the report contains failed or errored tests.
+
+Run artifacts are kept under `.openroad/runs/`, including the original XML
+report, trace, process output, and run metadata. Use `--trace` to print complete
+trace and process output:
+
+```sh
+gorak test --trace
 ```
 
-All `GORAK_RUN_ENV_` values are passed to the child with that prefix removed.
-They can configure application settings, timezone, date format, test resources,
-and a remote `II_SYSTEM`. Keep credentials in `.env`, never `gorak.json`.
-The runner owns the framework's statistics-output variables during test runs,
-overriding inherited values to prevent stale reports being reused.
-
-Set `GORAK_TRACE_MODE=temp` for temporary execution-host logs. The remote helper
-returns their contents before removing its temporary directory. Local copies of
-trace/results remain under `.openroad/runs/ID/` for diagnosis. Temporary mode
-ignores TRACE_DIR. Persistent directories on the remote host must be absolute.
-Each run uses unique filenames; remote trace names include application and user.
-
-## Results and failures
-
-`gorak test` enables `OR_UNITTEST_GEN_XML_STATS` and directs
-`OR_UNITTEST_STATSFILE_XML` to a unique file. It prints counts and individual
-failure/error messages, and retains the original JUnit-shaped XML as
-`.openroad/runs/ID/results.xml`. The framework may count setup methods as tests.
-
-Exit code is zero only when execution succeeds and the report is valid, complete,
-nonempty, and contains no failed/error tests. Missing or malformed reports and
-timeouts fail the command. The Actian framework's process code 2 is accepted as
-success only with a valid report containing skipped tests and no failures/errors.
-Other nonzero process codes fail. A failed report is detected even if the process exits
-zero. `gorak run` reports process success only; it does not interpret test results.
-
-Each run also saves `trace.log`, `process.log`, and `run.json`. Use `--trace` to
-print full trace and process output when testing. Plain `gorak run` prints it by
-default. Log delivery occurs after execution, not as a live stream. Transport
-failure is reported separately; a disconnected SSH client does not prove that
-remote execution has stopped. The remote helper enforces its own deadline and
-terminates its launched process tree on timeout.
-
-The test XML can be used by compatible JUnit tooling. VS Code test discovery,
-source navigation adapters and keybindings are not installed by these commands.
-
-
-With [managed revision mode](revision-mode.md), run/test validates the configured
-revision generation and uses the shared execution-host startup worker. SSH requires
-Python 3.12+ and current helpers. Test result semantics are unchanged, including
-intentional failures and the fact that testing does not implicitly sync source.
+Test applications can modify their configured runtime database just as they can
+when run from Workbench. Use a disposable test environment where appropriate.

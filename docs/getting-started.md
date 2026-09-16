@@ -1,36 +1,26 @@
-# First OpenROAD project
+# Getting started
 
-Gorak is early alpha. Use an independent disposable source database and an
-independent runtime database if your application's tests modify data. Export a
-backup through Workbench before experimenting. Do not change the target of an
-existing Gorak cache to point at a different database.
+This guide covers the simplest Gorak setup: OpenROAD and Gorak running on the
+same development machine, using OpenROAD's normal command-line tools.
 
-## Prerequisites
+> **Early alpha.** Start with a disposable OpenROAD source database and keep a
+> Workbench backup. Do not use a production source database.
 
-- Python 3.12 or newer, Git, and preferably `uv`.
-- A licensed OpenROAD development installation with `w4gldev`, its standard image
-  libraries, and an Ingres client configured to reach your source database.
-- Local execution uses the initialized OpenROAD command environment. SSH execution
-  uses the packaged Windows batch/PowerShell helpers. Linux clients can use SSH;
-  an installed Linux Python package alone cannot run Windows OpenROAD.
-- SSH/SCP access and PowerShell on a remote Windows execution host. Current helper
-  version is 9; run `gorak remote install` after upgrading Gorak. Python 3.12 on the
-  execution host is additionally required for managed-revision writer mode.
-- Ingres ODBC client/driver and its driver-manager registration when selecting
-  `GORAK_SQL_BACKEND=odbc`. ODBC is required for managed revision/native tools,
-  optional for the ordinary XML workflow. It does not replace `w4gldev` execution.
-- Live acceptance currently covers a Linux client with SSH to OpenROAD 12 on
-  Windows. Broader platform/version compatibility requires testing; Python's
-  supported version range is not an OpenROAD compatibility promise.
+## Requirements
 
-Use your OpenROAD/Ingres installation's supported database-creation and source
-repository initialization process. Have the DBA create a disposable database
-rather than copying internal source tables manually. On the rehearsed Ingres
-installation a standard database was created using `createdb TARGET -no_x100`;
-that is installation-specific. Open and initialize it through Workbench as needed.
-No journal/revision installer is required for the ordinary workflow.
+- A licensed OpenROAD development installation, including `w4gldev`, with an
+  Ingres client configured to reach your source database.
+- Python 3.12 or newer.
+- [`uv`](https://docs.astral.sh/uv/).
+- Git.
 
-## Install and create
+Gorak can also run OpenROAD on another Windows machine over
+[SSH](remote.md). Direct [ODBC metadata access](config.md#optional-odbc-metadata-access)
+is available but is not required for this guide or the normal workflow.
+
+## Install Gorak
+
+Clone the Gorak repository and install the command:
 
 ```sh
 git clone https://github.com/dougwhite/gorak.git
@@ -38,112 +28,134 @@ cd gorak
 uv sync
 uv tool install --editable .
 gorak --help
+```
+
+Run Gorak from a shell initialized for your OpenROAD and Ingres installation.
+
+## Create a project
+
+```sh
 gorak new myproject
 cd myproject
-cp .env.example .env
 ```
 
-On PowerShell use `Copy-Item .env.example .env`. `gorak new --nogit myproject`
-skips `git init`. The scaffold includes a starter app named after the project;
-that app is disk-only until pushed. If your aim is only to export an existing app,
-remove this untouched starter app directory before the first push, or give the
-project the same name as the app you intend to export. Never remove an app that
-has already been synchronized as a way to request database deletion.
+Gorak creates a Git repository, project metadata, connection examples, agent
+instructions, shared field defaults, and a small starter application called
+`myproject`.
 
-`gorak new app example_app` creates an empty disk application inside an existing
-project. `gorak new app example_tests --test` also registers it as a test suite,
-but does not install a framework or create a test entry point.
+This walkthrough will export an existing application, so delete the untouched
+starter application:
 
-## Configure a source connection
-
-For local OpenROAD execution, edit `.env`:
-
-```dotenv
-GORAK_BACKEND=local
-GORAK_SQL_BACKEND=local
-GORAK_VNODE=myvnode
-GORAK_DATABASE=disposabledb
+```sh
+rm -r myproject
 ```
 
-The vnode and database are separate values. Do not paste `node::database` into
-the database setting. Run the command in a shell with the same initialized
-OpenROAD environment that works for your installation's command-line tools.
+On PowerShell:
 
-For SSH execution:
-
-```dotenv
-GORAK_BACKEND=remote
-GORAK_SQL_BACKEND=remote
-GORAK_REMOTE_HOST=windows-host.example
-GORAK_REMOTE_USER=developer
-GORAK_REMOTE_ROOT=C:\Development\gorak
-GORAK_VNODE=myvnode
-GORAK_DATABASE=disposabledb
+```powershell
+Remove-Item -Recurse myproject
 ```
 
-Then run `gorak remote install` and `gorak remote check`. Verify SSH host keys
-normally. The helpers must resolve the correct OpenROAD installation; see
-[remote setup](remote.md). Never put passwords into shell history or tracked files.
+Only delete this untouched starter directory. Deleting a synchronized application
+directory is not a request to delete that application from OpenROAD.
 
-For direct ODBC metadata queries, retain your local/remote execution settings and
-set `GORAK_SQL_BACKEND=odbc`, then supply the `GORAK_DB_*` driver/host/listen/user
-settings in [configuration](config.md). `GORAK_DB_DATABASE`, if specified, must
-refer to the same source repository as `GORAK_DATABASE`.
+## Connect to your source database
 
-## Export, edit, push, test
+Configure the local OpenROAD backend:
+
+```sh
+gorak config \
+  --backend local \
+  --vnode myvnode \
+  --database sourcedb
+```
+
+This writes the local connection settings to `.env`, which is ignored by Git.
+Use separate values for the vnode and database; do not write
+`myvnode::sourcedb` in the database setting.
+
+Check the connection by listing the applications in the source database:
 
 ```sh
 gorak app list
-gorak component list example_app
-gorak includes list example_app
-gorak app export example_app
-gorak status
 ```
 
-The first successful export into a cache-free directory records its source target
-automatically, so the next `gorak sync` does not require `--bind`. This also works
-if the optional change-metadata query is unavailable.
-An older unbound cache still needs `gorak sync --bind`; this verifies its source
-against the configured database before recording the target. Do not erase caches
-when binding fails. A fresh cache-free synchronization can bind automatically.
-Export is an explicit source-writing operation: use a fresh/clean project for the
-initial export. Use `gorak sync` for subsequent safe pulls.
+See the [Configuration Guide](config.md) for all settings, ODBC, and remote
+connections.
+
+## Export an existing application
+
+List the source components if you want to inspect the application first:
+
+```sh
+gorak component list myapplication
+```
+
+Export it into readable Gorak source:
+
+```sh
+gorak app export myapplication
+```
+
+The new application directory contains `app.json`, readable `.w4gl` source,
+frame `.wml`, and any application field defaults. Gorak keeps local
+synchronization state under the ignored `.openroad/` directory.
+
+## Make the initial Git commit
+
+Review the exported source and commit the clean starting point:
+
+```sh
+git status
+git add .
+git commit -m "Initial OpenROAD source export"
+```
+
+The tracked project is now a normal Git repository. Do not add `.env` or
+`.openroad/`.
+
+## Push a change back to OpenROAD
+
+Start by pulling any newer Workbench changes:
 
 ```sh
 gorak sync
-# Make a supported source change.
-gorak status
-gorak sync --push --dry-run
-gorak sync --push && gorak test
 ```
 
-A dry run prepares/validates push XML but does not import it. Bare `gorak test`
-requires suites in `gorak.json`; see [test configuration](run-test.md). To run a
-specific suite, use `gorak test --app example_tests --component runtests`.
-`gorak run example_app --component p4_start` selects an application entry point.
-Interactive frames require an interactive session; SSH is suitable for headless
-procedures/tests, not proof of visible GUI behavior.
+Edit a supported `.w4gl` or `.wml` file, then inspect Gorak's planned changes:
 
-For a single existing component, `gorak component import example_app p4_start`
-uses the same readable reconstruction and component conflict check. Prefer the
-project-wide push loop for ordinary work.
+```sh
+gorak status
+```
 
-## Failures and reset
+Push the disk change into the OpenROAD source database:
 
-`status` returns a JSON change plan. `push` actions are disk changes; `pull`
-actions are database changes; divergent changes are conflicts. Pull refuses all
-pending local changes, and push refuses pending database changes. An error is not
-a request to force the operation. Read the named `.openroad` artifacts and
-[recovery guide](synchronization.md).
+```sh
+gorak sync --push
+```
 
-`.openroad/` stores ignored baselines, target binding, operation/recovery journals,
-locks and run logs/results. Supported readable source needs no XML
-companions. Run `gorak migrate-source` once for legacy projects; keep its recovery
-evidence under `.openroad`. See [formats and migration](files.md).
+Gorak imports, verifies, and compiles the changed source. If the application has
+configured tests, run them after a successful push:
 
-To test a clean clone against another disposable database, use a **new checkout**,
-configure its own `.env`, install its required source/image dependencies, and run
-`gorak sync --push`. Do not move an existing binding or delete its state. For a
-repeatable demo reset, restore only the known demo source files from the baseline
-commit and push them through Gorak; preserve all recovery and binding metadata.
-Database removal is a separate DBA operation after Workbench/writers are closed.
+```sh
+gorak test
+git diff
+```
+
+`gorak test` runs the source already stored in OpenROAD; it never pushes disk
+changes automatically.
+
+The normal loop is:
+
+```sh
+gorak sync
+# edit readable source
+gorak status
+gorak sync --push
+gorak test
+git diff
+```
+
+If Gorak reports a conflict or refuses an operation, stop and preserve both sides.
+Do not resolve it by deleting `.openroad/`. See [Push and recovery](push.md) for
+safe retry and recovery commands.

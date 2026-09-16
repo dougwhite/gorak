@@ -115,21 +115,14 @@ and prepare a Git change using the same commands as a human developer.
 
 ## Full Documentation
 
-- [Getting Started](docs/getting-started.md) - First project, prerequisites and connection setup
-- [Full Command List](docs/commands.md) - CLI commands and options
+- [Getting Started](docs/getting-started.md) - Create, export and synchronize your first project
+- [Command Reference](docs/commands.md) - Normal CLI commands and options
 - [Configuration Guide](docs/config.md) - Local, remote and ODBC configuration
-- [Synchronization](docs/synchronization.md) - Status, pull/push, conflicts and recovery
-- [Component Editing](docs/component-editing.md) - Current readable editing surface and limits
 - [Run and Test](docs/run-test.md) - Execute applications and collect test results
-- [Component Import](docs/import.md) - Import an individual existing component
 - [Files and Formats](docs/files.md) - Project files and source representation
 - [Remote Helpers](docs/remote.md) - Windows/OpenROAD execution over SSH
+- [Push and Recovery](docs/push.md) - Push behavior, retries and safe recovery
 - [Development Guide](docs/development.md) - Contributing to Gorak
-- [Community Demo and Roadmap](docs/demo/README.md) - Longer-term direction and acceptance goals
-
-Experimental work on direct ODBC source access, change tracking, native source
-snapshots and large-repository performance is documented separately and is not
-required for the normal workflow above.
 
 ## Actian OpenROAD Extension
 

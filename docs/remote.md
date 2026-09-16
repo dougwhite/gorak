@@ -1,19 +1,28 @@
-# Remote Helpers
+# Remote helpers
 
-Remote mode runs OpenROAD export and SQL helper scripts on a Windows OpenROAD
-development host over SSH.
+Remote mode lets Gorak run OpenROAD and Ingres command-line tools on a Windows
+development machine over SSH. Use it when the Gorak project and Git tools live on
+Linux or another workstation.
 
 ## Requirements
 
-- OpenSSH access from the Gorak machine to the Windows host.
-- OpenROAD / Ingres tools installed on the Windows host.
-- A remote directory for helper scripts, for example `C:\Development\gorak`.
+The Windows host needs:
 
-## Configure Remote Access
+- a licensed OpenROAD development installation;
+- an Ingres client configured for the source database;
+- Windows OpenSSH Server and an SSH account you can connect to;
+- PowerShell; and
+- a directory where Gorak can install its helper scripts, such as
+  `C:\Development\gorak`.
 
-```bash
-gorak config \
-  --backend remote \
+Confirm that SSH works and accept the host key normally before configuring Gorak.
+
+## Configure the project
+
+From the Gorak project:
+
+```sh
+gorak config remote \
   --host windows-pc \
   --user developer \
   --gorak-root 'C:\Development\gorak' \
@@ -21,85 +30,53 @@ gorak config \
   --database sourcedb
 ```
 
-## Install Helpers
+This stores the connection in the project's ignored `.env` file. Host, user,
+and path values can also be supplied to individual commands with `--host`,
+`--user`, and `--gorak-root`.
 
-```bash
-gorak remote install
-```
+## Install and check the helpers
 
-This copies packaged helper scripts from `src/gorak/remote_scripts/` to the
-configured remote root.
-
-Run `gorak remote install` again after upgrading Gorak if new helper scripts are
-added.
-
-## Check Helpers
-
-`gorak remote check` verifies that the remote helper manifest is installed and
-matches the helper version required by this Gorak build:
-
-```bash
-gorak remote check
-```
-
-Use it after `gorak remote install`, after upgrading Gorak, or when remote
-commands fail in a way that suggests a missing or stale helper script.
-
-If the check reports that helpers are missing or outdated, reinstall them:
-
-```bash
+```sh
 gorak remote install
 gorak remote check
 ```
 
-The check is explicit rather than automatic so normal remote exports and syncs
-do not pay an extra SSH round trip.
+`remote install` copies the helper scripts required by the current Gorak build
+to the configured Windows directory. Run it again after upgrading Gorak.
 
-## What The Helpers Do
+`remote check` verifies that the installed helper manifest matches the current
+build. If it reports missing or outdated helpers, reinstall them:
 
-| Script | Purpose |
-| --- | --- |
-| `backup-application.bat` | export one full application XML |
-| `backup-component.bat` | export one component XML |
-| `import-component.bat` | import and compile one existing component XML |
-| `run-application.ps1` | run applications/tests with timeout and captured reports |
-| `get-app-list.bat` | list OpenROAD applications |
-| `get-component-list.bat` | list components in one application |
-| `get-component-sync-metadata.bat` | read sync change markers for all components |
-| `get-include-list.bat` | list included applications |
-| `gorak-helpers.json` | helper version and required file manifest used by `gorak remote check` |
-
-The helper scripts write temporary SQL files under the remote Gorak root and
-delete them after execution.
-
-## Manual Smoke Tests
-
-List applications:
-
-```bash
-ssh -T developer@windows-pc 'C:\Development\gorak\get-app-list.bat myvnode sourcedb'
+```sh
+gorak remote install
+gorak remote check
 ```
 
-Export a component:
+## Use normal Gorak commands
 
-```bash
-ssh -T developer@windows-pc 'C:\Development\gorak\backup-component.bat myvnode::sourcedb my_app p4_start'
+After setup, the normal commands use the remote host automatically:
+
+```sh
+gorak app list
+gorak app export myapplication
+gorak sync
+gorak sync --push
+gorak test
 ```
 
-The export helper prints the remote XML path. Gorak downloads that file with
-`scp`.
+OpenROAD export, import, compilation, run, and test happen on the Windows host.
+Files returned by Gorak are stored in the local project.
 
-## Current Caveats
+ODBC remains optional. If configured, it can read Ingres metadata directly from
+the Gorak machine while OpenROAD execution continues over SSH. See the
+[Configuration Guide](config.md#optional-odbc-metadata-access).
 
-- Paths and names with spaces or shell metacharacters need more real-world
-  hardening.
-- Ordinary operations do not check helper versions on every call. Managed revision
-  exports/imports and run/test verify the current manifest before launching.
-  Run `gorak remote check` when you want to verify the installed helper set.
+## Limitations
 
-
-Managed revision mode requires helper version 7 and Python 3.12+ on the Windows
-host. `gorak remote install` builds `gorak-writer.pyz` from packaged production
-modules and installs the manifest last. `writer-command.bat` dispatches configured
-OpenROAD commands through it; unconfigured calls keep their existing behavior.
-See [the deployment and restore contract](revision-mode.md).
+- Interactive graphical frames need an interactive OpenROAD session. A headless
+  SSH run is suitable for procedures and tests but does not prove that a window
+  was displayed.
+- Remote paths and names containing unusual shell metacharacters may need extra
+  care.
+- Gorak does not check the helper manifest before every command; use
+  `gorak remote check` after upgrades or when remote execution fails.

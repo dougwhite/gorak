@@ -1,485 +1,307 @@
-# Gorak Command Reference
+# Gorak command reference
 
-Brief reference for the commands currently exposed by the `gorak` CLI.
+This page documents Gorak's normal project, synchronization, execution, and
+maintenance commands. Experimental source-storage, database-hook, and journal
+research commands are intentionally omitted.
 
-## Table Of Contents
+## Contents
 
-- [Help](#help)
-  - [`gorak --help`](#gorak---help)
-  - [`gorak COMMAND --help`](#gorak-command---help)
-- [Creating A New Gorak Project](#creating-a-new-gorak-project)
-  - [`gorak new NAME`](#gorak-new-name)
-  - [`gorak config`](#gorak-config)
-- [Querying The Database](#querying-the-database)
-  - [`gorak app list`](#gorak-app-list)
-  - [`gorak component list APP`](#gorak-component-list-app)
-  - [`gorak includes list APP`](#gorak-includes-list-app)
-- [Exporting Components](#exporting-components)
-  - [`gorak app export APP`](#gorak-app-export-app)
-  - [`gorak component export APP COMPONENT`](#gorak-component-export-app-component)
-  - [`gorak sync`](#gorak-sync)
-- [Misc](#misc)
-  - [`gorak debug audit [XML_FILE]`](#gorak-debug-audit-xml_file)
-  - [`gorak defaults flatten`](#gorak-defaults-flatten)
-  - [`gorak migrate-source`](#gorak-migrate-source)
-  - [`gorak encode XML_FILE`](#gorak-encode-xml_file)
-- [Gorak Remote](#gorak-remote)
-  - [`gorak remote install`](#gorak-remote-install)
-  - [`gorak remote check`](#gorak-remote-check)
-- [Shared Connection Flags](#shared-connection-flags)
-  - [Backends](#backends)
-  - [Database Configuration](#database-configuration)
-  - [Remote Host Flags](#remote-host-flags)
-  - [ODBC Database Params](#odbc-database-params)
-  - [Connection Examples](#connection-examples)
+- [Projects and configuration](#projects-and-configuration)
+- [Inspect and export OpenROAD source](#inspect-and-export-openroad-source)
+- [Synchronize source](#synchronize-source)
+- [Compile, run, and test](#compile-run-and-test)
+- [Remote helpers](#remote-helpers)
+- [Maintenance and diagnostics](#maintenance-and-diagnostics)
+- [Connection options](#connection-options)
 
-## Help
+Use `gorak --help` or `gorak COMMAND --help` for the interface installed on
+your machine.
 
-### `gorak --help`
+## Projects and configuration
 
-Shows top-level CLI help.
+### `gorak new NAME [--nogit]`
 
-Flags: none.
-
-```bash
-gorak --help
-```
-
-### `gorak COMMAND --help`
-
-Shows help for a command or command group.
-
-Flags: none.
-
-```bash
-gorak app list --help
-```
-
-## Creating A New Gorak Project
-
-### `gorak new NAME`
-
-Creates a new Gorak project.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--nogit` | Skip `git init`. |
-
-```bash
-gorak new example_project
-```
-
-### `gorak config`
-
-Saves connection settings to the current project's `.env` file.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| Shared connection flags | See [Shared Connection Flags](#shared-connection-flags). |
-
-```bash
-gorak config --backend local --sql-backend local --vnode myvnode --database sourcedb
-```
-
-## Querying The Database
-
-### `gorak app list`
-
-Lists OpenROAD applications.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--format json` | Print JSON output. |
-| `--format csv` | Print CSV output. |
-
-```bash
-gorak app list --format json
-```
-
-### `gorak component list APP`
-
-Lists components in an application.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--format json` | Print JSON output. |
-| `--format csv` | Print CSV output. |
-
-```bash
-gorak component list salesapp --format csv
-```
-
-### `gorak includes list APP`
-
-Lists included applications.
-
-Flags: none.
-
-```bash
-gorak includes list salesapp
-```
-
-## Exporting Components
-
-### `gorak app export APP`
-
-Exports an application to source files.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--output DIRECTORY` | Output directory when running outside a Gorak project. |
-
-```bash
-gorak app export salesapp
-```
-
-### `gorak component export APP COMPONENT`
-
-Exports one component to a source file.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--output PATH` | Output path when running outside a Gorak project. |
-
-```bash
-gorak component export salesapp main_frame
-```
-
-### `gorak status`
-
-Inspect a read-only three-way source plan as JSON. See [synchronization](synchronization.md).
-
-### `gorak sync`
-
-Existing caches must first be verified with `gorak sync --bind`. The CLI checks
-target identity and pending changes before synchronization; see
-[safety gates and current limits](synchronization.md).
-
-Use `gorak sync --push` to import disk changes into OpenROAD, or
-`gorak sync --push --dry-run` to validate and save generated XML without importing.
-See [Push source changes](push.md) for supported source types and conflict behavior.
-
-
-Checks out-of-date components and re-exports them to source files.
-
-Flags: none.
-
-```bash
-gorak sync
-```
-
-## Compilation and recovery
+Creates a Gorak project, a starter application named `NAME`, connection
+examples, `AGENTS.md`, field defaults, and `gorak.json`. Git is initialized
+unless `--nogit` is supplied.
 
 ```sh
-gorak sync --push --force
-gorak compile APP [COMPONENT]
-gorak recover push [--take disk|database]
+gorak new payroll
 ```
 
-Push verifies source before compilation. Compilation errors produce a nonzero push
-exit status while verified source synchronization stays complete, with no recovery
-marker. Explicit compile prints full database diagnostics
-and returns a failing exit status if compilation fails. Recovery side selection is
-project-wide, retains displaced versions, and preserves target/locking/revision
-checks. `--force` selects disk authority and cannot accompany `--dry-run` or `--bind`.
-See [push](push.md) for retry behavior, recovery scope, and helper version 9.
+### `gorak new app NAME [--test]`
 
-## Misc
+Creates an empty, disk-only application inside the current project.
+`--test` also registers the application in the `tests` array in
+`gorak.json`.
 
-### `gorak debug audit [XML_FILE]`
-
-Audits `.xml` export files and determines which nodes are not represented in
-exported source files.
-
-> Note: This is not a guarantee of coverage, but rather a supplementary tool to
-> analyze and identify holes in gorak's implementation.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--all` | Audit all cached project XML exports. |
-| `--missing-only` | Only show missing coverage. |
-
-```bash
-gorak debug audit frame.xml --missing-only
+```sh
+gorak new app payroll_tests --test
 ```
 
-### `gorak migrate-source`
+This does not create the application in OpenROAD or install a testing framework.
 
-Locally converts the expanded preview or legacy companions into compact source.
-Pending readable edits are preserved and readable round-trip stability is checked before
-installation. Before-images live under `.openroad/migrations/`. No database writes
-or baseline changes occur. See [migration details](files.md#optional-migration).
+### `gorak config OPTIONS`
 
-### `gorak defaults flatten`
+Writes connection settings to the current project's ignored `.env` file.
 
-Identifies common field defaults and promotes them to app and project
-`field_defaults.json` files.
-
-Flags: none.
-
-```bash
-gorak defaults flatten
+```sh
+gorak config --backend local --vnode myvnode --database sourcedb
 ```
 
-### `gorak encode XML_FILE`
+Use `--sql-backend` and the `--db-*` options for optional ODBC metadata
+access. See [Connection options](#connection-options).
 
-Encodes a single OpenROAD XML source file into the legacy `.w4gl` projection for
-inspection. This diagnostic command does not create a project with inherited defaults
-or accompanying frame WML. Use application/component export for portable source.
+### `gorak config remote OPTIONS`
 
-Flags:
+Shortcut for a remote OpenROAD/Ingres connection. The following options are
+required:
 
-| Flag | Purpose |
-| --- | --- |
-| `--output PATH` | Write output to a file instead of stdout. |
+- `--host HOST`
+- `--user USER`
+- `--gorak-root WINDOWS_PATH`
+- `--vnode VNODE`
+- `--database DATABASE`
 
-```bash
-gorak encode component.xml --output component.w4gl
-```
-
-## Gorak Remote
-
-### `gorak remote install`
-
-Installs or updates the Windows helper scripts on a remote host.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--user USER` | SSH username. |
-| `--host HOST` | SSH host. |
-| `--gorak-root PATH` | Remote Windows Gorak root. |
-
-```bash
-gorak remote install --user developer --host windows-pc --gorak-root 'C:\Development\gorak'
-```
-
-### `gorak remote check`
-
-Checks the installed Windows helper scripts on a remote host are up to date.
-
-Flags:
-
-| Flag | Purpose |
-| --- | --- |
-| `--user USER` | SSH username. |
-| `--host HOST` | SSH host. |
-| `--gorak-root PATH` | Remote Windows Gorak root. |
-
-```bash
-gorak remote check --user developer --host windows-pc --gorak-root 'C:\Development\gorak'
-```
-
-## Shared Connection Flags
-
-These flags tell Gorak how to communicate with OpenROAD and Ingres.
-Pass them on the command line for one run, or save them with `gorak config` so
-they live in the project `.env`.
-
-### Backends
-
-- `--backend` specifies how gorak should communicate with `w4gldev.exe`, either
-  locally or remotely over SSH.
-- `--sql-backend` determines how gorak should query Ingres: through command
-  line `sql.exe`, remotely over SSH, or directly via ODBC.
-
-Remote SSH operation requires a Windows host configured for OpenSSH connections.
-ODBC connections require the Ingres ODBC driver to be set up.
-
-| Flag | Environment variable | Purpose |
-| --- | --- | --- |
-| `--backend local` | `GORAK_BACKEND=local` | Run OpenROAD export commands on this machine. |
-| `--backend remote` | `GORAK_BACKEND=remote` | Run OpenROAD export commands over SSH on a Windows host. |
-| `--sql-backend local` | `GORAK_SQL_BACKEND=local` | Query metadata with local Ingres `sql`. |
-| `--sql-backend remote` | `GORAK_SQL_BACKEND=remote` | Query metadata through the remote helper scripts. |
-| `--sql-backend odbc` | `GORAK_SQL_BACKEND=odbc` | Query metadata directly through ODBC. |
-
-### Database Configuration
-
-The following flags are used to point gorak at the correct OpenROAD repository:
-
-| Flag | Environment variable | Purpose |
-| --- | --- | --- |
-| `--vnode VNODE` | `GORAK_VNODE` | Ingres vnode used by OpenROAD and local SQL commands. |
-| `--database DATABASE` | `GORAK_DATABASE` | OpenROAD source database name. |
-
-### Remote Host Flags
-
-When using `--backend remote`, the following flags apply:
-
-| Flag | Environment variable | Purpose |
-| --- | --- | --- |
-| `--user USER` | `GORAK_REMOTE_USER` | SSH username for the remote host. |
-| `--host HOST` | `GORAK_REMOTE_HOST` | SSH host that can run OpenROAD helper scripts. |
-| `--gorak-root PATH` | `GORAK_REMOTE_ROOT` | Remote Windows folder where Gorak helper scripts live. |
-
-### ODBC Database Params
-
-When querying component metadata over ODBC, the following flags can be used.
-
-| Flag | Environment variable | Purpose |
-| --- | --- | --- |
-| `--db-driver DRIVER` | `GORAK_DB_DRIVER` | ODBC driver name. |
-| `--db-host HOST` | `GORAK_DB_HOST` | Database host for the ODBC connection. |
-| `--db-listen-address ADDRESS` | `GORAK_DB_LISTEN_ADDRESS` | Ingres listen address, such as `II7`. |
-| `--db-database DATABASE` | `GORAK_DB_DATABASE` | Optional ODBC database override. |
-| `--db-user USER` | `GORAK_DB_USER` | ODBC username. |
-| `--db-password PASSWORD` | `GORAK_DB_PASSWORD` | ODBC password. |
-
-### Connection Examples
-
-Example 1: Local exports and metadata queries
-
-```bash
-gorak app list --backend local --sql-backend local --vnode myvnode --database sourcedb
-```
-
-Example 2: Remote exports and metadata queries over SSH
-
-```bash
-gorak app export salesapp \
-  --backend remote \
-  --sql-backend remote \
-  --user developer \
+```sh
+gorak config remote \
   --host windows-pc \
+  --user developer \
   --gorak-root 'C:\Development\gorak' \
   --vnode myvnode \
   --database sourcedb
 ```
 
-Example 3: Remote exports with ODBC-based metadata queries
+## Inspect and export OpenROAD source
 
-```bash
-gorak sync \
-  --backend remote \
-  --sql-backend odbc \
-  --user developer \
-  --host windows-pc \
-  --gorak-root 'C:\Development\gorak' \
-  --vnode myvnode \
-  --database sourcedb \
-  --db-driver 'Ingres AC' \
-  --db-host db-host.example \
-  --db-listen-address II7 \
-  --db-user ingres \
-  --db-password secret
-```
+### `gorak app list [--format json|csv]`
 
-Example 4: Local exports with ODBC-based metadata queries
+Lists applications in the configured OpenROAD source database. JSON is the
+default output format.
 
-```bash
-gorak component list salesapp \
-  --backend local \
-  --sql-backend odbc \
-  --vnode myvnode \
-  --database sourcedb \
-  --db-driver 'Ingres AC' \
-  --db-host db-host.example \
-  --db-listen-address II7 \
-  --db-user ingres \
-  --db-password secret
-```
+### `gorak app export APP [--output DIRECTORY]`
 
-## `gorak component import`
-
-Import an existing procedure or class script from the current project:
+Exports an application into readable Gorak source.
 
 ```sh
-gorak component import example_app example_procedure --dry-run
-gorak component import example_app example_procedure
+gorak app export salesapp
 ```
 
-Accepts the standard connection flags. See [Component Import](import.md) for
-supported edits, conflict checks, helper installation and recovery.
+`--output` selects an explicit destination when running outside a project.
 
-## Run and test
+### `gorak component list APP [--format json|csv]`
 
-`gorak run APP` runs a database application; `gorak test --app APP` runs an
-OpenROAD unit-test application and reads its XML results. With no `--app`,
-`gorak test` uses the `tests` array in `gorak.json`. Both accept `--component`,
-`--timeout`, `--trace`, and standard connection flags.
-See [Run and Test](run-test.md) for trace configuration and report handling.
-
-## `gorak new app`
-
-Inside an existing project, create an empty application folder:
+Lists an application's components.
 
 ```sh
-gorak new app example_app
-gorak new app example_tests --test
+gorak component list salesapp --format csv
 ```
 
-The folder contains `app.json` with a blank starting component and description,
-and an empty included-applications list. `--test` also registers the application
-in the project manifest's `tests` array, preserving existing entries and avoiding
-case-insensitive duplicates. Run from any subdirectory of the project.
+### `gorak component export APP COMPONENT [--output PATH]`
 
-This scaffolds disk files only: it does not create an OpenROAD database application,
-generate tests, select a framework, or configure includes. The test application
-cannot run until an entry point is supplied and it exists in OpenROAD. Existing
-paths, including case variants, are rejected. Application names must be identifiers
-of at most 32 characters. `gorak new NAME [--nogit]` still creates a whole project.
-
-## DBA hook SQL export
+Exports one component.
 
 ```sh
-gorak install --export-sql gorak-install.sql
-gorak install --export-sql -
+gorak component export salesapp main_frame
 ```
 
-Generates capture-only source-tracking SQL for DBA review. No project, connection,
-credentials, or database access is required. Existing output files are not replaced.
-The DBA applies it to an initialized source database under the required owner
-identity, locally or through an authorized vnode connection. See
-[installation instructions](installation.md) for error handling and current limits.
+### `gorak component import APP COMPONENT [--dry-run]`
 
-### Tracking installation inventory
+Imports and verifies one existing component from the current project.
+`--dry-run` prepares the import without changing OpenROAD.
 
-`gorak install --check` reads the configured database through ODBC and returns a
-JSON installation inventory report. Exit 1 indicates missing/incompatible objects
-or inaccessible data. A successful capture-only check does not enable incremental
-sync. See [installation checks](installation.md#check-an-installation).
+```sh
+gorak component import salesapp calculate_totals --dry-run
+gorak component import salesapp calculate_totals
+```
 
-`gorak install` applies tracking SQL through the configured local/remote execution
-backend, grants the configured ODBC user read access to Gorak tracking tables, and
-checks the result through ODBC. It requires a project and an authorized source-owner
-SQL connection. See [direct installation](installation.md#direct-installation).
+For normal project work, prefer `gorak sync --push`.
 
-### Journal preview
+### `gorak includes list APP`
 
-`gorak journal [--limit N]` previews pending committed source-change events over
-ODBC, using a checkout-local acknowledgment store. It does not acknowledge events
-or enable incremental sync. See [journal consumer](journal.md).
+Lists the applications included by `APP`.
 
-`gorak install --upgrade` upgrades capture schema v1 to v2 through the configured
-backend; `--upgrade --export-sql PATH` exports the guarded upgrade for the DBA.
-Version 2 enables server-side pending-event selection for `gorak journal`.
+## Synchronize source
 
-`gorak journal --reconcile [--limit N]` saves fresh full source-comparison evidence
-and acknowledges the selected events only when disk and database agree. It preserves
-common sync baselines and source files. Differences leave events pending; see
-[journal reconciliation](journal.md#reconcile-events-against-source).
+### `gorak status`
 
-`gorak journal --map [--limit N]` adds affected-application candidates and explicit
-full-comparison fallback reasons to the journal preview. It does not narrow status
-or sync yet. See [event mapping](journal.md#map-events-to-application-candidates).
+Compares readable disk source, Gorak's baseline, and the OpenROAD source
+database. It prints a read-only JSON plan showing pull, push, unchanged, or
+conflicting source.
 
-`gorak journal --verify-selective [--limit N]` refreshes a separate database
-observation snapshot selectively and checks it against fresh full exports. It is a
-verification mode, not a status/sync fast path; see
-[selective snapshot verification](journal.md#verify-selective-snapshot-refresh).
+```sh
+gorak status
+```
+
+### `gorak sync`
+
+Pulls OpenROAD changes into the current project.
+
+```sh
+gorak sync
+```
+
+Gorak refuses to overwrite pending disk changes.
+
+### `gorak sync --push [--dry-run]`
+
+Imports disk changes, verifies the result, updates the baseline, and compiles
+the affected database source.
+
+```sh
+gorak sync --push --dry-run
+gorak sync --push
+```
+
+`--dry-run` prepares and validates the import without changing OpenROAD.
+
+### `gorak sync --bind`
+
+Verifies and binds an older unbound cache to its configured source target.
+Fresh exports bind automatically, so most new projects do not need this option.
+
+### `gorak sync --push --force`
+
+Chooses disk as authoritative for the entire tracked project and rebuilds damaged
+tracking while retaining displaced source. It cannot be combined with
+`--dry-run` or `--bind`. Use it only after deliberately choosing the disk
+version during recovery.
+
+### `gorak recover push [--take disk|database]`
+
+Reconciles an incomplete or damaged push:
+
+```sh
+gorak recover push
+gorak recover push --take disk
+gorak recover push --take database
+```
+
+Without `--take`, recovery completes only when disk and database source already
+agree. An authority choice applies to the entire tracked project. See
+[Push and recovery](push.md) before using it.
+
+## Compile, run, and test
+
+### `gorak compile APP [COMPONENT]`
+
+Compiles source already stored in the OpenROAD database and prints full
+diagnostics. Omitting `COMPONENT` force-compiles the application.
+
+```sh
+gorak compile salesapp calculate_totals
+gorak compile salesapp
+```
+
+### `gorak run APP [OPTIONS]`
+
+Runs an application from the configured OpenROAD source database.
+
+```sh
+gorak run salesapp --component p4_start --timeout 120
+```
+
+Options:
+
+| Option | Purpose |
+| --- | --- |
+| `--component NAME` | Select the entry component. |
+| `--timeout SECONDS` | Set the execution timeout. |
+| `--trace` | Print complete trace and process output. |
+
+### `gorak test [OPTIONS]`
+
+Runs the suites configured in `gorak.json`, or a suite selected with
+`--app`.
+
+```sh
+gorak test
+gorak test --app salesapp_tests --component runtests --timeout 120
+```
+
+Options:
+
+| Option | Purpose |
+| --- | --- |
+| `--app APP` | Run one test application instead of configured suites. |
+| `--component NAME` | Override the configured entry component. |
+| `--timeout SECONDS` | Override the configured timeout. |
+| `--trace` | Print complete trace and process output. |
+
+See [Run and Test](run-test.md) for suite configuration and result handling.
+
+## Remote helpers
+
+### `gorak remote install`
+
+Installs or updates Gorak's helper scripts on the configured Windows host.
+
+### `gorak remote check`
+
+Checks that the installed remote helpers match the current Gorak build.
+
+Both commands accept `--host`, `--user`, and `--gorak-root` to override
+the project configuration for one invocation. See [Remote Helpers](remote.md).
+
+## Maintenance and diagnostics
+
+### `gorak defaults flatten`
+
+Finds field-default values shared by application layers and promotes them into
+the repository `field_defaults.json`.
+
+### `gorak migrate-source`
+
+Converts source created by older pre-alpha Gorak formats into the current compact
+representation without changing the database. Existing current-format projects
+do not need it.
+
+### `gorak encode XML_FILE [--output PATH]`
+
+Encodes one OpenROAD XML component into a standalone legacy `.w4gl` projection
+for inspection. Use application or component export for normal portable source.
+
+### `gorak debug audit XML_FILE [--all] [--missing-only]`
+
+Reports XML nodes that are not represented in Gorak's readable source. Use
+`--all` instead of `XML_FILE` to audit cached project exports.
+`--missing-only` filters the report.
+
+## Connection options
+
+Commands that access OpenROAD accept these options. Saved `.env` values are
+normally more convenient; command-line values override them for one run.
+
+### OpenROAD and SQL backends
+
+| Option | Environment variable | Purpose |
+| --- | --- | --- |
+| `--backend local|remote` | `GORAK_BACKEND` | Run OpenROAD locally or through SSH. |
+| `--sql-backend local|remote|odbc` | `GORAK_SQL_BACKEND` | Query Ingres metadata locally, through SSH, or through ODBC. |
+| `--vnode VNODE` | `GORAK_VNODE` | Ingres vnode used by OpenROAD. |
+| `--database DATABASE` | `GORAK_DATABASE` | OpenROAD source database. |
+
+If `--sql-backend` is omitted, it follows `--backend`.
+
+### Remote host
+
+| Option | Environment variable | Purpose |
+| --- | --- | --- |
+| `--host HOST` | `GORAK_REMOTE_HOST` | Windows SSH host. |
+| `--user USER` | `GORAK_REMOTE_USER` | SSH username. |
+| `--gorak-root PATH` | `GORAK_REMOTE_ROOT` | Windows directory containing Gorak helpers. |
+
+### ODBC metadata
+
+| Option | Environment variable | Purpose |
+| --- | --- | --- |
+| `--db-driver DRIVER` | `GORAK_DB_DRIVER` | Installed Ingres ODBC driver name. |
+| `--db-host HOST` | `GORAK_DB_HOST` | Database server. |
+| `--db-listen-address ADDRESS` | `GORAK_DB_LISTEN_ADDRESS` | Ingres listen address, such as `II7`. |
+| `--db-database DATABASE` | `GORAK_DB_DATABASE` | Optional ODBC database override. |
+| `--db-user USER` | `GORAK_DB_USER` | ODBC username. |
+| `--db-password PASSWORD` | `GORAK_DB_PASSWORD` | ODBC password. |
+
+ODBC is optional for normal local and SSH workflows. It changes how Gorak reads
+Ingres metadata; OpenROAD export, import, compilation, run, and test still use
+the local or remote OpenROAD backend.

@@ -24,7 +24,7 @@ ENV_EXAMPLE = """GORAK_BACKEND=local
 GORAK_VNODE=myvnode
 GORAK_DATABASE=exampledb
 
-# Optional: use direct ODBC for read-only list commands.
+# Optional: use direct ODBC for Ingres metadata access.
 # Requires a configured Actian Ingres ODBC client/driver on this machine.
 # GORAK_SQL_BACKEND=odbc
 # GORAK_DB_DRIVER=Ingres AC
