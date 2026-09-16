@@ -8,11 +8,23 @@ and AI coding agents.
 > **Early alpha.** Gorak is still evolving. Use a disposable development source
 > database and keep backups; do not point it at production source yet.
 
+## Demo
+
+[![GORAK demo — OpenROAD development with Git, VS Code and AI](https://img.youtube.com/vi/owvU7R1rD-I/maxresdefault.jpg)](https://www.youtube.com/watch?v=owvU7R1rD-I)
+
+The demo shows the normal Gorak development loop end to end:
+
+- export an OpenROAD application into readable `.w4gl` / `.wml` source;
+- edit and synchronize changes with OpenROAD;
+- run OpenROAD tests from the command line;
+- use an AI coding agent to make a real feature change; and
+- review the resulting source and Git diff.
+
+The disposable OpenROAD application used in the video is available at
+[dougwhite/openroad_demo](https://github.com/dougwhite/openroad_demo).
+
 **Project updates:** Subscribe for email updates on the status of the Gorak project at
 [thingsdougmakes.au/projects/gorak/](https://thingsdougmakes.au/projects/gorak/).
-
-**Demo project:** The disposable OpenROAD application used for the Gorak demo is at
-[dougwhite/openroad_demo](https://github.com/dougwhite/openroad_demo).
 
 ## Setup
 
