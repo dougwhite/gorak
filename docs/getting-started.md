@@ -64,10 +64,7 @@ directory is not a request to delete that application from OpenROAD.
 Configure the local OpenROAD backend:
 
 ```sh
-gorak config \
-  --backend local \
-  --vnode myvnode \
-  --database sourcedb
+gorak config --backend local --vnode myvnode --database sourcedb
 ```
 
 This writes the local connection settings to `.env`, which is ignored by Git.

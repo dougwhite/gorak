@@ -66,20 +66,14 @@ cd myproject
 This creates a small example project including connection settings, agent
 instructions, project metadata and a starter application.
 
-Copy the example environment file:
+Configure your local OpenROAD / Ingres development environment:
 
-```bash
-cp .env.example .env
+```console
+gorak config --backend local --vnode myvnode --database sourcedb
 ```
 
-Modify `.env` to match your OpenROAD / Ingres development environment. For a local
-OpenROAD installation, the basic settings look like:
-
-```env
-GORAK_BACKEND=local
-GORAK_VNODE=myvnode
-GORAK_DATABASE=exampledb
-```
+Replace `myvnode` and `sourcedb` with your vnode and source database. This writes
+the ignored `.env` file; `.env.example` remains a reference for manual configuration.
 
 > See the [Configuration Guide](docs/config.md) for local, remote/SSH and ODBC setup.
 

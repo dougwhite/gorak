@@ -178,6 +178,7 @@ def write_project_skeleton(root: Path, name: str) -> None:
     )
     (root / ".env.example").write_text(ENV_EXAMPLE)
     (root / ".gitignore").write_text(".env\n.openroad/\n")
+    (root / ".gitattributes").write_text("*.w4gl text eol=lf\n*.wml text eol=lf\n")
 
 
 def default_field_defaults_json() -> str:
