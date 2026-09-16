@@ -10,7 +10,7 @@ and AI coding agents.
 
 ## Demo
 
-[![GORAK demo — OpenROAD development with Git, VS Code and AI](https://img.youtube.com/vi/owvU7R1rD-I/maxresdefault.jpg)](https://www.youtube.com/watch?v=owvU7R1rD-I)
+[![GORAK demo — OpenROAD development with Git, VS Code and AI](docs/images/gorak_demo_thumbnail_play.png)](https://www.youtube.com/watch?v=owvU7R1rD-I)
 
 The demo shows the normal Gorak development loop end to end:
 
@@ -132,6 +132,19 @@ and prepare a Git change using the same commands as a human developer.
 Experimental work on direct ODBC source access, change tracking, native source
 snapshots and large-repository performance is documented separately and is not
 required for the normal workflow above.
+
+## Actian OpenROAD Extension
+
+In the demo I am using an early-access version of the Actian OpenROAD VS Code
+extension. It provides OpenROAD 4GL editing in VS Code and can leverage GitHub
+Copilot for AI-assisted development. During the demo it is used as my primary
+OpenROAD editor, and it works well both alongside the normal OpenROAD Workbench
+workflow and with Gorak's native source files.
+
+Any queries about the OpenROAD VS Code extension should be directed to the Actian
+OpenROAD team.
+
+![How Gorak fits into the OpenROAD workflow](docs/images/gorak_in_the_openroad_workflow.png)
 
 ## Project Goals
 
