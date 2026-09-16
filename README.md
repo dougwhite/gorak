@@ -10,7 +10,7 @@ and AI coding agents.
 
 ## Demo
 
-[![GORAK demo — OpenROAD development with Git, VS Code and AI](docs/images/gorak_demo_thumbnail_play.png)](https://www.youtube.com/watch?v=owvU7R1rD-I)
+[![GORAK demo — OpenROAD development with Git, VS Code and AI](docs/images/gorak_demo_thumbnail_play.png)](https://www.youtube.com/watch?v=zlncaV1mLqM)
 
 The demo shows the normal Gorak development loop end to end:
 
