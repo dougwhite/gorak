@@ -89,6 +89,14 @@ def test_untouched_compact_project_cli_round_trip(
         monkeypatch.setattr(module, "read_applications", applications)
         monkeypatch.setattr(module, "backup_application_xml", backup)
     monkeypatch.setattr(push, "import_component_xml", importing)
+    from gorak import compiler
+
+    def compile_source(c: Any, a: str, n: str, log: Path) -> compiler.CompileResult:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("Compiled")
+        return compiler.CompileResult(True, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compile_source)
     monkeypatch.setattr(export, "read_component_sync_metadata", lambda *a: [])
 
     def run(*args: Any) -> RunResult:

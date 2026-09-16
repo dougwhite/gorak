@@ -1,7 +1,7 @@
 # Editing readable OpenROAD source
 
 Gorak reconstructs the established compact source from readable files, checks the current database
-against its export baseline, imports transient XML, compiles in a fresh process,
+against its export baseline, imports transient XML,
 and verifies a fresh full export. XML baselines protect synchronization; they do
 not supply application source. Managed revision/direct decoding remain optional.
 
@@ -38,10 +38,11 @@ baseline, so the next status does not show an endless local change. Review this
 WML in your Git diff. Geometry behavior on other execution platforms has not been
 certified. Unexpected conversion still stops verification and retains evidence.
 
-`backupapp -f` compiles before loading ([Actian import reference](https://docs.actian.com/openroad/11.1/WorkbenchUser/Import_an_Individual_Component.htm)).
-Helper version 8 instead imports first and invokes `compileapp -cCOMPONENT -f -e`
-in a fresh process. Import/compile failure may still leave changed source in the
-database; the ordinary pending/recovery gates apply.
+Helper version 9 imports source without forcing compilation. Push verifies and
+installs all source before compiling; a compiler error is reported separately and
+does not require recovery. `gorak compile APP [COMPONENT]` compiles current database
+source and displays full diagnostics. Import/verification failures retain the
+operation evidence and can be retried or reconciled as described in [push](push.md).
 
 ## Evidence and remaining acceptance
 

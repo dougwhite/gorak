@@ -12,9 +12,11 @@ from uuid import uuid4
 from lxml import etree
 
 from .connection import OpenRoadConnection
+from .errors import SourceVerificationError
 from .export import backup_component_xml
 from .import_backend import import_component_xml
 from .project import ProjectError
+from .project_lock import open_lock
 
 
 def validate_name(value: str) -> None:
@@ -89,7 +91,7 @@ def import_component(
     operations.mkdir(parents=True, exist_ok=True)
     lock = operations / "import.lock"
     try:
-        handle = lock.open("x")
+        handle = open_lock(lock, "component import")
     except FileExistsError as ex:
         raise ProjectError(
             f"Another import may be active; inspect {lock} before removing it"
@@ -98,8 +100,6 @@ def import_component(
     try:
         with handle:
             operation.mkdir()
-            handle.write(str(operation))
-            handle.flush()
             (operation / "source.w4gl").write_bytes(source_bytes)
             if markup_bytes is not None:
                 (operation / "source.wml").write_bytes(markup_bytes)
@@ -144,7 +144,7 @@ def import_component(
                 else equivalent(actual, current)
             )
             if not matches and normalized is None:
-                raise ProjectError(
+                raise SourceVerificationError(
                     "Post-import verification failed; database may have changed"
                 )
             if (
@@ -176,7 +176,12 @@ def import_component(
             )
             return operation
     except Exception as ex:
-        raise ProjectError(
+        error_type = (
+            SourceVerificationError
+            if isinstance(ex, SourceVerificationError)
+            else ProjectError
+        )
+        raise error_type(
             f"{ex}\nImport artifacts: {operation}. If import started, the database may "
             "have changed; inspect import.log and re-export before retrying."
         ) from ex

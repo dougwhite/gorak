@@ -1,4 +1,4 @@
-"""Backend transport for component-scoped, compiled XML imports."""
+"""Backend transport for component-scoped XML source imports."""
 
 import re
 from pathlib import Path
@@ -65,33 +65,9 @@ def import_component_xml(
         if not log_path.is_file():
             log_path.write_text(output)
             raise ProjectError(
-                "OpenROAD did not create a compilation log; inspect import.log"
+                "OpenROAD did not create an import log; inspect import.log"
             )
         checked_log(log_path.read_text(errors="replace"))
-        if not empty_app:
-            compile_log = log_path.with_suffix(".compile.log")
-            local.run_subprocess(
-                local_writer_command(
-                    [
-                        "w4gldev",
-                        "compileapp",
-                        local.build_database_target(
-                            connection.vnode, connection.database
-                        ),
-                        app,
-                        "-nowindows",
-                        "-e",
-                        *([f"-c{component}", "-f"] if component != "-" else []),
-                        "-TALL,logonly",
-                        f"-L{local.command_path(compile_log)}",
-                    ],
-                    connection.database if connection.revision_generation else None,
-                    connection.writer_encoding,
-                )
-            )
-            if not compile_log.is_file():
-                raise ProjectError("OpenROAD did not create a compilation log")
-            checked_log(compile_log.read_text(errors="replace"))
         return
 
     host = require_remote_host(connection)

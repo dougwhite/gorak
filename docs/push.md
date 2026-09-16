@@ -7,39 +7,90 @@ gorak sync --push --dry-run
 gorak sync --push
 ```
 
-Push discovers application folders containing `app.json`. New applications are
-created from that metadata and their `.w4gl` files, without needing cached XML.
-New source includes are ordered before applications that depend on them. External
-image includes are passed through; the image must be available to OpenROAD.
+Push validates readable source, imports all planned source, verifies fresh exports,
+and installs source baselines. Compilation runs afterward, in fresh processes.
+A compiler error does not undo a source import, fail the source sync exit status,
+or put the project into recovery. The summary names each failed component and
+prints the explicit compile command and saved log path.
 
-The established compact source format supports reconstruction of all eight
-observed component types, including nested frame markup and field events. No saved
-XML, source-format flags or migration is required for existing compact projects.
-Unknown source shapes are refused. See [source formats](files.md).
+```sh
+gorak compile example_app widget
+gorak compile example_app
+```
 
-Existing components are rebuilt from the same readable representation.
-Database changes since the baseline cause a conflict. Application metadata updates
-preserve the latest full application XML, check for database drift, and bundle new
-components before importing. Compilation runs in a fresh OpenROAD process so newly
-added includes and imported source are available.
+These commands compile **database source**, not unpushed disk files. They print the
+full diagnostics and retained log location, and exit nonzero on compilation failure.
+The component argument is optional; omitting it force-compiles the application.
+Failed/deferred push compilation remains in a separate queue and is retried by a
+later successful push, including an otherwise unchanged push.
 
-All planned source is validated before imports begin. Creations use OpenROAD's
-abort-on-conflict option, and imports are re-exported to verify the result.
-Whole applications compile in a fresh process after import; empty applications
-skip compilation. A second unchanged push does nothing.
+New applications are built from `app.json` and readable components. Source includes
+are ordered before dependent applications. External image includes must be available
+to OpenROAD. Existing source retains baseline XML details that the readable format
+does not represent. Application metadata updates bundle components and preserve the
+full application XML. Imports retain optimistic drift checks and source verification.
+The compact format supports the eight observed component types, including nested
+frame markup and field events; unknown source shapes are refused.
 
-Push does not delete applications or components. Removing a disk file does not
-remove its database object. A previously exported object missing from the database
-is a conflict; reconcile that deletion explicitly before pushing. This is an
-explicit push command, not a bidirectional newest-wins synchronizer.
+## Retry an interrupted push
 
-XML and logs are retained in `.openroad/pushes/`; existing component imports also
-retain `.openroad/imports/` artifacts. A push is not a transaction across all apps:
-if a later operation fails, earlier operations may already have succeeded.
-Inspect the retained XML and logs before retrying. Avoid simultaneous Workbench
-edits while pushing; conflict detection is optimistic.
+Usually, just run `gorak sync --push` again. Gorak retains the before-images and
+submitted XML and compares them with fresh database exports. It recognizes source
+already accepted by OpenROAD, even if the import response was lost, refreshes those
+verified baselines, and replans the remaining edits. Newer disk edits can be pushed
+over the recognized previous attempt. A normal retry never assumes that an unrelated
+Workbench edit was part of its own operation. Such changes remain ordinary conflicts.
 
-Both local Windows and SSH OpenROAD backends are supported. SQL discovery may use
-local, remote, or ODBC access; XML imports still require the OpenROAD backend.
-SSH users must run `gorak remote install` to install helper version 8, which imports source before fresh-process compilation. A missing creation helper fails without falling back to
-replacement imports.
+An interruption is recorded, but is not itself a recovery requirement. A source
+verification failure, unreadable operation evidence, or incomplete baseline installation
+requires explicit reconciliation. `gorak status` reports the pending operation and
+source differences when comparison is available. Diagnostic comparison failures are
+reported as unavailable, not as proof of no changes.
+
+A dry run does not reconcile a pending attempt or advance baselines. With a pending
+attempt, use status to inspect or a normal push to retry. All operations remain
+optimistic: keep Workbench editors closed during imports.
+
+## Choose an authoritative side
+
+```sh
+gorak recover push                    # Finish only if disk and database agree
+gorak recover push --take disk        # Disk wins for source present on disk
+gorak recover push --take database    # Database wins for the tracked project
+gorak sync --push --force             # Same disk-authority policy
+```
+
+The side choice applies to the **whole tracked project**, not just the component
+that first failed. Before replacing anything, Gorak retains readable disk source,
+previous markers, displaced baselines, and a fresh database export under
+`.openroad/pushes/`. Database authority replaces tracked readable source (including
+removing local-only components) but preserves unrelated files such as notes.
+Disk authority imports local source; it never deletes database-only components.
+
+Force can rebuild damaged source baselines and supersede a failed operation. It
+still requires a verified binding to the original configured target. It cannot
+bypass a live writer, invalid readable source, revision quarantine/generation checks,
+or post-import source verification. It clears recovery only after the selected
+source and tracking are installed successfully; compilation failure does not prevent
+that completion. `--force` requires `--push` and is not combined with `--bind` or
+`--dry-run`. A failed forced operation retains evidence and recovery status.
+
+New lock records identify the owning host, process, and process start time. A
+proven-dead local owner can be reclaimed; an active, remote, or unidentifiable owner
+still requires inspection. Do not manually delete markers or baselines to retry.
+
+Ordinary push does not implement database-side deletions. Removing local source or
+finding a previously exported object absent from the database remains a conflict
+unless an explicit authority choice resolves it.
+
+## Backends and artifacts
+
+Local Windows and SSH OpenROAD backends are supported. SQL discovery may use local,
+remote, or ODBC access; source import and compilation use the OpenROAD backend.
+SSH users must run `gorak remote install` for **helper version 9**, which separates
+import from compilation. Older helpers are refused before upload. Helpers were
+updated and covered by mocked backend tests; live Windows acceptance is separate.
+
+Push XML, snapshots and compilation logs remain under `.openroad/pushes/`; existing
+component imports also retain `.openroad/imports/` artifacts. Explicit compile logs
+are under `.openroad/compiles/`. Keep these private diagnostics out of Git.

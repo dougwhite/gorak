@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -60,3 +61,36 @@ def test_cli_mutations_stop_before_backend_work(
     with project_lock(tmp_path, "active"):
         with pytest.raises(ProjectError, match="Another Gorak operation"):
             getattr(cli, name)(argparse.Namespace())
+
+
+def test_proven_dead_local_lock_is_reclaimed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import psutil
+
+    directory = tmp_path / ".openroad"
+    directory.mkdir()
+    lock = directory / "mutation.lock"
+    lock.write_text(json.dumps({"pid": 12345678, "operation": "interrupted"}))
+    real = psutil.Process
+
+    def process(pid: int | None = None) -> Any:
+        if pid == 12345678:
+            raise psutil.NoSuchProcess(pid)
+        return real(pid)
+
+    monkeypatch.setattr(psutil, "Process", process)
+    with project_lock(tmp_path, "retry"):
+        assert json.loads(lock.read_text())["operation"] == "retry"
+    assert not lock.exists()
+
+
+def test_remote_lock_owner_is_not_reclaimed(tmp_path: Path) -> None:
+    directory = tmp_path / ".openroad"
+    directory.mkdir()
+    lock = directory / "mutation.lock"
+    lock.write_text(json.dumps({"pid": 12345678, "host": "some-other-host"}))
+    with pytest.raises(ProjectError, match="may be active"):
+        with project_lock(tmp_path, "retry"):
+            pytest.fail("Acquired remote owner lock")
+    assert lock.exists()

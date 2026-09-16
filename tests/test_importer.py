@@ -245,7 +245,7 @@ def test_existing_import_lock_is_preserved(
         "backup_component_xml",
         lambda *a: pytest.fail("must not run concurrently"),
     )
-    with pytest.raises(ProjectError, match="Another import"):
+    with pytest.raises(ProjectError, match="Another Gorak operation"):
         importer.import_component(CONNECTION, tmp_path, "app", "example")
     assert lock.read_text() == "another operation"
 

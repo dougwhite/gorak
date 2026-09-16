@@ -7,6 +7,7 @@ from uuid import uuid4
 from lxml import etree
 
 from .connection import OpenRoadConnection
+from .errors import SourceVerificationError
 from .export import (
     backup_application_xml,
     backup_component_xml,
@@ -21,6 +22,7 @@ from .parser import (
 )
 from .portable_source import restore_application, restore_component
 from .project import ProjectError, read_json
+from .project_lock import open_lock
 from .readable_source import is_complete
 from .safe_pull import apply_files, fingerprint
 from .xml_writer import document, new_application, new_component
@@ -37,7 +39,7 @@ def push_project(
     directory.mkdir(parents=True, exist_ok=True)
     lock = directory / "push.lock"
     try:
-        handle = lock.open("x")
+        handle = open_lock(lock, "push")
     except FileExistsError as ex:
         raise ProjectError(f"Another push may be active; inspect {lock}") from ex
     try:
@@ -95,7 +97,7 @@ def _push_project(
             snapshots[path] = path.read_bytes()
         if app.casefold() not in known:
             # Missing previously exported apps are deletions/conflicts, not creations.
-            if (root / ".openroad" / app).exists():
+            if any((root / ".openroad" / app).glob("*.xml")):
                 raise ProjectError(
                     f"Previously exported application is missing from database: {app}"
                 )
@@ -289,9 +291,16 @@ def _push_project(
         if path.read_bytes() != content:
             raise ProjectError(f"Local source changed during push preflight: {path}")
     if not ordered and not edits:
-        return f"Push complete: no changes. Artifacts: {operation}"
-    # Retain the baseline before any database mutation. Failed pushes are not retried
-    # automatically: a remote command can succeed even when its response is lost.
+        from .compiler import compile_pending
+
+        return "\n".join(
+            [
+                f"Push complete: no changes. Artifacts: {operation}",
+                *compile_pending(connection, root, operation),
+            ]
+        )
+    # Retain the baseline before any database mutation so a retry can distinguish
+    # accepted submissions from independent database edits after a lost response.
     for relative in initial:
         if relative.startswith(".openroad/"):
             backup = operation / "baseline" / relative
@@ -300,9 +309,25 @@ def _push_project(
     (operation / "plan.json").write_text(
         json.dumps({"creations_or_updates": ordered, "script_updates": edits}, indent=2)
     )
+    # Retain every submitted component under this operation before the first write.
+    for (app, name), prepared_path in prepared_edits.items():
+        retained = operation / "submitted" / app / f"{name}.xml"
+        retained.parent.mkdir(parents=True, exist_ok=True)
+        retained.write_bytes(prepared_path.read_bytes())
+    from .compiler import queue_compilation
+
+    targets = list(edits)
+    for key in ordered:
+        app = key.split("/")[0]
+        tree = etree.fromstring(creations[key][1])
+        targets.extend((app, str(n.get("name"))) for n in tree.findall("COMPONENT"))
+    queue_compilation(root, targets)
     pending_marker = root / ".openroad/push-pending.json"
-    pending_marker.write_text(json.dumps({"operation": str(operation)}))
+    from .push_retry import write_record
+
+    write_record(pending_marker, {"operation": str(operation), "state": "retryable"})
     cache_updates: dict[Path, bytes] = {}
+    installing = False
     try:
         for index, key in enumerate(ordered):
             check_source()
@@ -358,14 +383,16 @@ def _push_project(
                         and signature(actual_app) != signature(expected_app)
                     )
                 ):
-                    raise ProjectError(f"Application source verification failed: {app}")
+                    raise SourceVerificationError(
+                        f"Application source verification failed: {app}"
+                    )
                 exported = parse_application_xml(etree.parse(str(after)))
                 requested = parse_application_xml(etree.parse(str(submitted)))
                 if (
                     exported.application != requested.application
                     or exported.included_applications != requested.included_applications
                 ):
-                    raise ProjectError(
+                    raise SourceVerificationError(
                         f"Created application metadata verification failed: {app}"
                     )
             if app in app_updates:
@@ -385,7 +412,7 @@ def _push_project(
                     if normalized is not None:
                         cache_updates[root / app / f"{name}.wml"] = normalized.encode()
                     if signature(actual_node) != signature(node) and normalized is None:
-                        raise ProjectError(
+                        raise SourceVerificationError(
                             f"Existing component changed during application update: {app}/{name}"
                         )
             for source in sources:
@@ -403,14 +430,14 @@ def _push_project(
                         signature(actual_node) != signature(expected_node)
                         and normalized is None
                     ):
-                        raise ProjectError(
+                        raise SourceVerificationError(
                             f"Portable XML verification failed: {source.stem}"
                         )
                 if not is_complete(source):
                     from .contract_source import equivalent
 
                     if not equivalent(actual_node, expected_node):
-                        raise ProjectError(
+                        raise SourceVerificationError(
                             f"Readable source verification failed: {source.stem}"
                         )
                 actual = parse_component_node(actual_node)
@@ -420,7 +447,7 @@ def _push_project(
                     or actual.type != expected.type
                     or actual.props != expected.props
                 ):
-                    raise ProjectError(
+                    raise SourceVerificationError(
                         f"Created component verification failed: {source.stem}"
                     )
             cache = root / ".openroad" / app
@@ -439,13 +466,24 @@ def _push_project(
             if normalized_path.exists():
                 cache_updates[root / app / f"{name}.wml"] = normalized_path.read_bytes()
         check_source()
+        installing = True
         apply_files(root, dict(cache_updates), operation, initial)
+        installing = False
         (operation / "verified").write_text(
             "Push imports and source snapshot verified\n"
         )
         pending_marker.unlink()
     except Exception as ex:
+        if installing or isinstance(ex, SourceVerificationError):
+            from .push_retry import mark_recovery
+
+            mark_recovery(root, operation)
         raise ProjectError(
             f"Push stopped; earlier operations may have succeeded. Artifacts: {operation}\n{ex}"
         ) from ex
-    return f"Push complete: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} component updates. Artifacts: {operation}"
+    # Source is committed before compilation. A failed compiler cannot undo sync.
+    from .compiler import compile_pending
+
+    diagnostics = compile_pending(connection, root, operation)
+    summary = f"Push complete: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} component updates. Artifacts: {operation}"
+    return "\n".join([summary, *diagnostics])
