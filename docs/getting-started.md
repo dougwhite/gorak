@@ -43,10 +43,6 @@ Gorak creates a Git repository, project metadata, connection examples, agent
 instructions, shared field defaults, and a small starter application called
 `myproject`.
 
-Generated `.gitattributes` keeps `.w4gl` and `.wml` source files at LF line endings,
-including on Windows with Git's `core.autocrlf=true`. Metadata files retain Git's
-normal line-ending handling.
-
 This walkthrough will export an existing application, so delete the untouched
 starter application:
 

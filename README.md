@@ -50,9 +50,6 @@ uv tool install --editable .
 
 ## Quickstart
 
-See [Getting Started](docs/getting-started.md) for prerequisites and the complete
-safe first-project walkthrough. These commands work in PowerShell and Unix shells.
-
 Check the CLI:
 
 ```bash
