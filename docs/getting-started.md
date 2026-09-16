@@ -43,6 +43,10 @@ Gorak creates a Git repository, project metadata, connection examples, agent
 instructions, shared field defaults, and a small starter application called
 `myproject`.
 
+Generated `.gitattributes` keeps `.w4gl` and `.wml` source files at LF line endings,
+including on Windows with Git's `core.autocrlf=true`. Metadata files retain Git's
+normal line-ending handling.
+
 This walkthrough will export an existing application, so delete the untouched
 starter application:
 
@@ -64,10 +68,7 @@ directory is not a request to delete that application from OpenROAD.
 Configure the local OpenROAD backend:
 
 ```sh
-gorak config \
-  --backend local \
-  --vnode myvnode \
-  --database sourcedb
+gorak config --backend local --vnode myvnode --database sourcedb
 ```
 
 This writes the local connection settings to `.env`, which is ignored by Git.
