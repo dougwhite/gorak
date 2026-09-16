@@ -161,7 +161,14 @@ def update_element(
             else:
                 native.set(key, value)
         else:
-            if value is None and isinstance(defaults.get(key), str):
+            positioned_gravity = key == "gravity" and (
+                "xleft" in after.attrib or "ytop" in after.attrib
+            )
+            if (
+                value is None
+                and isinstance(defaults.get(key), str)
+                and not positioned_gravity
+            ):
                 value = defaults[key]
             set_scalar(target, kind, key, value)
     old_groups: dict[tuple[str, str | None], list[etree._Element]] = {}

@@ -245,6 +245,18 @@ def frame_markup_element(
     copy_markup_attributes(node, element)
     default_properties = defaults_index.properties_for(tag, node)
     append_markup_content(element, node, defaults_index, default_properties, mapping)
+    # A coordinate must remain explicit when it prevents inherited alignment,
+    # even if that coordinate happens to equal the palette value.
+    if (
+        node.find("gravity") is None
+        and "gravity" in default_properties
+        and not {"xleft", "ytop"}.intersection(element.attrib)
+    ):
+        for coordinate in ("xleft", "ytop"):
+            value = node.findtext(coordinate)
+            if value is not None:
+                element.set(coordinate, value.strip())
+                break
     if defaults_index.ambiguous(element):
         candidates = defaults_index.field_styles[str(tag)]
         element.set(
@@ -328,7 +340,7 @@ def should_encode_markup_attribute(
 ) -> bool:
     """Return whether a scalar XML property should appear as a .wml attribute."""
 
-    if name == "name":
+    if name in {"name", "gravity"}:
         return True
 
     default_value = default_properties.get(name)

@@ -87,6 +87,10 @@ def markup_node(
     defaults = index.properties_for_markup(source)
     fields = shape(kind)
     for key, value in defaults.items():
+        # Explicit coordinates describe a positioned control, not a palette-
+        # aligned one. Match the existing WML writer's new-control behavior.
+        if key == "gravity" and ("xleft" in source.attrib or "ytop" in source.attrib):
+            continue
         if (
             isinstance(value, str)
             and key in fields
