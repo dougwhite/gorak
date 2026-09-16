@@ -65,6 +65,16 @@ See [Remote Helpers](remote.md) for host requirements and setup.
 
 ## Optional ODBC metadata access
 
+Gorak installs the Python ODBC dependencies, but loads `pyodbc` only when an
+ODBC engine is requested. Help, project creation/configuration, and local/SSH
+workflows do not need a native ODBC driver manager.
+
+For ODBC on Linux, install the unixODBC runtime providing `libodbc.so.2`
+(`apt install libodbc2` on Debian/Ubuntu, or `dnf install unixODBC` on Fedora).
+Also install and register the Actian Ingres ODBC driver for your platform, and
+set `GORAK_DB_DRIVER` to its registered name. A missing Python driver or native
+runtime produces an ODBC backend error with setup guidance.
+
 Set `GORAK_SQL_BACKEND=odbc` when you want Gorak to query Ingres metadata
 directly through an installed Actian Ingres ODBC driver:
 

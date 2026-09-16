@@ -6,6 +6,10 @@ connection files, or live application databases.
 
 The autouse fixture in `tests/conftest.py` removes inherited Gorak and unit-test
 runtime configuration and blocks real ODBC connections and external subprocesses.
+The suite can run without unixODBC: database logic uses mocked engines, and only
+tests that instantiate native `pyodbc` exceptions skip when it cannot be imported.
+Fresh-process regression tests block the driver import to exercise help, project
+creation, local/SSH dispatch, and the missing-runtime ODBC error.
 Mock backend calls explicitly. Runner tests may execute fake programs created inside
 the current test's temporary directory. This guard covers the existing backend
 boundaries; it is not an operating-system sandbox.

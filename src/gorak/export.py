@@ -7,9 +7,7 @@ from pathlib import Path
 from shutil import rmtree
 from uuid import uuid4
 
-import pyodbc
 from lxml import etree
-from sqlalchemy.exc import SQLAlchemyError
 
 from . import database as database_module
 from . import local
@@ -28,6 +26,7 @@ from .domain import (
 )
 from .field_defaults import diff_defaults, effective_defaults
 from .local import LocalCommandError
+from .odbc_runtime import odbc_error_types
 from .parser import encode_w4gl, parse_application_xml, parse_xml
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
@@ -568,13 +567,7 @@ def record_component_sync_metadata_best_effort(
 
     try:
         record_component_sync_metadata(connection, root, app)
-    except (
-        LocalCommandError,
-        RemoteCommandError,
-        OSError,
-        SQLAlchemyError,
-        pyodbc.Error,
-    ):
+    except odbc_error_types(LocalCommandError, RemoteCommandError, OSError):
         progress_message(
             progress,
             "WARNING: Export succeeded, but sync metadata could not be recorded. "

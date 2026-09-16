@@ -1,4 +1,4 @@
-import pyodbc
+import pytest
 from pytest import CaptureFixture, MonkeyPatch
 from sqlalchemy.exc import OperationalError
 
@@ -86,19 +86,19 @@ def test_cli_formats_remote_backend_errors(
     )
 
 
+@pytest.mark.parametrize("wrapped", [False, True])
 def test_cli_formats_odbc_backend_errors(
+    wrapped: bool,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
 ) -> None:
+    pyodbc = pytest.importorskip("pyodbc", exc_type=ImportError)
+    error = pyodbc.Error("ODBC driver could not connect")
     monkeypatch.setattr(
         cli,
         "read_applications",
         lambda connection: (_ for _ in ()).throw(
-            OperationalError(
-                "select 1",
-                {},
-                pyodbc.Error("ODBC driver could not connect"),
-            )
+            OperationalError("select 1", {}, error) if wrapped else error
         ),
     )
 
