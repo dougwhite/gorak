@@ -204,7 +204,7 @@ def test_migration_detects_concurrent_edit(
         source.write_text(source.read_text() + "\n// external edit\n")
         return result
 
-    monkeypatch.setattr(source_migration, "encode_w4gl", encode_and_edit)
+    monkeypatch.setattr(source_migration, "encode_source_w4gl", encode_and_edit)
     with pytest.raises(ProjectError, match="Source changed"):
         migrate_source(tmp_path)
     assert source.read_text().endswith("// external edit\n")

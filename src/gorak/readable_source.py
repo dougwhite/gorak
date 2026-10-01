@@ -111,21 +111,36 @@ def decode_component(path: Path) -> etree._Element:
         if "framesource" in values
         else None
     )
+    from .component_defaults import defaults_path, read_component_defaults
     from .palette import parent_defaults
 
+    if defaults_path(path).exists() and "framesource" not in values:
+        raise ProjectError("Only frames support editable component field-default files")
+
     return decode_component_text(
-        path.stem, text, markup, defaults=parent_defaults(path.parent)
+        path.stem,
+        text,
+        markup,
+        defaults=parent_defaults(path.parent),
+        frame_defaults=read_component_defaults(path, values.get("fielddefaults", {})),
     )
 
 
 def decode_component_text(
-    name: str, text: str, markup: str | None, *, defaults: dict[str, Any] | None = None
+    name: str,
+    text: str,
+    markup: str | None,
+    *,
+    defaults: dict[str, Any] | None = None,
+    frame_defaults: dict[str, Any] | None = None,
 ) -> etree._Element:
     from .importer import validate_name
 
     validate_name(name)
     front, script = split_w4gl(text)
     values = tomllib.loads(front)
+    if frame_defaults:
+        values["fielddefaults"] = frame_defaults
     kinds = COMPONENT_TYPES & values.keys()
     if values.get("source_format") != 2 or len(kinds) != 1:
         raise ProjectError("Expected one component table with source_format=2")

@@ -248,13 +248,25 @@ the project configuration for one invocation. See [Remote Helpers](remote.md).
 ### `gorak defaults flatten`
 
 Finds field-default values shared by application layers and promotes them into
-the repository `field_defaults.json`.
+the repository `field_defaults.json`. Re-minimizes adjacent
+`<component>.fielddefaults.json` overrides against the effective application
+defaults and removes empty files, preserving effective frame values.
 
 ### `gorak migrate-source`
 
 Converts source created by older pre-alpha Gorak formats into the current compact
-representation without changing the database. Existing current-format projects
-do not need it.
+representation without changing the database. Also moves legacy inline
+`[fielddefaults]` TOML to optional adjacent `<component>.fielddefaults.json`
+overrides. Reconstruction is verified before installation and before-images
+are retained under `.openroad/migrations/`. Projects already using the current
+format do not need it.
+
+Use `gorak migrate-source --field-defaults-only` to move compact inline defaults
+to JSON without reconstructing components through XML. It preserves script bytes,
+WML, application metadata and inherited default files, and verifies all remaining
+TOML values and effective defaults. This mode can migrate source whose layouts or
+component types are outside the current XML reconstruction support. It does not
+claim to validate those layouts or make unsupported types importable.
 
 ### `gorak encode XML_FILE [--output PATH]`
 

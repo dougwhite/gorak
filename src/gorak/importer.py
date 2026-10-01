@@ -76,6 +76,17 @@ def import_component(
         source_bytes = source.read_bytes()
         markup = source.with_suffix(".wml")
         markup_bytes = markup.read_bytes() if markup.is_file() else None
+        from .component_defaults import defaults_path
+
+        defaults_files = {
+            defaults_path(source): "source.fielddefaults.json",
+            root / "field_defaults.json": "root-field_defaults.json",
+            source.parent / "field_defaults.json": "app-field_defaults.json",
+        }
+        defaults_bytes = {
+            path: path.read_bytes() if path.is_file() else None
+            for path in defaults_files
+        }
     except (ValueError, OSError, etree.XMLSyntaxError) as ex:
         raise ProjectError(f"Cannot read import source: {ex}") from ex
     from copy import deepcopy
@@ -103,6 +114,9 @@ def import_component(
             (operation / "source.w4gl").write_bytes(source_bytes)
             if markup_bytes is not None:
                 (operation / "source.wml").write_bytes(markup_bytes)
+            for path, content in defaults_bytes.items():
+                if content is not None:
+                    (operation / defaults_files[path]).write_bytes(content)
             (operation / "baseline.xml").write_bytes(baseline_path.read_bytes())
             before = operation / "before.xml"
             backup_component_xml(connection, app, component, before)
@@ -121,6 +135,10 @@ def import_component(
             if (
                 source.read_bytes() != source_bytes
                 or (markup.read_bytes() if markup.is_file() else None) != markup_bytes
+                or any(
+                    (p.read_bytes() if p.is_file() else None) != data
+                    for p, data in defaults_bytes.items()
+                )
             ):
                 raise ProjectError("Local source changed while preparing import; retry")
             import_component_xml(
@@ -150,6 +168,10 @@ def import_component(
             if (
                 source.read_bytes() != source_bytes
                 or (markup.read_bytes() if markup.is_file() else None) != markup_bytes
+                or any(
+                    (p.read_bytes() if p.is_file() else None) != data
+                    for p, data in defaults_bytes.items()
+                )
             ):
                 raise ProjectError(
                     "Local source changed during import; baseline not advanced"

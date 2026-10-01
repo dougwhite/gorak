@@ -276,10 +276,35 @@ def same_field_style(left: JsonObject, right: JsonObject) -> bool:
 def flatten_app_defaults(root: Path) -> FlattenResult:
     """Promote identical app-level default overrides into repo defaults."""
 
+    from .component_defaults import read_component_defaults, write_component_defaults
+    from .parser import parse_w4gl
+
+    # Validate all component files before changing any inherited layers. The
+    # app promotion preserves effective parents, so overrides keep their meaning.
+    components = []
+    for manifest in sorted(root.glob("*/app.json")):
+        for path in sorted(manifest.parent.glob("*.fielddefaults.json")):
+            source = path.with_name(
+                path.name.removesuffix(".fielddefaults.json") + ".w4gl"
+            )
+            if not source.is_file():
+                from .errors import ProjectError
+
+                raise ProjectError(
+                    f"Component field defaults have no W4GL source: {path}"
+                )
+            component = parse_w4gl(source.read_text(encoding="utf-8"), source.stem)
+            values = read_component_defaults(
+                source, component.props.get("fielddefaults", {})
+            )
+            components.append((source, values))
+
     app_paths = app_field_default_paths(root)
     app_defaults = [read_defaults(path) for path in app_paths]
     shared_defaults = common_defaults(app_defaults)
     if not shared_defaults:
+        for source, values in components:
+            write_component_defaults(source, values)
         return FlattenResult(promoted_values=0, app_count=len(app_paths))
 
     repo_path = root / "field_defaults.json"
@@ -299,6 +324,9 @@ def flatten_app_defaults(root: Path) -> FlattenResult:
         write_defaults(repo_path, merge_defaults(repo_defaults, shared_defaults))
         for path, defaults in zip(app_paths, app_defaults, strict=True):
             write_defaults(path, remove_defaults(defaults, shared_defaults))
+
+    for source, values in components:
+        write_component_defaults(source, values)
 
     return FlattenResult(
         promoted_values=count_leaf_values(shared_defaults),

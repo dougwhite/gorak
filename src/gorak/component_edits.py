@@ -6,6 +6,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from .component_defaults import defaults_path
 from .errors import ProjectError
 from .parser import encode_w4gl, parse_component_node, parse_w4gl, split_w4gl
 from .xml_shapes import order_children, set_scalar, shape, shapes
@@ -26,6 +27,11 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     from .importer import validate_name
     from .xml_writer import datatype
 
+    if (
+        node.get("{http://www.w3.org/2001/XMLSchema-instance}type") != "framesource"
+        and defaults_path(path).exists()
+    ):
+        raise ProjectError("Only frames support editable component field-default files")
     original = parse_component_node(node)
     source = path.read_text()
     edited = parse_w4gl(source, path.stem)
