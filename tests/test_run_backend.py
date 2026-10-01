@@ -1,5 +1,8 @@
 import json
+import os
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,14 +64,16 @@ def test_remote_runner_transfers_config_without_shell_interpolation(
 def test_local_run_uses_saved_runtime_and_collects_results(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("PATH", "/usr/bin")
     # A real short subprocess exercises output capture and environment inheritance.
-    fake = tmp_path / "w4gldev"
+    fake = tmp_path / "fake_openroad.py"
     fake.write_text(
-        '#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\nassert not any(a.startswith("-d") for a in sys.argv)\nPath(os.environ["OR_UNITTEST_STATSFILE_XML"]).write_text("<testsuites/>")\nprint("executed")\n'
+        'import os,sys\nfrom pathlib import Path\nassert not any(a.startswith("-d") for a in sys.argv)\nPath(os.environ["OR_UNITTEST_STATSFILE_XML"]).write_text("<testsuites/>")\nprint("executed")\n'
     )
-    fake.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin")
+    monkeypatch.setattr(
+        run_backend,
+        "local_writer_command",
+        lambda command, *_: [sys.executable, str(fake), *command[1:]],
+    )
     result = run_backend.execute_application(
         OpenRoadConnection("local", "node", "source", None),
         ApplicationRun("tests"),
@@ -83,10 +88,24 @@ def test_local_run_uses_saved_runtime_and_collects_results(
 
 
 def test_local_timeout_is_reported(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    fake = tmp_path / "w4gldev"
-    fake.write_text("#!/usr/bin/python3\nimport time\ntime.sleep(10)\n")
-    fake.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin")
+    fake = tmp_path / "fake_openroad.py"
+    fake.write_text("import time\ntime.sleep(10)\n")
+    monkeypatch.setattr(
+        run_backend,
+        "local_writer_command",
+        lambda command, *_: [sys.executable, str(fake), *command[1:]],
+    )
+    if os.name == "nt":
+        # Keep the real timeout/output path, but never invoke a system command.
+        def taskkill(
+            command: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            assert command[0] == "taskkill" and command[1] == "/PID"
+            assert command[3:] == ["/T", "/F"]
+            os.kill(int(command[2]), signal.SIGTERM)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr(subprocess, "run", taskkill)
     result = run_backend.execute_application(
         OpenRoadConnection("local", "node", "source", None),
         ApplicationRun("tests", timeout_seconds=1),

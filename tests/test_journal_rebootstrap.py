@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path]:
         (directory / "journal.sqlite3", "old"),
         (operation / "journal.sqlite3", "new"),
     ]:
-        with sqlite3.connect(path) as store:
+        with closing(sqlite3.connect(path)) as store, store:
             store.execute("create table consumer (id text)")
             store.execute("insert into consumer values (?)", (value,))
     (directory / "journal-snapshot.json").write_text("old snapshot")
@@ -25,7 +26,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def identity(path: Path) -> str:
-    with sqlite3.connect(path) as store:
+    with closing(sqlite3.connect(path)) as store:
         return str(store.execute("select id from consumer").fetchone()[0])
 
 

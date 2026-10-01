@@ -88,3 +88,16 @@ Submitted code should be tested, typed, and easy to review.
 - Run `uv run pytest`, `uv run ruff check .`, and `uv run mypy` before submitting.
 - Keep changes concise and focused on the problem being solved.
 - Prefer clear, direct code over broad refactors.
+
+## Windows regression checks
+
+Run `uv run pytest`, `uv run ruff check .`, and `uv run mypy` on Windows as well
+as Linux. Subprocess fixtures use temporary Python scripts with the active
+interpreter; external database and OpenROAD commands remain blocked. Fixtures
+that compare source bytes must write LF explicitly, matching the exporter.
+
+Experimental journal durability checks require writable file handles when
+flushing captured evidence and archived consumers on Windows. Flush failures
+still stop publication or acknowledgment and retain recovery artifacts. SQLite
+connections must be closed before replacing consumer files; a connection context
+manager alone only commits or rolls back the transaction.

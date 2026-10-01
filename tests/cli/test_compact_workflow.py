@@ -33,17 +33,20 @@ def test_untouched_compact_project_cli_round_trip(
     )
     (folder / "field_defaults.json").write_text("{}\n")
     (folder / "panel.w4gl").write_text(
-        '[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}'
+        '[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}',
+        newline="\n",
     )
     (folder / "panel.wml").write_text(
         '<frame>\n  <topform>\n    <buttonfield name="go" textlabel="Go"/>\n'
-        "  </topform>\n</frame>\n"
+        "  </topform>\n</frame>\n",
+        newline="\n",
     )
     (folder / "widget.w4gl").write_text(
         '[classsource]\nsuperclass = "userobject"\n\n[attributes]\n'
         'count = "INTEGER NOT NULL"\n\n[methods]\n'
         'get_count = "METHOD RETURNING INTEGER NOT NULL"\n\n===\n\n'
-        "method get_count()={return CurObject.count;}"
+        "method get_count()={return CurObject.count;}",
+        newline="\n",
     )
     sources = [p for p in tmp_path.rglob("*") if p.is_file() and p.name != ".env"]
     before = {p: p.read_bytes() for p in sources}

@@ -21,8 +21,8 @@ def write_frame(folder: Path, name: str, node: etree._Element) -> Path:
     node.set("name", name)
     text, markup = encode_component(node, defaults=parent_defaults(folder))
     path = folder / f"{name}.w4gl"
-    path.write_text(text)
-    path.with_suffix(".wml").write_text(markup or "")
+    path.write_text(text, encoding="utf-8", newline="\n")
+    path.with_suffix(".wml").write_text(markup or "", encoding="utf-8", newline="\n")
     return path
 
 

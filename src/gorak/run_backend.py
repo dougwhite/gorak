@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -161,14 +162,14 @@ def execute_local(
             stderr=subprocess.STDOUT,
             text=True,
             errors="replace",
-            start_new_session=os.name != "nt",
+            start_new_session=sys.platform != "win32",
         ) as process:
             timed_out = False
             try:
                 output, _ = process.communicate(timeout=suite.timeout_seconds)
             except subprocess.TimeoutExpired:
                 timed_out = True
-                if os.name == "nt":
+                if sys.platform == "win32":
                     subprocess.run(
                         ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                         capture_output=True,

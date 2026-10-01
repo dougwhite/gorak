@@ -28,9 +28,9 @@ def write_source(folder: Path, node: etree._Element) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{node.get('name')}.w4gl"
     text, markup = encode_component(node)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8", newline="\n")
     if markup is not None:
-        path.with_suffix(".wml").write_text(markup)
+        path.with_suffix(".wml").write_text(markup, encoding="utf-8", newline="\n")
     return path
 
 

@@ -31,6 +31,11 @@ gorak --help
 ```
 
 Run Gorak from a shell initialized for your OpenROAD and Ingres installation.
+In PowerShell, with `II_SYSTEM` set to the selected installation root:
+
+```powershell
+$env:PATH = "$env:II_SYSTEM\ingres\bin;$env:II_SYSTEM\ingres\utility;$env:PATH"
+```
 
 ## Create a project
 

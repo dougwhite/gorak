@@ -2,7 +2,7 @@ import json
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -206,3 +206,25 @@ def test_edit_while_flushing_evidence_does_not_ack(
     with pytest.raises(ProjectError, match="persisting comparison"):
         reconcile_journal(connection, root)
     assert acknowledged(root) == []
+
+
+def test_comparison_flush_uses_writable_handles_without_changing_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operation = tmp_path / "comparisons" / "operation"
+    operation.mkdir(parents=True)
+    evidence = operation / "source.xml"
+    original = b"<source>unchanged</source>\r\n"
+    evidence.write_bytes(original)
+    open_path = Path.open
+
+    def windows_open(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        if path == evidence and mode == "rb":
+            raise OSError("Windows cannot fsync a read-only file handle")
+        return open_path(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", windows_open)
+    journal_reconcile.persist_comparison(operation, {"complete": True})
+    monkeypatch.setattr(Path, "open", open_path)
+    assert evidence.read_bytes() == original
+    assert json.loads((operation / "comparison.json").read_text()) == {"complete": True}

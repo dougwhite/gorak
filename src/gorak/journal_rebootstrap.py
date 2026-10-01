@@ -37,12 +37,12 @@ def publish_consumer(root: Path, operation: Path) -> None:
     if pointer.exists():
         shutil.copyfile(pointer, archive / "journal-snapshot.json")
     for path in archive.iterdir():
-        with path.open("rb") as stream:
+        with path.open("r+b") as stream:
             os.fsync(stream.fileno())
     flush_directory(archive)
     flush_directory(operation)
     staged = operation / "journal.sqlite3"
-    with staged.open("rb") as stream:
+    with staged.open("r+b") as stream:
         os.fsync(stream.fileno())
     pointer.unlink(missing_ok=True)
     flush_directory(directory)

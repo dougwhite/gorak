@@ -233,8 +233,8 @@ def test_fresh_push_restores_exported_frame_without_cache(
     assert node is not None
     source = folder / f"{node.get('name')}.w4gl"
     text, markup = encode_component(node)
-    source.write_text(text)
-    source.with_suffix(".wml").write_text(markup or "")
+    source.write_text(text, encoding="utf-8", newline="\n")
+    source.with_suffix(".wml").write_text(markup or "", encoding="utf-8", newline="\n")
     assert not list(tmp_path.rglob("*.xml"))
     assert not (tmp_path / ".openroad").exists()
     monkeypatch.setattr(push, "read_applications", lambda _: [])
@@ -343,7 +343,7 @@ def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
         if complete
         else (encode_w4gl(component), encode_wml(component))
     )
-    source.write_text(text)
+    source.write_text(text, encoding="utf-8", newline="\n")
     markup = source.with_suffix(".wml")
     markup.write_text((wml or "").replace('xleft="104"', 'xleft="321"'))
     app_node = new_application(folder)

@@ -1,12 +1,12 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from gorak.writer_launch import build_writer_archive
-from tests.test_writer_launch import interpreter
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX fake executable fixture")
@@ -32,7 +32,7 @@ raise SystemExit(7)
     )
     result = subprocess.run(
         [
-            str(interpreter(tmp_path)),
+            sys.executable,
             str(archive),
             "--database",
             "source",
@@ -61,7 +61,7 @@ def test_worker_failure_does_not_echo_sensitive_settings(tmp_path: Path) -> None
     env = dict(os.environ, II_SYSTEM=str(tmp_path), ING_SET_SOURCE="sensitive")
     result = subprocess.run(
         [
-            str(interpreter(tmp_path)),
+            sys.executable,
             str(archive),
             "--database",
             "source",

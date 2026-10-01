@@ -55,6 +55,7 @@ def test_queries_only_named_symbol_using_selected_installation(
         (b"\xff", 0, b""),
         (b"\0", 0, b""),
     ],
+    ids=["exit-failure", "stderr", "oversized", "invalid-encoding", "nul"],
 )
 def test_bad_lookup_is_not_an_empty_setting(
     installation: tuple[dict[str, str], Path],
