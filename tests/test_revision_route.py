@@ -1,3 +1,4 @@
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -28,7 +29,9 @@ def test_local_route_uses_selected_installation_and_rejects_mismatch(
     )
     monkeypatch.setattr("gorak.revision_route.subprocess.run", run)
     route.validate_source_route(connection)
-    assert run.call_args.args[0][0] == str(tmp_path / "ingres/bin/sql")
+    assert run.call_args.args[0][0] == str(
+        tmp_path / "ingres/bin" / ("sql.exe" if os.name == "nt" else "sql")
+    )
     assert '"$ingres".gorak_revision_install' in run.call_args.kwargs["input"]
     run.return_value.stdout = "|another-generation|"
     with pytest.raises(ProjectError, match="does not match"):

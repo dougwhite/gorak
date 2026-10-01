@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,20 @@ def isolate_external_services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         if isinstance(command, (str, bytes)) or kwargs.get("shell"):
             raise AssertionError("Tests must mock shell commands")
         executable = shutil.which(str(command[0]))
-        if executable is None or not Path(executable).resolve().is_relative_to(
-            tmp_path
+        # Permit this interpreter only for an explicit temporary script/archive.
+        # Never allow arbitrary -c/-m commands or the installed OpenROAD tools.
+        temporary_script = (
+            executable is not None
+            and Path(executable).resolve() == Path(sys.executable).resolve()
+            and len(command) > 1
+            and Path(str(command[1])).is_absolute()
+            and Path(str(command[1])).resolve().is_relative_to(tmp_path)
+            and Path(str(command[1])).suffix in {".py", ".pyz"}
+            and Path(str(command[1])).is_file()
+        )
+        if not temporary_script and (
+            executable is None
+            or not Path(executable).resolve().is_relative_to(tmp_path)
         ):
             raise AssertionError(
                 "Tests must mock external commands or use a temporary fake executable"

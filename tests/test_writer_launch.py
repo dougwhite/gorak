@@ -13,15 +13,6 @@ from gorak.writer_launch import (
 )
 
 
-def interpreter(root: Path) -> Path:
-    path = root / "python-fixture"
-    path.write_text(
-        f"#!{sys.executable}\nimport runpy,sys\nrunpy.run_path(sys.argv.pop(1), run_name='__main__')\n"
-    )
-    path.chmod(0o755)
-    return path
-
-
 def test_archive_is_deterministic_and_contains_production_worker(
     tmp_path: Path,
 ) -> None:
@@ -33,7 +24,7 @@ def test_archive_is_deterministic_and_contains_production_worker(
         assert "gorak/writer_settings.py" in archive.namelist()
     assert (
         subprocess.run(
-            [str(interpreter(tmp_path)), str(a), "--help"], capture_output=True
+            [sys.executable, str(a), "--help"], capture_output=True
         ).returncode
         == 0
     )
@@ -47,3 +38,9 @@ def test_disabled_launch_unchanged_and_enabled_arguments_are_separate() -> None:
     assert remote_writer_prefix(None, "cp1252") == ""
     with pytest.raises(ProjectError):
         remote_writer_prefix("source&other", "cp1252")
+
+
+@pytest.mark.parametrize("arguments", [["-c", "pass"], ["-m", "gorak.writer_worker"]])
+def test_subprocess_guard_rejects_unbounded_python(arguments: list[str]) -> None:
+    with pytest.raises(AssertionError, match="Tests must mock external commands"):
+        subprocess.run([sys.executable, *arguments], check=True)

@@ -25,6 +25,9 @@ Do not commit:
 - `.openroad/`, which contains local synchronization baselines, target binding,
   locks, recovery evidence, temporary XML transport, and run artifacts.
 
+Generated `.w4gl` and `.wml` files use LF line endings on every platform;
+new projects include Git attributes to retain them on Windows.
+
 Readable Gorak source is portable without the original `.openroad/` cache.
 External OpenROAD image, framework, and runtime dependencies must still be
 installed in the destination environment.

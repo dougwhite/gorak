@@ -31,7 +31,8 @@ def persist_comparison(directory: Path, report: dict[str, object]) -> None:
     """Flush immutable XML evidence before publishing its completion receipt."""
     for path in directory.rglob("*"):
         if path.is_file():
-            with path.open("rb") as stream:
+            # Windows FlushFileBuffers requires write access; do not truncate.
+            with path.open("r+b") as stream:
                 os.fsync(stream.fileno())
     report_path = directory / "comparison.json"
     with report_path.open("x", encoding="utf-8") as stream:
