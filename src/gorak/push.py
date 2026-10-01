@@ -87,7 +87,7 @@ def _push_project(
         paths = sorted(folder.glob("*.w4gl"))
         if len({p.stem.casefold() for p in paths}) != len(paths):
             raise ProjectError(f"Component names collide ignoring case: {app}")
-        auxiliary = list(folder.glob("*.wml"))
+        auxiliary = [*folder.glob("*.wml"), *folder.glob("*.fielddefaults.json")]
         auxiliary.extend(
             p
             for p in [root / "field_defaults.json", folder / "field_defaults.json"]

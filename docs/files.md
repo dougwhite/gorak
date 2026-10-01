@@ -10,6 +10,7 @@ project/
 ├── app_name/
 │   ├── app.json
 │   ├── field_defaults.json
+│   ├── component.fielddefaults.json  # optional frame overrides
 │   ├── component.w4gl
 │   └── frame_component.wml
 ├── .env
@@ -91,8 +92,37 @@ Keep WML well formed and field names consistent with their event scripts.
 
 The root `field_defaults.json` contains repository-wide OpenROAD field defaults.
 An application's `field_defaults.json` stores only differences from the root,
-and a frame's `[fielddefaults]` metadata stores only further differences from
-the application.
+and an optional adjacent `<component>.fielddefaults.json` stores only further
+differences from the effective application defaults (including inherited root
+values). It has the same JSON structure as the root/application defaults. Gorak
+omits or removes this file when there are no overrides. Frame defaults are not
+written into the `.w4gl` TOML header.
+
+For example, `panel.w4gl` may have a `panel.fielddefaults.json` containing:
+
+```json
+{
+    "field_styles": [
+        {
+            "type": "buttonfield",
+            "group": "buttonfield",
+            "properties": {"bgcolor": "3"}
+        }
+    ]
+}
+```
+
+This changes only that style's background color; other properties remain inherited.
+Track the JSON file with its component. Its changes participate in status, push,
+pull conflict checks and recovery just like other source files.
+
+Older inline `[fielddefaults]` TOML remains readable. Do not define overrides in
+both places: Gorak refuses competing definitions. Re-export or run
+`gorak migrate-source --field-defaults-only` to convert existing inline defaults
+locally without reconstructing layouts or scripts.
+`gorak defaults flatten` preserves effective frame defaults while promoting
+shared application values, and re-minimizes component JSON files, removing empty
+ones.
 
 Values equal to inherited defaults are omitted from WML and reconstructed during
 import.

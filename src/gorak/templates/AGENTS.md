@@ -26,7 +26,11 @@ database.
 ## Source and safety
 
 - Track `.w4gl`, `.wml`, `app.json`, `gorak.json`, `AGENTS.md`, and
-  field-default JSON.
+  field-default JSON. Resolve defaults from root `field_defaults.json`, then
+  application `field_defaults.json`, then optional `<component>.fielddefaults.json`.
+  Component JSON contains only overrides of the effective app defaults; remove
+  it when empty. WML properties override these defaults. Legacy inline
+  `[fielddefaults]` remains readable, but never define overrides in both places.
 - Never commit `.env` or `.openroad/`. The first may contain credentials; the
   second contains local baselines, target binding, locks, recovery evidence,
   temporary XML, and run artifacts.

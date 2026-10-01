@@ -241,8 +241,13 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status")
     add_openroad_connection_args(status_parser)
 
-    subparsers.add_parser(
+    migrate_parser = subparsers.add_parser(
         "migrate-source", help="Convert legacy source without changing the database"
+    )
+    migrate_parser.add_argument(
+        "--field-defaults-only",
+        action="store_true",
+        help="Move compact inline defaults to JSON without reconstructing layouts or scripts",
     )
 
     sync_parser = subparsers.add_parser("sync")
@@ -1223,7 +1228,10 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
         elif parsed.command == "migrate-source":
             from .source_migration import migrate_source
 
-            operation = migrate_source(load_project(Path.cwd()).root)
+            operation = migrate_source(
+                load_project(Path.cwd()).root,
+                field_defaults_only=parsed.field_defaults_only,
+            )
             print(
                 f"Source migrated; recovery files: {operation}"
                 if operation

@@ -11,6 +11,7 @@ from lxml import etree
 
 from . import database as database_module
 from . import local
+from .component_defaults import encode_source_w4gl, write_component_defaults
 from .connection import (
     OpenRoadConnection,
     connection_sql_backend,
@@ -259,13 +260,16 @@ def export_application_to_paths(
     apply_field_default_inheritance(
         paths.source_dir.parent, paths.source_dir.name, components
     )
-    encoded = [(c.name, (encode_w4gl(c), c.markup)) for c in components]
+    encoded = [(c.name, (encode_source_w4gl(c), c.markup)) for c in components]
     if len({name.casefold() for name, _ in encoded}) != len(encoded):
         raise ProjectError("Duplicate exported component names")
-    for name, (text, markup) in encoded:
+    for component, (name, (text, markup)) in zip(components, encoded, strict=True):
         progress_message(progress, f"Encoding component {app}::{name}")
         write_component_w4gl(paths.source_dir, name, text, progress)
         write_component_wml(paths.source_dir, name, markup, progress)
+        write_component_defaults(
+            paths.source_dir / f"{name}.w4gl", component.props.get("fielddefaults", {})
+        )
     write_json(paths.source_dir / "app.json", application_source)
     return exported
 
@@ -293,11 +297,12 @@ def export_component_to_paths(
     apply_field_default_inheritance(
         paths.w4gl_path.parent.parent, paths.w4gl_path.parent.name, [parsed_component]
     )
-    text, markup = encode_w4gl(parsed_component), parsed_component.markup
+    text, markup = encode_source_w4gl(parsed_component), parsed_component.markup
     w4gl_path = write_component_w4gl(
         paths.w4gl_path.parent, parsed_component.name, text, progress
     )
     write_component_wml(paths.w4gl_path.parent, parsed_component.name, markup, progress)
+    write_component_defaults(w4gl_path, parsed_component.props.get("fielddefaults", {}))
     return w4gl_path
 
 

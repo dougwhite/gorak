@@ -5,6 +5,7 @@ from typing import Any
 
 from lxml import etree
 
+from .component_defaults import read_component_defaults
 from .errors import ProjectError
 from .field_defaults import effective_defaults, read_defaults
 from .parser import (
@@ -164,7 +165,7 @@ def decode_component(path: Path) -> etree._Element:
         defaults = effective_defaults(
             read_defaults(path.parent.parent / "field_defaults.json"),
             read_defaults(path.parent / "field_defaults.json"),
-            source.props.get("fielddefaults", {}),
+            read_component_defaults(path, source.props.get("fielddefaults", {})),
         )
         node.append(palette_node(defaults))
         index = MarkupDefaultsIndex.from_defaults(defaults)

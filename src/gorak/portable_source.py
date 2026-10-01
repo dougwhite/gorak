@@ -5,6 +5,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from .component_defaults import read_component_defaults
 from .field_defaults import effective_defaults, read_defaults
 from .parser import (
     parse_component_node,
@@ -138,7 +139,7 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
 
         repo = read_defaults(path.parent.parent / "field_defaults.json")
         app = read_defaults(path.parent / "field_defaults.json")
-        overrides = edited.props.get("fielddefaults", {})
+        overrides = read_component_defaults(path, edited.props.get("fielddefaults", {}))
         if "structure" in repo or "structure" in app:
             from .palette import decode, merge, upgrade_legacy
             from .xml_shapes import order_children

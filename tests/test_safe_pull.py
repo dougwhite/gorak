@@ -44,6 +44,7 @@ def test_deleted_database_app_removes_source_but_preserves_notes(
     folder.mkdir()
     (folder / "app.json").write_text("{}")
     (folder / "proc.w4gl").write_text("old source")
+    (folder / "proc.fielddefaults.json").write_text('{"field_styles": []}')
     (folder / "notes.txt").write_text("human notes")
     cache = tmp_path / ".openroad/example"
     cache.mkdir(parents=True)
@@ -64,6 +65,17 @@ def test_deleted_database_app_removes_source_but_preserves_notes(
     )
     assert not (folder / "app.json").exists()
     assert not (folder / "proc.w4gl").exists()
+    assert not (folder / "proc.fielddefaults.json").exists()
+    assert (
+        len(
+            list(
+                (tmp_path / ".openroad/pulls").glob(
+                    "*/before/example/proc.fielddefaults.json"
+                )
+            )
+        )
+        == 1
+    )
     assert (folder / "notes.txt").read_text() == "human notes"
     assert not (cache / "example.xml").exists()
     assert "example" in (tmp_path / ".openroad/tracked-applications.json").read_text()
