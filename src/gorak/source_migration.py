@@ -73,7 +73,9 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
 
                 for path, node in sources:
                     component = parse_component_node(node)
-                    apply_field_default_inheritance(stage, target.name, [component])
+                    apply_field_default_inheritance(
+                        stage, target.name, [component], source_nodes=[node]
+                    )
                     text, markup = encode_source_w4gl(component), component.markup
                     text = text.rstrip() + "\n"
                     markup = markup.rstrip() + "\n" if markup is not None else None
@@ -86,8 +88,11 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
                     write_component_defaults(
                         destination, component.props.get("fielddefaults", {})
                     )
-                    reconstructed = parse_component_node(decode_component(destination))
-                    apply_field_default_inheritance(stage, target.name, [reconstructed])
+                    rebuilt = decode_component(destination)
+                    reconstructed = parse_component_node(rebuilt)
+                    apply_field_default_inheritance(
+                        stage, target.name, [reconstructed], source_nodes=[rebuilt]
+                    )
                     if (
                         encode_source_w4gl(reconstructed).strip() != text.strip()
                         or reconstructed.props.get("fielddefaults", {})
