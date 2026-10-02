@@ -28,7 +28,13 @@ from .domain import (
 from .field_defaults import diff_defaults, effective_defaults
 from .local import LocalCommandError
 from .odbc_runtime import odbc_error_types
-from .parser import encode_w4gl, parse_application_xml, parse_xml
+from .parser import (
+    FRAME_MARKUP_CHILDREN,
+    encode_frame_markup,
+    encode_w4gl,
+    parse_application_xml,
+    parse_xml,
+)
 from .project import GorakContext, ProjectError, read_json, write_json
 from .remote import (
     RemoteCommandError,
@@ -258,7 +264,10 @@ def export_application_to_paths(
     )
     components = exported.components
     apply_field_default_inheritance(
-        paths.source_dir.parent, paths.source_dir.name, components
+        paths.source_dir.parent,
+        paths.source_dir.name,
+        components,
+        source_nodes=tree.findall("COMPONENT"),
     )
     encoded = [(c.name, (encode_source_w4gl(c), c.markup)) for c in components]
     if len({name.casefold() for name, _ in encoded}) != len(encoded):
@@ -295,7 +304,10 @@ def export_component_to_paths(
     parsed_component = parse_xml(tree)
     normalize_component_xml_path(paths.xml_path, parsed_component.name)
     apply_field_default_inheritance(
-        paths.w4gl_path.parent.parent, paths.w4gl_path.parent.name, [parsed_component]
+        paths.w4gl_path.parent.parent,
+        paths.w4gl_path.parent.name,
+        [parsed_component],
+        source_nodes=[tree[0]],
     )
     text, markup = encode_source_w4gl(parsed_component), parsed_component.markup
     w4gl_path = write_component_w4gl(
@@ -310,8 +322,12 @@ def apply_field_default_inheritance(
     root: Path,
     app: str,
     components: list[Component],
+    *,
+    source_nodes: list[etree._Element] | None = None,
 ) -> None:
-    """Move frame field defaults into repo/app defaults and leave frame diffs."""
+    """Factor defaults and reproject authoritative markup against the saved palette."""
+
+    native = {node.get("name"): node for node in source_nodes or []}
 
     repo_path = root / "field_defaults.json"
     app_path = root / app / "field_defaults.json"
@@ -337,6 +353,21 @@ def apply_field_default_inheritance(
         frame_override = diff_defaults(parent_defaults, frame_defaults)
         if frame_override:
             props["fielddefaults"] = frame_override
+        if component.markup is not None and component.name in native:
+            # Inheritance can retain extra styles or change their ordinals. The
+            # first projection used only the native frame palette, so its omitted
+            # values and selectors must be reconsidered before saving the WML.
+            defaults = effective_defaults(parent_defaults, {}, frame_override)
+            if defaults == frame_defaults:
+                continue
+            component.markup = encode_frame_markup(
+                [
+                    child
+                    for child in native[component.name]
+                    if child.tag in FRAME_MARKUP_CHILDREN
+                ],
+                defaults,
+            )
 
 
 def backup_application_xml(

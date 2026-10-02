@@ -93,6 +93,82 @@ def test_second_style_preserves_actual_values_and_repeated_projection(
     assert not equivalent(rebuilt, wrong)
 
 
+@pytest.mark.parametrize("whole_application", [False, True])
+@pytest.mark.parametrize("existing_selector", [False, True])
+def test_export_resolves_selectors_after_palette_inheritance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    whole_application: bool,
+    existing_selector: bool,
+) -> None:
+    path, defaults = source(tmp_path)
+    # The inherited tab folder precedes the button. The native palette puts its
+    # tab folders after the button, so the ordered merge retains the root style.
+    defaults["field_styles"] = [
+        {
+            "type": "tabfolder",
+            "group": "tabfolder",
+            "properties": {"readbias": "32", "outlinestyle": "4"},
+        },
+        {"type": "buttonfield", "group": "buttonfield", "properties": {}},
+    ]
+    (tmp_path / "field_defaults.json").write_text(json.dumps(defaults))
+    frame_defaults = deepcopy(defaults)
+    frame_defaults["field_styles"].reverse()
+    selected = frame_defaults["field_styles"][-1]
+    if existing_selector:
+        selected = deepcopy(selected)
+        selected["group"] = "tabfolder:2"
+        frame_defaults["field_styles"].append(selected)
+    selected["properties"] = {"readbias": "16", "outlinestyle": "3"}
+    original = etree.fromstring(
+        f'<COMPONENT xmlns:xsi="{NS["xsi"]}" name="panel" xsi:type="framesource">'
+        "<script>initialize()={}</script><topform><childfields>"
+        '<row xsi:type="tabfolder"><name>pages</name><readbias>16</readbias>'
+        "<outlinestyle>3</outlinestyle><width>900</width>"
+        "<script>on entry = { message 'hello'; }</script>"
+        "</row><row_class>formfield</row_class></childfields></topform></COMPONENT>"
+    )
+    original.append(palette_node(frame_defaults))
+    initial = parse_component_node(original).markup or ""
+    assert ('gorak_style="2"' in initial) == existing_selector
+
+    def backup(*args: Any, **kwargs: Any) -> None:
+        xml_path = args[-1]
+        nodes = [original]
+        if whole_application:
+            nodes = [new_application(path.parent), original]
+        xml_path.write_bytes(document(nodes))
+
+    connection = OpenRoadConnection("local", "node", "source", None)
+    if whole_application:
+        monkeypatch.setattr(export, "backup_application_xml", backup)
+        export.export_application_to_paths(
+            connection,
+            "example",
+            export.application_export_paths(tmp_path, "example"),
+            None,
+        )
+    else:
+        monkeypatch.setattr(export, "backup_component_xml", backup)
+        export.export_component_to_paths(
+            connection,
+            "example",
+            "panel",
+            export.component_export_paths(tmp_path, "example", "panel"),
+        )
+    markup = path.with_suffix(".wml").read_text()
+    assert f'gorak_style="{3 if existing_selector else 2}"' in markup
+    rebuilt = decode_component(path)
+    field = rebuilt.find("topform/childfields/row")
+    assert field is not None
+    assert field.findtext("readbias") == "16"
+    assert field.findtext("outlinestyle") == "3"
+    assert field.findtext("width") == "900"
+    assert field.findtext("script") == "on entry = { message 'hello'; }"
+    assert rebuilt.findtext("script") == original.findtext("script")
+
+
 def test_selector_overrides_and_inheritance_apply_in_same_order(tmp_path: Path) -> None:
     path, defaults = source(tmp_path)
     app = {
