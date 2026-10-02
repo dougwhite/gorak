@@ -20,6 +20,7 @@ from .portable_source import DIRECTORY, legacy_application, legacy_component
 from .project import read_json
 from .project_lock import project_lock
 from .safe_pull import apply_files, fingerprint
+from .xml_text import text_value
 from .xml_writer import document
 
 
@@ -72,13 +73,22 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
                 ]
 
                 for path, node in sources:
+                    # Keep an oracle independent of the staged encoder/output.
+                    original_script = node.find("script")
+                    expected_script = (
+                        text_value(original_script).strip(" \t\r\n")
+                        if original_script is not None
+                        else None
+                    )
                     component = parse_component_node(node)
                     apply_field_default_inheritance(
                         stage, target.name, [component], source_nodes=[node]
                     )
                     text, markup = encode_source_w4gl(component), component.markup
-                    text = text.rstrip() + "\n"
-                    markup = markup.rstrip() + "\n" if markup is not None else None
+                    text = text.rstrip(" \t\r\n") + "\n"
+                    markup = (
+                        markup.rstrip(" \t\r\n") + "\n" if markup is not None else None
+                    )
                     destination = target / path.name
                     destination.write_text(text, encoding="utf-8", newline="\n")
                     if markup is not None:
@@ -94,11 +104,13 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
                         stage, target.name, [reconstructed], source_nodes=[rebuilt]
                     )
                     if (
-                        encode_source_w4gl(reconstructed).strip() != text.strip()
+                        reconstructed.script != expected_script
+                        or encode_source_w4gl(reconstructed).strip(" \t\r\n")
+                        != text.strip(" \t\r\n")
                         or reconstructed.props.get("fielddefaults", {})
                         != component.props.get("fielddefaults", {})
-                        or (reconstructed.markup or "").strip()
-                        != (markup or "").strip()
+                        or (reconstructed.markup or "").strip(" \t\r\n")
+                        != (markup or "").strip(" \t\r\n")
                     ):
                         raise ProjectError(
                             f"Component migration verification failed: {path.name}"

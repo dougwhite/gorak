@@ -109,6 +109,10 @@ Literal backslash text in WML, such as `\u0007`, stays literal. Reconstruction
 emits OpenROAD instructions again. Unknown, malformed, or misplaced instructions
 are refused rather than silently removed. Ordinary source syntax is unchanged.
 
+Full `migrate-source` checks the reconstructed script against the original before
+installing staged files. Only surrounding spaces, tabs, CR and LF are normalized;
+trailing control characters remain part of the source.
+
 Previously truncated exports cannot be repaired from their readable files alone.
 Recover them from authoritative source using the normal conflict-checked workflow;
 do not reinterpret literal escape markers in older manually recovered files.
