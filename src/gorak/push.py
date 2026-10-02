@@ -435,8 +435,13 @@ def _push_project(
                         )
                 if not is_complete(source):
                     from .contract_source import equivalent
+                    from .native_styles import is_native_source
 
-                    if not equivalent(actual_node, expected_node):
+                    if not equivalent(
+                        actual_node,
+                        expected_node,
+                        exact_styles=is_native_source(source),
+                    ):
                         raise SourceVerificationError(
                             f"Readable source verification failed: {source.stem}"
                         )

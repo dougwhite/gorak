@@ -161,11 +161,12 @@ def import_component(
                 current, actual, complete=is_complete(source)
             )
             from .contract_source import equivalent
+            from .native_styles import is_native_source
 
             matches = (
                 signature(actual) == signature(current)
                 if is_complete(source)
-                else equivalent(actual, current)
+                else equivalent(actual, current, exact_styles=is_native_source(source))
             )
             if not matches and normalized is None:
                 raise SourceVerificationError(

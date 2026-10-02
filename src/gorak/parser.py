@@ -231,10 +231,16 @@ def parse_component_node(node: etree._Element) -> Component:
 def encode_frame_markup(
     markup_nodes: list[etree._Element],
     field_defaults: dict[str, Any] | None = None,
+    *,
+    explicit: bool = False,
 ) -> str:
     """Encode an OpenROAD frame form tree as XML-compatible .wml markup."""
 
-    index = MarkupDefaultsIndex.from_defaults(field_defaults or {})
+    index = (
+        MarkupDefaultsIndex({}, {}, explicit=True)
+        if explicit
+        else MarkupDefaultsIndex.from_defaults(field_defaults or {})
+    )
     frame = etree.Element("frame")
     for markup_node in markup_nodes:
         frame.append(frame_markup_element(markup_node, index))
@@ -316,10 +322,17 @@ def append_markup_content(
             script = etree.SubElement(element, "script")
             if mapping is not None:
                 mapping[script] = child
-            set_text(script, text_value(child).strip(" \t\r\n"), cdata=True)
+            content = text_value(child)
+            set_text(
+                script,
+                content if defaults_index.explicit else content.strip(" \t\r\n"),
+                cdata=True,
+            )
         elif is_text_node(child) and not child.attrib:
-            value = text_value(child).strip(" \t\r\n")
-            if child.tag == "obj_encoded":
+            value = text_value(child)
+            if not defaults_index.explicit:
+                value = value.strip(" \t\r\n")
+            if child.tag == "obj_encoded" and not defaults_index.explicit:
                 # OpenROAD rewraps encoded bitmap transport across XML lines.
                 # WML attributes use the XML attribute whitespace convention.
                 value = (
@@ -373,6 +386,7 @@ class MarkupDefaultsIndex:
 
     common_model_properties: dict[str, Any]
     field_styles: dict[str, list[dict[str, Any]]]
+    explicit: bool = False
 
     @classmethod
     def from_defaults(cls, field_defaults: dict[str, Any]) -> "MarkupDefaultsIndex":

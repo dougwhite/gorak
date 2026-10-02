@@ -3,12 +3,12 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
-from gorak.export import apply_field_default_inheritance
 from gorak.importer import signature
 from gorak.parser import encode_w4gl, encode_wml, parse_component_node
 from gorak.portable_source import legacy_component as restore_component
 from gorak.portable_source import write_companions
 from gorak.project import ProjectError
+from tests.legacy_defaults import apply_field_default_inheritance
 
 
 @pytest.mark.parametrize("legacy", [False, True])

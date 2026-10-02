@@ -4,7 +4,6 @@ from tempfile import TemporaryDirectory
 from lxml import etree
 
 from gorak.domain import Component
-from gorak.export import apply_field_default_inheritance
 from gorak.parser import (
     encode_w4gl,
     encode_wml,
@@ -12,6 +11,7 @@ from gorak.parser import (
     parse_components_xml,
     parse_xml,
 )
+from tests.legacy_defaults import apply_field_default_inheritance
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures"
 EXAMPLE_FRAMESOURCE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"

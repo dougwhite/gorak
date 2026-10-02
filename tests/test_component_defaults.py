@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from lxml import etree
 
-from gorak import export, importer, sync_plan
+from gorak import export, importer, native_styles, sync_plan
 from gorak.component_defaults import defaults_path, write_component_defaults
 from gorak.connection import OpenRoadConnection
 from gorak.contract_source import decode_component
@@ -96,12 +96,24 @@ def test_legacy_inline_defaults_still_work_but_cannot_compete_with_json(
         decode_component(path)
 
 
+def native_parent(root: Path, node: etree._Element) -> None:
+    from copy import deepcopy
+
+    palette = deepcopy(node.find("fielddefaults"))
+    palette.find("row/childfields/row/width").text = "100"
+    (root / "field_defaults.json").write_text(
+        json.dumps(native_styles.complete(native_styles.encode(palette)))
+    )
+    (root / "example/field_defaults.json").unlink()
+
+
 def test_export_writes_only_delta_and_cleans_stale_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = project(tmp_path)
     defaults_path(path).write_text(json.dumps(style(width="150")))
     node = decode_component(path)
+    native_parent(tmp_path, node)
     xml = document([node])
     monkeypatch.setattr(
         export, "backup_component_xml", lambda c, a, n, p: p.write_bytes(xml)
@@ -109,7 +121,9 @@ def test_export_writes_only_delta_and_cleans_stale_file(
     paths = export.ComponentExportPaths(tmp_path / "panel.xml", path)
     export.export_component_to_paths(CONNECTION, "example", "panel", paths)
     assert "fielddefaults" not in path.read_text()
-    assert json.loads(defaults_path(path).read_text()) == style(width="150")
+    assert native_styles.frame_styles(path) == native_styles.encode(
+        node.find("fielddefaults")
+    )
     assert signature(decode_component(path)) == signature(node)
     defaults_path(path).unlink()
     xml = document([decode_component(path)])
@@ -124,6 +138,7 @@ def test_application_export_uses_component_json(
     path = project(tmp_path)
     defaults_path(path).write_text(json.dumps(style(width="150")))
     node = decode_component(path)
+    native_parent(tmp_path, node)
     app = etree.Element("APPLICATION", name="example")
     xml = document([app, node])
     monkeypatch.setattr(
@@ -136,7 +151,9 @@ def test_application_export_uses_component_json(
         None,
     )
     assert "fielddefaults" not in path.read_text()
-    assert json.loads(defaults_path(path).read_text()) == style(width="150")
+    assert native_styles.frame_styles(path) == native_styles.encode(
+        node.find("fielddefaults")
+    )
     assert signature(decode_component(path)) == signature(node)
 
 
@@ -165,11 +182,17 @@ def test_migration_moves_inline_defaults_and_preserves_reconstruction(
             1,
         )
     )
-    before = signature(decode_component(path))
+    native = decode_component(path)
+    before = signature(native)
+    cache = tmp_path / ".openroad/example/panel.xml"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(document([native]))
     operation = migrate_source(tmp_path)
     assert operation is not None
     assert "fielddefaults" not in path.read_text()
-    assert json.loads(defaults_path(path).read_text()) == style(width="150")
+    assert native_styles.frame_styles(path) == native_styles.encode(
+        native.find("fielddefaults")
+    )
     assert signature(decode_component(path)) == before
     assert migrate_source(tmp_path) is None
 

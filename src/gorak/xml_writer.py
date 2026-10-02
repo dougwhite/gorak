@@ -40,6 +40,17 @@ def new_component(path: Path) -> etree._Element:
             node.remove(query)
         return node
     from .contract_source import decode_component as decode_contract
+    from .native_styles import is_native_source
+    from .parser import parse_w4gl
+
+    if parse_w4gl(
+        path.read_text(), path.stem
+    ).type == "framesource" and not is_native_source(path):
+        if not path.with_suffix(".wml").exists():
+            raise ProjectError("Frame requires a WML source file")
+        raise ProjectError(
+            "Legacy frame/gorak_style requires authoritative XML; run gorak styles migrate"
+        )
 
     return decode_contract(path)
 

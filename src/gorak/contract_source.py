@@ -91,6 +91,8 @@ def markup_node(
     node = etree.Element(tag)
     if (tag == "row" and source.tag != "row") or source.tag == "protofield":
         node.set(XSI, kind)
+    if source.get("gorak_style") is not None and not index.field_styles:
+        raise ProjectError("gorak_style requires authoritative native re-export")
     defaults = index.properties_for_markup(source)
     fields = shape(kind)
     for key, value in defaults.items():
@@ -168,13 +170,29 @@ def decode_component(path: Path) -> etree._Element:
     if kind == "framesource":
         if not path.with_suffix(".wml").is_file():
             raise ProjectError("Frame requires a WML source file")
-        defaults = effective_defaults(
-            read_defaults(path.parent.parent / "field_defaults.json"),
-            read_defaults(path.parent / "field_defaults.json"),
-            read_component_defaults(path, source.props.get("fielddefaults", {})),
+        from .native_styles import is_native_source
+
+        defaults = (
+            {}
+            if is_native_source(path)
+            else effective_defaults(
+                read_defaults(path.parent.parent / "field_defaults.json"),
+                read_defaults(path.parent / "field_defaults.json"),
+                read_component_defaults(path, source.props.get("fielddefaults", {})),
+            )
         )
-        node.append(palette_node(defaults))
-        index = MarkupDefaultsIndex.from_defaults(defaults)
+        from . import native_styles
+
+        if native_styles.is_native_source(path):
+            if source.props.get("fielddefaults"):
+                raise ProjectError(
+                    "Native stylesheet layers belong in JSON, not inline TOML"
+                )
+            node.append(native_styles.decode(native_styles.frame_styles(path)))
+            index = MarkupDefaultsIndex({}, {})
+        else:
+            node.append(palette_node(defaults))
+            index = MarkupDefaultsIndex.from_defaults(defaults)
         markup = parse_markup(path.with_suffix(".wml").read_text())
         if markup.tag != "frame" or markup.attrib or (markup.text or "").strip():
             raise ProjectError("Frame markup requires a plain <frame> root")
@@ -196,7 +214,9 @@ def decode_component(path: Path) -> etree._Element:
     return node
 
 
-def equivalent(left: etree._Element, right: etree._Element) -> bool:
+def equivalent(
+    left: etree._Element, right: etree._Element, *, exact_styles: bool = False
+) -> bool:
     """Compare the supported readable contract; retain exact XML drift gates."""
     from .importer import signature
     from .parser import (
@@ -205,11 +225,23 @@ def equivalent(left: etree._Element, right: etree._Element) -> bool:
         parse_component_node,
     )
 
+    if exact_styles:
+        from .native_styles import encode
+
+        lstyle, rstyle = left.find("fielddefaults"), right.find("fielddefaults")
+        if (lstyle is None) != (rstyle is None):
+            return False
+        if (
+            lstyle is not None
+            and rstyle is not None
+            and encode(lstyle) != encode(rstyle)
+        ):
+            return False
     if parse_component_node(left) != parse_component_node(right):
         return False
     # Do not let default suppression (or style selection) hide changed native
     # scalar properties. Keep bitmap whitespace normalization from the parser.
-    empty = MarkupDefaultsIndex({}, {})
+    empty = MarkupDefaultsIndex({}, {}, explicit=exact_styles)
 
     def effective_markup(node: etree._Element) -> list[object]:
         return [

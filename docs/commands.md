@@ -245,12 +245,25 @@ the project configuration for one invocation. See [Remote Helpers](remote.md).
 
 ## Maintenance and diagnostics
 
-### `gorak defaults flatten`
+### `gorak styles publish|compact|migrate [--dry-run]`
 
-Finds field-default values shared by application layers and promotes them into
-the repository `field_defaults.json`. Re-minimizes adjacent
-`<component>.fielddefaults.json` overrides against the effective application
-defaults and removes empty files, preserving effective frame values.
+`publish` writes the complete effective project stylesheet, retaining project
+customisations and leaving application/frame meaning unchanged. The complete root
+no longer consults the built-in baseline.
+
+`compact` promotes identical native stylesheets from frames to applications and
+from applications to the project. Every affected stylesheet is resolved and
+verified before installation; empty child files are removed. `migrate` reprojects
+historical compact frames only when retained native XML proves their field state.
+All three commands support `--dry-run`, use the project lock, retain before-images,
+and leave database source unchanged. See [the stylesheet contract](files.md#native-stylesheets-and-field-state).
+
+`gorak styles show [--app APP] [--component COMPONENT]` prints a resolved complete
+stylesheet plus native entry identities and creation samples as JSON for designer
+consumers. A component requires an application. It does not write files.
+
+`gorak defaults flatten` remains a deprecated historical-format maintenance command.
+Use `styles compact` for native stylesheet projects.
 
 ### `gorak migrate-source`
 
@@ -259,7 +272,8 @@ representation without changing the database. Also moves legacy inline
 `[fielddefaults]` TOML to optional adjacent `<component>.fielddefaults.json`
 overrides. Reconstruction is verified before installation and before-images
 are retained under `.openroad/migrations/`. Projects already using the current
-format do not need it.
+format do not need it. Legacy frame migration requires authoritative XML; a
+stylesheet-only conversion does not upgrade compressed WML to format 3.
 
 Use `gorak migrate-source --field-defaults-only` to move compact inline defaults
 to JSON without reconstructing components through XML. It preserves script bytes,

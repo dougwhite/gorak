@@ -45,6 +45,14 @@ def read_component_defaults(source: Path, inline: Any) -> dict[str, Any]:
 def minimal_component_defaults(
     source: Path, overrides: dict[str, Any]
 ) -> dict[str, Any]:
+    from . import native_styles
+
+    if overrides.get("schema") == native_styles.SCHEMA:
+        parent = native_styles.parent_styles(source.parent)
+        delta = native_styles.difference(
+            parent, native_styles.resolve(parent, overrides)
+        )
+        return delta if delta["changes"] else {}
     repo = read_defaults(source.parent.parent / "field_defaults.json")
     app = read_defaults(source.parent / "field_defaults.json")
     if "structure" in repo or "structure" in app:
@@ -130,4 +138,10 @@ def encode_source_w4gl(component: Component) -> str:
     props = {
         key: value for key, value in component.props.items() if key != "fielddefaults"
     }
-    return encode_w4gl(replace(component, props=props))
+    prefix = (
+        "source_format = 3\n\n"
+        if component.props.get("fielddefaults", {}).get("schema")
+        == "gorak-native-styles-v1"
+        else ""
+    )
+    return prefix + encode_w4gl(replace(component, props=props))

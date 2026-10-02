@@ -95,7 +95,7 @@ def test_second_style_preserves_actual_values_and_repeated_projection(
 
 @pytest.mark.parametrize("whole_application", [False, True])
 @pytest.mark.parametrize("existing_selector", [False, True])
-def test_export_resolves_selectors_after_palette_inheritance(
+def test_native_export_retires_selectors_without_changing_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     whole_application: bool,
@@ -140,6 +140,12 @@ def test_export_resolves_selectors_after_palette_inheritance(
             nodes = [new_application(path.parent), original]
         xml_path.write_bytes(document(nodes))
 
+    from gorak import native_styles
+
+    (tmp_path / "field_defaults.json").write_text(
+        json.dumps(native_styles.empty_delta())
+    )
+    (path.parent / "field_defaults.json").unlink(missing_ok=True)
     connection = OpenRoadConnection("local", "node", "source", None)
     if whole_application:
         monkeypatch.setattr(export, "backup_application_xml", backup)
@@ -158,7 +164,8 @@ def test_export_resolves_selectors_after_palette_inheritance(
             export.component_export_paths(tmp_path, "example", "panel"),
         )
     markup = path.with_suffix(".wml").read_text()
-    assert f'gorak_style="{3 if existing_selector else 2}"' in markup
+    assert "gorak_style" not in markup
+    assert 'readbias="16"' in markup
     rebuilt = decode_component(path)
     field = rebuilt.find("topform/childfields/row")
     assert field is not None
@@ -277,7 +284,8 @@ def test_bad_or_missing_selector_stops_status_and_push_before_writes(
         cli.main(["sync", "--push"])
     assert result.value.code == 1
     error = capsys.readouterr().err
-    assert "before writes" in error and "gorak_style" in error and "items" in error
+    assert "before writes" in error and "gorak_style" in error
+    assert "items" in error if existing else "styles migrate" in error
     assert writes == []
 
 

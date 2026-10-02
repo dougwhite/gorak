@@ -234,6 +234,22 @@ def build_parser() -> argparse.ArgumentParser:
     add_openroad_connection_args(includes_list)
     includes_list.add_argument("app")
 
+    styles_parser = subparsers.add_parser(
+        "styles", help="Maintain exact native stylesheets"
+    )
+    styles_subparsers = styles_parser.add_subparsers(
+        dest="styles_command", required=True
+    )
+    for name in ("publish", "compact", "migrate"):
+        command = styles_subparsers.add_parser(name)
+        command.add_argument("--dry-run", action="store_true")
+
+    styles_show = styles_subparsers.add_parser(
+        "show", help="Resolve native stylesheet and designer creation samples as JSON"
+    )
+    styles_show.add_argument("--app")
+    styles_show.add_argument("--component")
+
     defaults_parser = subparsers.add_parser("defaults")
     defaults_subparsers = defaults_parser.add_subparsers(dest="defaults_command")
     defaults_subparsers.add_parser("flatten")
@@ -764,6 +780,13 @@ def defaults_flatten_command(args: argparse.Namespace) -> str:
     """Flatten shared app-level field defaults into the project defaults."""
 
     project = load_project(Path.cwd())
+    from .field_defaults import read_defaults
+
+    if (
+        read_defaults(project.root / "field_defaults.json").get("schema")
+        == "gorak-native-styles-v1"
+    ):
+        raise ProjectError("Use gorak styles compact for native stylesheet projects")
     result = flatten_app_defaults(project.root)
     value_label = "value" if result.promoted_values == 1 else "values"
     app_label = "application" if result.app_count == 1 else "applications"
@@ -1157,6 +1180,23 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             print(includes_list_command(parsed))
             return
 
+        if parsed.command == "styles":
+            from .style_commands import maintain, migrate
+
+            root = load_project(Path.cwd()).root
+            if parsed.styles_command == "show":
+                from .style_commands import describe
+
+                print(
+                    json.dumps(describe(root, parsed.app, parsed.component), indent=2)
+                )
+                return
+            print(
+                migrate(root, dry_run=parsed.dry_run)
+                if parsed.styles_command == "migrate"
+                else maintain(root, parsed.styles_command, dry_run=parsed.dry_run)
+            )
+            return
         if parsed.command == "defaults" and parsed.defaults_command == "flatten":
             print(defaults_flatten_command(parsed))
             return

@@ -98,7 +98,13 @@ def legacy_component(path: Path) -> etree._Element:
 
 def overlay_component(node: etree._Element, path: Path) -> etree._Element:
     """Apply editable source to a supplied baseline, preserving opaque XML."""
+    from .native_styles import is_native_source
     from .readable_source import decode_component, is_complete
+
+    if is_native_source(path):
+        from .contract_source import decode_component as decode_native
+
+        return decode_native(path)
 
     if is_complete(path):
         replacement = decode_component(path)

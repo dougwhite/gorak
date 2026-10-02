@@ -64,9 +64,14 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
                 (target / "app.json").write_bytes(content)
                 changes[app_file] = content
                 if (folder / "field_defaults.json").is_file():
-                    copy_defaults(
-                        folder / "field_defaults.json", target / "field_defaults.json"
-                    )
+                    values = read_json(folder / "field_defaults.json")
+                    if values.get("schema") == "gorak-native-styles-v1":
+                        copy2(
+                            folder / "field_defaults.json",
+                            target / "field_defaults.json",
+                        )
+                    else:
+                        changes[folder / "field_defaults.json"] = None
                 sources = [
                     (path, legacy_component(path))
                     for path in sorted(folder.glob("*.w4gl"))
@@ -187,14 +192,11 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
 
 
 def copy_defaults(source: Path, destination: Path) -> None:
-    """Remove preview-only transport metadata, retaining effective property values."""
-    values = read_json(source)
-    if "structure" not in values:
-        copy2(source, destination)
-        return
-    from .field_defaults import parse_field_defaults_node
-    from .palette import decode
+    """Keep native project layers; rebuild legacy organisation from native frames."""
+    from . import native_styles
 
-    destination.write_text(
-        json.dumps(parse_field_defaults_node(decode(values)), indent=4) + "\n"
-    )
+    values = read_json(source)
+    if values.get("schema") == native_styles.SCHEMA:
+        copy2(source, destination)
+    else:
+        destination.write_text(json.dumps(native_styles.empty_delta(), indent=4) + "\n")

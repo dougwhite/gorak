@@ -194,10 +194,10 @@ def test_migration_detects_concurrent_edit(
     from gorak import source_migration
 
     source = legacy_project(tmp_path)
+    from gorak.component_defaults import encode_source_w4gl
     from gorak.domain import Component
-    from gorak.parser import encode_w4gl
 
-    original_encoder = encode_w4gl
+    original_encoder = encode_source_w4gl
 
     def encode_and_edit(node: Component) -> str:
         result = original_encoder(node)
@@ -237,7 +237,9 @@ def test_migration_keeps_unrecognized_local_files(tmp_path: Path) -> None:
     assert source.read_bytes() == before
 
 
-def test_legacy_frame_can_migrate_with_upgraded_root(tmp_path: Path) -> None:
+def test_legacy_frame_cannot_mix_inline_defaults_with_native_sidecar(
+    tmp_path: Path,
+) -> None:
     source = legacy_project(tmp_path)
     original = source.read_bytes()
     original_markup = source.with_suffix(".wml").read_bytes()
@@ -246,8 +248,9 @@ def test_legacy_frame_can_migrate_with_upgraded_root(tmp_path: Path) -> None:
     companion = source.parent / ".gorak-source/components" / f"{source.stem}.xml"
     (cache / f"{source.stem}.xml").write_bytes(companion.read_bytes())
     migrate_source(tmp_path)
-    expected = signature(restore_component(source))
+    assert restore_component(source).tag == "COMPONENT"
     source.write_bytes(original)
     source.with_suffix(".wml").write_bytes(original_markup)
-    migrate_source(tmp_path)
-    assert signature(restore_component(source)) == expected
+    with pytest.raises(ProjectError, match="both TOML"):
+        migrate_source(tmp_path)
+    assert source.read_bytes() == original

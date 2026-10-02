@@ -254,8 +254,8 @@ def test_existing_import_lock_is_preserved(
 def test_import_frame_scripts_preserves_layout_and_defaults(
     tmp_path: Path, monkeypatch: MonkeyPatch, edit: str
 ) -> None:
-    from gorak.export import apply_field_default_inheritance
     from gorak.parser import encode_wml, parse_component_node
+    from tests.legacy_defaults import apply_field_default_inheritance
 
     xml = Path("tests/fixtures/fm_example_frame.xml").read_bytes()
     node = etree.fromstring(xml).find("COMPONENT")
