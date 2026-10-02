@@ -88,6 +88,14 @@ file for layout and field event scripts:
 
 Keep WML well formed and field names consistent with their event scripts.
 
+XML-invalid characters are stored directly in W4GL script bodies and with standard
+string escapes in TOML/JSON. In WML, use `<?ingres_invalidxmlchar N?>` (`N` is the
+decimal code point), inside script text or a property child element:
+
+```xml
+<defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
+```
+
 ## Field defaults
 
 The root `field_defaults.json` contains repository-wide OpenROAD field defaults.

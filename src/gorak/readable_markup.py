@@ -7,6 +7,7 @@ from .parser import FRAME_MARKUP_CHILDREN, serialize_wml
 from .readable_values import XSI, properties, validate_type
 from .wml_writer import parse_markup
 from .xml_shapes import node_kind, order_children, shape, shapes
+from .xml_text import INVALID_XML, is_text_node, set_text, text_value
 
 
 def encode_node(node: etree._Element, kind: str) -> etree._Element:
@@ -24,7 +25,10 @@ def encode_node(node: etree._Element, kind: str) -> etree._Element:
         else:
             raise ProjectError(f"Unsupported markup attribute: {key}")
     if node.tag == "script":
-        out.text = etree.CDATA(node.text or "")
+        set_text(out, text_value(node), cdata=True)
+        return out
+    if kind.startswith("xs:") and is_text_node(node) and not node.attrib:
+        set_text(out, text_value(node))
         return out
     if node.text is not None and (not len(node) or node.text.strip()):
         out.set("_text", node.text)
@@ -37,8 +41,14 @@ def encode_node(node: etree._Element, kind: str) -> etree._Element:
         seen.add(key)
         if (child.tail or "").strip():
             raise ProjectError("Mixed markup content is unsupported")
-        if key != "script" and not len(child) and not child.attrib and key != "row":
-            out.set(key, child.text or "")
+        if (
+            key != "script"
+            and is_text_node(child)
+            and not child.attrib
+            and key != "row"
+            and not INVALID_XML.search(text_value(child))
+        ):
+            out.set(key, text_value(child))
         else:
             out.append(encode_node(child, fields[key]))
     return out
@@ -54,10 +64,14 @@ def decode_node(source: etree._Element, tag: str, kind: str) -> etree._Element:
         validate_type(source.attrib["_type"], kind)
         kind = source.attrib["_type"]
         out.set(XSI, kind)
-    if tag == "script":
-        if source.attrib or len(source):
-            raise ProjectError("A script accepts only text or CDATA")
-        out.text = etree.CDATA(source.text or "")
+    if tag == "script" or (
+        kind.startswith("xs:") and is_text_node(source) and not source.attrib
+    ):
+        if source.attrib or not is_text_node(source) or (source.tail or "").strip():
+            raise ProjectError(
+                "Text properties accept only text, CDATA, or character instructions"
+            )
+        set_text(out, text_value(source), cdata=tag == "script")
         return out
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
@@ -68,13 +82,13 @@ def decode_node(source: etree._Element, tag: str, kind: str) -> etree._Element:
         if key.startswith("_attribute_"):
             out.set(key.removeprefix("_attribute_"), value)
         elif key == "_text":
-            out.text = value
+            set_text(out, value)
         elif key in fields:
             if fields[key] in shapes() and value:
                 raise ProjectError(
                     f"Structured markup property requires an element: {key}"
                 )
-            etree.SubElement(out, key).text = value
+            set_text(etree.SubElement(out, key), value)
         else:
             raise ProjectError(f"Unsupported markup attribute: {kind}/{key}")
     for child in source:

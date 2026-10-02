@@ -17,6 +17,7 @@ from .parser import (
 )
 from .wml_writer import XSI, parse_markup, value_node
 from .xml_shapes import derives, order_children, shape, shapes
+from .xml_text import is_text_node, set_text, text_value
 
 
 def palette_node(defaults: dict[str, Any]) -> etree._Element:
@@ -32,8 +33,11 @@ def palette_node(defaults: dict[str, Any]) -> etree._Element:
             row.set(XSI, kind)
             for key, value in common.get("properties", {}).items():
                 row.append(value_node(key, value))
-            etree.SubElement(row, "clienttext").text = (
-                group.rsplit(":", 1)[0] if group.rsplit(":", 1)[-1].isdigit() else group
+            set_text(
+                etree.SubElement(row, "clienttext"),
+                group.rsplit(":", 1)[0]
+                if group.rsplit(":", 1)[-1].isdigit()
+                else group,
             )
             children = etree.SubElement(row, "childfields")
             etree.SubElement(children, "row_class").text = "formfield"
@@ -60,11 +64,13 @@ def palette_node(defaults: dict[str, Any]) -> etree._Element:
 def markup_node(
     source: etree._Element, tag: str, kind: str, index: MarkupDefaultsIndex
 ) -> etree._Element:
-    if tag == "script":
-        if source.attrib or len(source):
-            raise ProjectError("Script elements accept only text or CDATA")
+    if tag == "script" or kind.startswith("xs:"):
+        if source.attrib or not is_text_node(source) or (source.tail or "").strip():
+            raise ProjectError(
+                "Text properties accept only text, CDATA, or character instructions"
+            )
         result = etree.Element(tag)
-        result.text = etree.CDATA(source.text or "")
+        set_text(result, text_value(source), cdata=tag == "script")
         return result
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
@@ -113,13 +119,13 @@ def markup_node(
             )
         for previous in node.findall(key):
             node.remove(previous)
-        etree.SubElement(node, key).text = value
+        set_text(etree.SubElement(node, key), value)
     seen: set[str] = set()
     names: set[str] = set()
     for child in source:
         key = str(child.tag)
         if key in fields:
-            if key in seen and key != "row":
+            if (key in seen or key in source.attrib) and key != "row":
                 raise ProjectError(f"Duplicate markup property: {key}")
             seen.add(key)
             if key != "row":

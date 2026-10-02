@@ -15,6 +15,7 @@ from .parser import FRAME_MARKUP_CHILDREN, NS, split_w4gl
 from .readable_markup import decode_markup, encode_markup
 from .readable_values import XSI, decode_value, encode_properties, encode_value
 from .xml_shapes import order_children, shape
+from .xml_text import is_text_node, set_text, text_value, validate_instructions
 
 COMPONENT_TYPES = {
     "classsource",
@@ -52,10 +53,11 @@ def is_complete(path: Path) -> bool:
 def encode_component(
     node: etree._Element, *, defaults: dict[str, Any] | None = None
 ) -> tuple[str, str | None]:
+    validate_instructions(node)
     kind = node.get(XSI, "")
     if kind not in COMPONENT_TYPES:
         raise ProjectError(f"Unsupported component type: {kind}")
-    if (node.text or "").strip():
+    if (node.text or "").strip(" \t\r\n"):
         raise ProjectError("Unexpected component text")
     props = encode_properties(node, kind, {"script", *FRAME_MARKUP_CHILDREN})
     doc: dict[str, Any] = {"source_format": 2}
@@ -69,12 +71,12 @@ def encode_component(
     script = node.find("script")
     body = None
     if script is not None:
-        if script.attrib or len(script):
+        if script.attrib or not is_text_node(script):
             raise ProjectError("Structured component script is unsupported")
-        text = script.text or ""
-        body = text.strip()
-        prefix = text[: len(text) - len(text.lstrip())]
-        suffix = text[len(text.rstrip()) :] if body else ""
+        text = text_value(script)
+        body = text.strip(" \t\r\n")
+        prefix = text[: len(text) - len(text.lstrip(" \t\r\n"))]
+        suffix = text[len(text.rstrip(" \t\r\n")) :] if body else ""
         if prefix:
             doc["script_prefix"] = prefix
         if suffix:
@@ -86,7 +88,7 @@ def encode_component(
     attributes = {k: v for k, v in node.attrib.items() if k not in {XSI, "name"}}
     if attributes:
         doc["component_attributes"] = attributes
-    text = tomlkit.dumps(doc).rstrip() + "\n"
+    text = tomlkit.dumps(doc).rstrip(" \t\r\n") + "\n"
     if body is not None:
         text += "\n===\n" + body + "\n"
     markup = encode_markup(node) if kind == "framesource" else None
@@ -188,15 +190,17 @@ def decode_component_text(
     node.attrib.update(attributes)
     for key in ("script_prefix", "script_suffix"):
         value = values.get(key, "")
-        if not isinstance(value, str) or value.strip():
+        if not isinstance(value, str) or value.strip(" \t\r\n"):
             raise ProjectError(f"{key} must contain whitespace only")
         if value and script is None:
             raise ProjectError("Script whitespace requires a script body")
     if script is not None:
         if "script" not in shape(kind):
             raise ProjectError(f"{kind} does not accept a script")
-        etree.SubElement(node, "script").text = etree.CDATA(
-            values.get("script_prefix", "") + script + values.get("script_suffix", "")
+        set_text(
+            etree.SubElement(node, "script"),
+            values.get("script_prefix", "") + script + values.get("script_suffix", ""),
+            cdata=True,
         )
     if kind == "framesource":
         if markup is None:
@@ -215,7 +219,7 @@ def encode_application(node: etree._Element) -> dict[str, Any]:
     result: dict[str, Any] = {"source_format": 2}
     lookup = {tag: (key, kind) for key, (tag, kind) in APP_FIELDS.items()}
     for child in node:
-        if child.tag not in lookup or (child.tail or "").strip():
+        if child.tag not in lookup or (child.tail or "").strip(" \t\r\n"):
             raise ProjectError(f"Unsupported application property: {child.tag}")
         key, kind = lookup[str(child.tag)]
         if key in result:
@@ -224,7 +228,7 @@ def encode_application(node: etree._Element) -> dict[str, Any]:
     attributes = {k: v for k, v in node.attrib.items() if k != "name"}
     if attributes:
         result["application_attributes"] = attributes
-    if (node.text or "").strip():
+    if (node.text or "").strip(" \t\r\n"):
         raise ProjectError("Unexpected application text")
     from .importer import signature
 

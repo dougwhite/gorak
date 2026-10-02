@@ -8,6 +8,8 @@ from typing import Any, cast
 
 from lxml import etree
 
+from .xml_text import find_text, is_text_node, text_value
+
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 FieldDefaults = dict[str, Any]
 JsonObject = dict[str, Any]
@@ -75,7 +77,7 @@ def matrix_container(row: etree._Element) -> dict[str, Any]:
 
 
 def group_name(row: etree._Element, style_counts: dict[str, int]) -> str:
-    base_name = (row.findtext("clienttext") or "field").strip()
+    base_name = (find_text(row, "clienttext") or "field").strip(" \t\r\n")
     style_counts[base_name] = style_counts.get(base_name, 0) + 1
     if style_counts[base_name] == 1:
         return base_name
@@ -94,8 +96,8 @@ def parse_childfield_row(group: str, row: etree._Element) -> dict[str, Any]:
 def element_value(node: etree._Element) -> Any:
     """Convert an XML property node into JSON-compatible data."""
 
-    if len(node) == 0:
-        return (node.text or "").strip()
+    if is_text_node(node):
+        return text_value(node).strip(" \t\r\n")
 
     value: dict[str, Any] = {}
     node_type = node.get(XSI_TYPE)
@@ -118,7 +120,7 @@ def element_value(node: etree._Element) -> Any:
         else:
             value[child.tag] = child_value
 
-    text = (node.text or "").strip()
+    text = (node.text or "").strip(" \t\r\n")
     if text:
         value["text"] = text
 

@@ -6,6 +6,7 @@ from lxml import etree
 
 from .errors import ProjectError
 from .xml_shapes import derives, node_kind, order_children, shape, shapes
+from .xml_text import is_text_node, set_text, text_value
 
 
 def properties(kind: str) -> dict[str, str]:
@@ -27,13 +28,16 @@ def encode_value(node: etree._Element, kind: str) -> Any:
     validate_type(actual, kind)
     kind = actual
     attributes = {k: v for k, v in node.attrib.items() if k != XSI}
-    if not len(node) and not node.attrib:
-        return node.text or ""
+    if is_text_node(node) and not node.attrib:
+        return text_value(node)
     value: dict[str, Any] = {}
     if XSI in node.attrib:
         value["_type"] = kind
     if attributes:
         value["_attributes"] = attributes
+    if is_text_node(node):
+        value["_text"] = text_value(node)
+        return value
     if node.text is not None and (not len(node) or node.text.strip()):
         value["_text"] = node.text
     fields = properties(kind)
@@ -56,7 +60,7 @@ def decode_value(tag: str, value: Any, kind: str) -> etree._Element:
     if isinstance(value, (str, int, bool)):
         if kind in shapes() and value != "":
             raise ProjectError(f"Structured source property requires a table: {tag}")
-        node.text = str(int(value)) if isinstance(value, bool) else str(value)
+        set_text(node, str(int(value)) if isinstance(value, bool) else str(value))
         return node
     if not isinstance(value, dict):
         raise ProjectError(f"Invalid source property: {tag}")
@@ -74,13 +78,14 @@ def decode_value(tag: str, value: Any, kind: str) -> etree._Element:
         raise ProjectError(f"Invalid source attributes: {tag}")
     node.attrib.update(attributes)
     fields = properties(kind)
+    if "_text" in value:
+        if not isinstance(value["_text"], str):
+            raise ProjectError(f"Invalid source text: {tag}")
+        set_text(node, value["_text"])
     for key, item in value.items():
         if key in {"_type", "_attributes"}:
             continue
         if key == "_text":
-            if not isinstance(item, str):
-                raise ProjectError(f"Invalid source text: {tag}")
-            node.text = item
             continue
         if key not in fields:
             raise ProjectError(f"Unsupported source property: {kind}/{key}")

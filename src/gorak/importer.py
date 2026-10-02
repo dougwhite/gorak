@@ -38,13 +38,19 @@ def component_tree(path: Path, name: str) -> etree._Element:
 def signature(node: etree._Element) -> object:
     """Compare all XML content, ignoring only element-only formatting whitespace."""
     text = node.text or ""
-    if len(node) and not text.strip():
+    mixed = any(isinstance(c, etree._ProcessingInstruction) for c in node)
+    if len(node) and not mixed and not text.strip():
         text = ""
     return (
-        node.tag,
+        (node.tag, node.target)
+        if isinstance(node, etree._ProcessingInstruction)
+        else node.tag,
         sorted(node.attrib.items()),
         text,
-        [(signature(c), (c.tail or "").strip()) for c in node],
+        [
+            (signature(c), (c.tail or "") if mixed else (c.tail or "").strip())
+            for c in node
+        ],
     )
 
 
