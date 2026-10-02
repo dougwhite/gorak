@@ -12,6 +12,14 @@ from lxml import etree
 from .domain import Application, ApplicationExport, Component, IncludedApplication
 from .errors import ProjectError
 from .field_defaults import parse_field_defaults_node
+from .xml_text import (
+    INVALID_XML,
+    find_text,
+    is_text_node,
+    set_text,
+    text_value,
+    validate_instructions,
+)
 
 IGNORED_PROPERTIES = {
     "queries",
@@ -78,7 +86,7 @@ def parse_w4gl(text: str, name: str) -> Component:
         name=name,
         type=component_type,
         props=props,
-        script=script.strip() if script is not None else None,
+        script=script.strip(" \t\r\n") if script is not None else None,
     )
 
 
@@ -87,10 +95,12 @@ def split_w4gl(text: str) -> tuple[str, str | None]:
 
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
-        if line.strip() == "===":
-            return "".join(lines[:index]).strip(), "".join(lines[index + 1 :]).strip()
+        if line.strip(" \t\r\n") == "===":
+            return "".join(lines[:index]).strip(" \t\r\n"), "".join(
+                lines[index + 1 :]
+            ).strip(" \t\r\n")
 
-    return text.strip(), None
+    return text.strip(" \t\r\n"), None
 
 
 def first_table_name(metadata: dict[str, Any]) -> str:
@@ -118,6 +128,7 @@ def parse_application_xml(
     if app_node is None:
         raise ValueError("Missing <APPLICATION> node")
 
+    validate_instructions(app_node)
     name = app_node.get("name")
     if name is None:
         raise ValueError("<APPLICATION> node must have a name attribute")
@@ -146,8 +157,8 @@ def parse_included_applications(
 
     includes: list[IncludedApplication] = []
     for row in included_apps.findall("row"):
-        app_name = (row.findtext("appname") or "").strip()
-        image = (row.findtext("imgfilename") or "").strip()
+        app_name = (find_text(row, "appname") or "").strip(" \t\r\n")
+        image = (find_text(row, "imgfilename") or "").strip(" \t\r\n")
         if not app_name or is_force_included_core(app_name, image):
             continue
         if image:
@@ -174,8 +185,11 @@ def xml_root(tree: etree._ElementTree | etree._Element) -> etree._Element:
 def parse_component_node(node: etree._Element) -> Component:
     """Parse a single OpenROAD component node."""
 
+    validate_instructions(node)
     script_node = node.find("script")
-    script = (script_node.text or "").strip() if script_node is not None else None
+    script = (
+        text_value(script_node).strip(" \t\r\n") if script_node is not None else None
+    )
 
     name = node.get("name")
     if name is None:
@@ -253,9 +267,9 @@ def frame_markup_element(
         and not {"xleft", "ytop"}.intersection(element.attrib)
     ):
         for coordinate in ("xleft", "ytop"):
-            value = node.findtext(coordinate)
+            value = find_text(node, coordinate)
             if value is not None:
-                element.set(coordinate, value.strip())
+                element.set(coordinate, value.strip(" \t\r\n"))
                 break
     if defaults_index.ambiguous(element):
         candidates = defaults_index.field_styles[str(tag)]
@@ -302,9 +316,9 @@ def append_markup_content(
             script = etree.SubElement(element, "script")
             if mapping is not None:
                 mapping[script] = child
-            script.text = etree.CDATA((child.text or "").strip())
-        elif len(child) == 0 and not child.attrib:
-            value = (child.text or "").strip()
+            set_text(script, text_value(child).strip(" \t\r\n"), cdata=True)
+        elif is_text_node(child) and not child.attrib:
+            value = text_value(child).strip(" \t\r\n")
             if child.tag == "obj_encoded":
                 # OpenROAD rewraps encoded bitmap transport across XML lines.
                 # WML attributes use the XML attribute whitespace convention.
@@ -312,7 +326,13 @@ def append_markup_content(
                     value.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
                 )
             if should_encode_markup_attribute(child.tag, value, default_properties):
-                element.set(child.tag, value)
+                if INVALID_XML.search(value):
+                    property_node = etree.SubElement(element, child.tag)
+                    set_text(property_node, value)
+                    if mapping is not None:
+                        mapping[property_node] = child
+                else:
+                    element.set(child.tag, value)
         else:
             element.append(frame_markup_element(child, defaults_index, mapping))
 
@@ -387,7 +407,9 @@ class MarkupDefaultsIndex:
             return {}
 
         scalar_values = {
-            child.tag: (child.text or "").strip() for child in node if len(child) == 0
+            child.tag: text_value(child).strip(" \t\r\n")
+            for child in node
+            if isinstance(child.tag, str) and is_text_node(child)
         }
         return max(
             candidates,
@@ -465,6 +487,15 @@ def matching_default_count(
 def serialize_wml(element: etree._Element, indent: int = 0) -> str:
     """Serialize generated markup with multiline attributes for dense elements."""
 
+    if is_text_node(element) and len(element):
+        text_value(element)
+        return "  " * indent + str(
+            etree.tostring(element, encoding="unicode", with_tail=False)
+        )
+    if is_text_node(element) and element.tag != "script" and element.text:
+        return "  " * indent + str(
+            etree.tostring(element, encoding="unicode", with_tail=False)
+        )
     attrs = serialized_attributes(element)
     children = list(element)
     text = cast(str | None, element.text)
@@ -544,7 +575,9 @@ def extract_props(
 
     for child in node:
         if child.tag not in ignored:
-            value = (child.text or "").strip()
+            value = (
+                text_value(child) if is_text_node(child) else child.text or ""
+            ).strip(" \t\r\n")
             # Empty projections of structured designer data carry no readable
             # information. They are not part of the supported source contract.
             if not value and child.tag in {"extension", "queries"}:
@@ -559,15 +592,15 @@ def extract_attributes(node: etree._Element) -> dict[str, str]:
 
     attributes: dict[str, str] = {}
     for row in node.findall("row"):
-        name = row.findtext("displayname")
-        datatype = row.findtext("datatype")
+        name = find_text(row, "displayname")
+        datatype = find_text(row, "datatype")
         if name is not None and datatype is not None:
             attributes[name] = type_declaration(
                 datatype,
                 nullable=is_nullable(row),
                 array=is_array(row),
             )
-            if row.findtext("defaultvalue") == "2":
+            if find_text(row, "defaultvalue") == "2":
                 attributes[name] += " DEFAULT NULL"
 
     return attributes
@@ -578,7 +611,7 @@ def extract_methods(node: etree._Element) -> dict[str, str]:
 
     methods: dict[str, str] = {}
     for row in node.findall("row"):
-        name = row.findtext("displayname")
+        name = find_text(row, "displayname")
         if name is not None:
             methods[name] = method_declaration(row)
 
@@ -590,18 +623,18 @@ def extract_taggedvalues(node: etree._Element) -> dict[str, str]:
 
     taggedvalues: dict[str, str] = {}
     for row in node.findall("row"):
-        name = row.findtext("name")
+        name = find_text(row, "name")
         if name is not None:
-            taggedvalues[name] = (row.findtext("value") or "").strip()
+            taggedvalues[name] = (find_text(row, "value") or "").strip(" \t\r\n")
 
     return taggedvalues
 
 
 def first_text(node: etree._Element, *names: str) -> str:
     for name in names:
-        value = node.findtext(name)
+        value = find_text(node, name)
         if value is not None:
-            return cast(str, value).strip()
+            return value.strip(" \t\r\n")
 
     return ""
 
@@ -621,12 +654,12 @@ def method_declaration(row: etree._Element) -> str:
     """Format an OpenROAD method declaration."""
 
     parts = []
-    if row.findtext("isprivate") == "1":
+    if find_text(row, "isprivate") == "1":
         parts.append("PRIVATE")
 
     parts.append("METHOD")
 
-    datatype = row.findtext("datatype")
+    datatype = find_text(row, "datatype")
     if datatype is not None:
         parts.append("RETURNING")
         parts.append(
@@ -643,14 +676,14 @@ def method_declaration(row: etree._Element) -> str:
 def is_array(row: etree._Element) -> bool:
     """Return whether an OpenROAD metadata row is an array."""
 
-    value = row.findtext("isarray")
+    value = find_text(row, "isarray")
     return bool(value == "1")
 
 
 def is_nullable(row: etree._Element) -> bool:
     """Return whether an OpenROAD metadata row is nullable."""
 
-    value = row.findtext("isnullable")
+    value = find_text(row, "isnullable")
     return bool(value == "1")
 
 
@@ -676,7 +709,7 @@ def join_segments(segments: Sequence[str | None], separator: str) -> str:
     """Join present segments with a standalone separator."""
 
     return ("\n\n" + separator + "\n\n").join(
-        segment.strip() for segment in segments if segment is not None
+        segment.strip(" \t\r\n") for segment in segments if segment is not None
     )
 
 

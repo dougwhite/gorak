@@ -13,6 +13,7 @@ from lxml import etree
 
 from .errors import ProjectError
 from .parser import NS
+from .xml_text import is_text_node, set_text
 
 
 @lru_cache(maxsize=1)
@@ -39,14 +40,14 @@ def set_scalar(node: etree._Element, kind: str, key: str, value: str | None) -> 
     if key not in properties or properties[key] in shapes():
         raise ProjectError(f"Unsupported scalar property: {kind}/{key}")
     matches = node.findall(key)
-    if len(matches) > 1 or any(len(c) or c.attrib for c in matches):
+    if len(matches) > 1 or any(not is_text_node(c) or c.attrib for c in matches):
         raise ProjectError(f"Ambiguous or structured scalar property: {kind}/{key}")
     if value is None:
         for c in matches:
             node.remove(c)
         return
     child = matches[0] if matches else etree.SubElement(node, key)
-    child.text = etree.CDATA(value) if key == "script" else value
+    set_text(child, value, cdata=key == "script")
     if not matches:
         order_children(node, kind)
 

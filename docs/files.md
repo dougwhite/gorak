@@ -88,6 +88,31 @@ file for layout and field event scripts:
 
 Keep WML well formed and field names consistent with their event scripts.
 
+## Special characters
+
+OpenROAD represents XML-invalid characters with `<?ingres_invalidxmlchar N?>`,
+where `N` is the decimal Unicode code point. Gorak preserves the character and
+all following text, including when it occurs in a script comment.
+
+W4GL script bodies retain the actual character. TOML metadata and JSON defaults
+use their standard string escapes. In WML, script text retains the OpenROAD
+instruction; properties requiring one use a child element instead of an attribute:
+
+```xml
+<entryfield name="input">
+  <defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
+</entryfield>
+```
+
+Do not specify the same property as both an attribute and a child element.
+Literal backslash text in WML, such as `\u0007`, stays literal. Reconstruction
+emits OpenROAD instructions again. Unknown, malformed, or misplaced instructions
+are refused rather than silently removed. Ordinary source syntax is unchanged.
+
+Previously truncated exports cannot be repaired from their readable files alone.
+Recover them from authoritative source using the normal conflict-checked workflow;
+do not reinterpret literal escape markers in older manually recovered files.
+
 ## Field defaults
 
 The root `field_defaults.json` contains repository-wide OpenROAD field defaults.

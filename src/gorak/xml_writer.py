@@ -8,15 +8,17 @@ from lxml import etree
 from .importer import validate_name
 from .parser import NS
 from .project import ProjectError, read_json
+from .xml_text import set_text
 
 
 def scalar(parent: etree._Element, name: str, value: str) -> None:
-    etree.SubElement(parent, name).text = value
+    set_text(etree.SubElement(parent, name), value)
 
 
 def datatype(row: etree._Element, declaration: str) -> None:
+    # Preserve embedded legacy control characters; do not silently repair types.
     match = re.fullmatch(
-        r"(ARRAY OF )?([A-Za-z_][A-Za-z0-9_]*(?:\(\d+(?:,\s*\d+)?\))?)( NOT NULL)?",
+        r"(ARRAY OF )?([A-Za-z_][A-Za-z0-9_\x00-\x08\x0b\x0c\x0e-\x1f]*(?:\(\d+(?:,\s*\d+)?\))?)( NOT NULL)?",
         declaration,
         re.IGNORECASE,
     )

@@ -16,6 +16,7 @@ from .parser import (
     serialize_wml,
 )
 from .xml_shapes import derives, node_kind, order_children, set_scalar, shape, shapes
+from .xml_text import is_text_node, set_text, text_value, validate_instructions
 
 XSI = f"{{{NS['xsi']}}}type"
 
@@ -25,6 +26,7 @@ def parse_markup(text: str) -> etree._Element:
     tree = etree.fromstring(text.encode("utf-8"), parser)
     if tree.getroottree().docinfo.doctype:
         raise ProjectError("Frame markup must not contain a document type")
+    validate_instructions(tree)
     return tree
 
 
@@ -32,20 +34,22 @@ def value_node(tag: str, value: Any) -> etree._Element:
     """Decode the existing field-default JSON representation without flattening it."""
     node = etree.Element(tag)
     if isinstance(value, dict):
+        if "text" in value:
+            set_text(node, str(value["text"]))
         for key, child in value.items():
             if key == "type":
                 node.set(XSI, str(child))
             elif key == "attributes":
                 node.attrib.update(child)
             elif key == "text":
-                node.text = str(child)
+                continue
             elif isinstance(child, list):
                 for row in child:
                     node.append(value_node(key, row))
             else:
                 node.append(value_node(key, child))
     elif isinstance(value, (str, int, bool)):
-        node.text = str(int(value)) if isinstance(value, bool) else str(value)
+        set_text(node, str(int(value)) if isinstance(value, bool) else str(value))
     else:
         raise ProjectError(f"Unsupported field default value: {tag}")
     return node
@@ -68,7 +72,7 @@ def overlay_markup(component: etree._Element, path: Path) -> None:
         edited = parse_markup(path.read_text())
     except (OSError, ValueError, etree.XMLSyntaxError) as ex:
         raise ProjectError(f"Cannot read frame markup: {path}: {ex}") from ex
-    if edited.tag != "frame" or edited.attrib or (edited.text or "").strip():
+    if edited.tag != "frame" or edited.attrib or (edited.text or "").strip(" \t\r\n"):
         raise ProjectError("Frame markup requires a plain <frame> root")
     if edited.find("topform") is None:
         raise ProjectError("Frame markup edits must retain the topform section")
@@ -122,15 +126,17 @@ def update_element(
         raise ProjectError(
             "Changing a field type requires removing and adding the field"
         )
-    if not isinstance(after.tag, str) or (after.tail or "").strip():
+    if not isinstance(after.tag, str) or (after.tail or "").strip(" \t\r\n"):
         raise ProjectError("Unsupported frame markup content")
     if after.tag == "script":
-        if after.attrib or len(after):
+        if after.attrib or not is_text_node(after):
             raise ProjectError("Script elements accept only text or CDATA")
-        previous = native.text or ""
-        leading = previous[: len(previous) - len(previous.lstrip())]
-        trailing = previous[len(previous.rstrip()) :]
-        native.text = etree.CDATA(leading + (after.text or "").strip() + trailing)
+        previous = text_value(native)
+        leading = previous[: len(previous) - len(previous.lstrip(" \t\r\n"))]
+        trailing = previous[len(previous.rstrip(" \t\r\n")) :]
+        set_text(
+            native, leading + text_value(after).strip(" \t\r\n") + trailing, cdata=True
+        )
         return
     target = native
     if before.tag in MAINBAR_MARKUP_CHILDREN:
@@ -138,7 +144,7 @@ def update_element(
         if target is None:
             raise ProjectError("Cannot edit an empty mainbar without a row baseline")
         kind = node_kind(target, "mainbar")
-    if (after.text or "").strip() != (before.text or "").strip():
+    if (after.text or "").strip(" \t\r\n") != (before.text or "").strip(" \t\r\n"):
         raise ProjectError("Only script elements support edited text content")
     defaults = index.properties_for_markup(after)
     changed_defaults: set[str] = set()
@@ -147,12 +153,12 @@ def update_element(
         changed_defaults.update(
             index.omitted_properties(before, index.properties_for_markup(before))
         )
-    for key in (set(before.attrib) | set(after.attrib) | changed_defaults) - {
-        "gorak_style"
-    }:
-        if before.get(key) == after.get(key) and key not in changed_defaults:
+    old_values, old_scalar_children = scalar_properties(before, kind)
+    new_values, new_scalar_children = scalar_properties(after, kind)
+    for key in (set(old_values) | set(new_values) | changed_defaults) - {"gorak_style"}:
+        if old_values.get(key) == new_values.get(key) and key not in changed_defaults:
             continue
-        value = after.get(key)
+        value = new_values.get(key)
         if key in native.attrib:
             if key == XSI:
                 raise ProjectError("Cannot change a native XML type")
@@ -173,10 +179,14 @@ def update_element(
             set_scalar(target, kind, key, value)
     old_groups: dict[tuple[str, str | None], list[etree._Element]] = {}
     for child in before:
+        if child in old_scalar_children:
+            continue
         old_groups.setdefault(identity(child), []).append(child)
     named: set[str] = set()
     replacements: list[tuple[etree._Element, etree._Element]] = []
     for supplied in after:
+        if supplied in new_scalar_children:
+            continue
         name = supplied.get("name")
         if name:
             if name.casefold() in named:
@@ -197,7 +207,7 @@ def update_element(
         replacements.append((child, parent))
     # Remove only children represented by the old projection. Opaque rows/properties
     # and array metadata stay in their original containers.
-    old_children = [mapping[c] for c in before]
+    old_children = [mapping[c] for c in before if c not in old_scalar_children]
     affected: set[etree._Element] = set()
     for child in old_children:
         parent = child.getparent()
@@ -223,10 +233,10 @@ def new_element(
     tag = str(supplied.tag)
     properties = shape(kind)
     if tag == "script":
-        if supplied.attrib or len(supplied) or "script" not in properties:
+        if supplied.attrib or not is_text_node(supplied) or "script" not in properties:
             raise ProjectError("Unsupported new script element")
         child = etree.Element("script")
-        child.text = etree.CDATA(supplied.text or "")
+        set_text(child, text_value(supplied), cdata=True)
         return child, parent
     if tag in properties and properties[tag] in shapes():
         child = etree.Element(tag)
@@ -276,3 +286,26 @@ def new_element(
     if derives(child_kind, "compositefield") and child.find("defaultvalue") is None:
         set_scalar(child, child_kind, "defaultvalue", "1")
     return child, container
+
+
+def scalar_properties(
+    element: etree._Element, kind: str
+) -> tuple[dict[str, str], set[etree._Element]]:
+    """Unify scalar WML elements (needed for control characters) and attributes."""
+    values = dict(element.attrib)
+    children: set[etree._Element] = set()
+    fields = shape(kind)
+    for child in element:
+        key = str(child.tag)
+        if key == "script" or key not in fields or fields[key] in shapes():
+            continue
+        if (
+            key in values
+            or child.attrib
+            or not is_text_node(child)
+            or (child.tail or "").strip()
+        ):
+            raise ProjectError(f"Duplicate or invalid scalar markup property: {key}")
+        values[key] = text_value(child)
+        children.add(child)
+    return values, children

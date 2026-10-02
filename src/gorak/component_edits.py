@@ -10,6 +10,7 @@ from .component_defaults import defaults_path
 from .errors import ProjectError
 from .parser import encode_w4gl, parse_component_node, parse_w4gl, split_w4gl
 from .xml_shapes import order_children, set_scalar, shape, shapes
+from .xml_text import find_text, set_text, text_value
 
 SUPPORTED_TYPES = {
     "classsource",
@@ -92,7 +93,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
             etree.SubElement(container, "row_class").text = row_kind
         rows: dict[str, etree._Element] = {}
         for row in container.findall("row"):
-            name = row.findtext(identifier)
+            name = find_text(row, identifier)
             if name is None or name.casefold() in rows:
                 raise ProjectError(f"Ambiguous {table} row identity")
             rows[name.casefold()] = row
@@ -108,8 +109,8 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
             row = rows.get(name.casefold())
             if row is None:
                 row = etree.SubElement(container, "row")
-                etree.SubElement(row, identifier).text = name
-            if row.findtext(identifier) != name:
+                set_text(etree.SubElement(row, identifier), name)
+            if find_text(row, identifier) != name:
                 set_scalar(row, row_kind, identifier, name)
             if before.get(table, {}).get(name) == declaration:
                 continue
@@ -157,9 +158,9 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         order_children(node, kind)
     if original.script != edited.script:
         script = node.find("script")
-        previous = script.text or "" if script is not None else ""
-        leading = previous[: len(previous) - len(previous.lstrip())]
-        trailing = previous[len(previous.rstrip()) :]
+        previous = text_value(script)
+        leading = previous[: len(previous) - len(previous.lstrip(" \t\r\n"))]
+        trailing = previous[len(previous.rstrip(" \t\r\n")) :]
         set_scalar(
             node,
             kind,
