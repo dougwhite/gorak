@@ -134,16 +134,9 @@ write a `gorak_style="N"` selector:
 <tablefield name="items" gorak_style="2"/>
 ```
 
-The selector is a 1-based position among styles of that field type in the final
-effective root/application/component palette. Export resolves selectors after
-defaults inheritance, including when inheritance introduces additional styles.
-Preserve it unless you deliberately know which style the control should use.
-Gorak consumes the selector during import; it is not sent to OpenROAD as a field
-property.
-
-Older exports may lack a required selector or refer to a different style ordinal.
-Re-export authoritative source to regenerate these selectors; do not guess an
-ordinal from the control's explicit properties.
+The selector is a 1-based position among styles of that field type. Preserve it
+unless you deliberately know which style the control should use. Gorak consumes
+the selector during import; it is not sent to OpenROAD as a field property.
 
 ## Application metadata
 
