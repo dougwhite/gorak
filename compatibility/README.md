@@ -16,6 +16,6 @@ assert behaviour appropriate to their role: LSP bindings and locations, designer
 field state and source-preserving edits, extension schema acceptance. Reading the
 files without asserting their meaning is not a compatibility test.
 
-Consumers pin a Gorak commit containing the manifest and fixtures. An update PR
+Consumers pin a gorak commit containing the manifest and fixtures. An update PR
 changes that pin and runs their local compatibility checks. Fixture fixes and
 additions may occur without a contract bump when the represented rules are unchanged.

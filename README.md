@@ -10,14 +10,14 @@ GORAK — the Greater OpenROAD Application Kit.
 Work with OpenROAD source using readable files, Git, VS Code, command-line tests,
 and AI coding agents.
 
-> **Early alpha.** Gorak is still evolving. Use a disposable development source
+> **Early alpha.** gorak is still evolving. Use a disposable development source
 > database and keep backups; do not point it at production source yet.
 
 ## Demo
 
-[![GORAK demo — OpenROAD development with Git, VS Code and AI](docs/images/gorak_demo_thumbnail_play.png)](https://www.youtube.com/watch?v=zlncaV1mLqM)
+[![gorak demo — OpenROAD development with Git, VS Code and AI](docs/images/gorak_demo_thumbnail_play.png)](https://www.youtube.com/watch?v=zlncaV1mLqM)
 
-The demo shows the normal Gorak development loop end to end:
+The demo shows the normal gorak development loop end to end:
 
 - export an OpenROAD application into readable `.w4gl` / `.wml` source;
 - edit and synchronize changes with OpenROAD;
@@ -61,7 +61,7 @@ Check the CLI:
 gorak --help
 ```
 
-Create a local Gorak project:
+Create a local gorak project:
 
 ```bash
 gorak new myproject
@@ -106,7 +106,7 @@ git diff                         # review the result
 
 `gorak test` runs the source currently in the OpenROAD database, so disk changes
 must be synchronized first. `gorak status` shows the current disk/database change
-plan when you want to inspect what Gorak thinks has changed.
+plan when you want to inspect what gorak thinks has changed.
 
 New projects include an `AGENTS.md` describing this workflow for coding agents such
 as Codex, so an agent can pull source, make a change, synchronize it, run the tests,
@@ -121,29 +121,29 @@ and prepare a Git change using the same commands as a human developer.
 - [Files and Formats](docs/files.md) - Project files and source representation
 - [Remote Helpers](docs/remote.md) - Windows/OpenROAD execution over SSH
 - [Push and Recovery](docs/push.md) - Push behavior, retries and safe recovery
-- [Development Guide](docs/development.md) - Contributing to Gorak
+- [Development Guide](docs/development.md) - Contributing to gorak
 
 ## Actian OpenROAD Extension
 
-![How Gorak fits into the OpenROAD workflow](docs/images/gorak_in_the_openroad_workflow.png)
+![How gorak fits into the OpenROAD workflow](docs/images/gorak_in_the_openroad_workflow.png)
 
 In the demo I am using an early-access version of the Actian OpenROAD VS Code extension. 
 
 It provides OpenROAD 4GL editing in VS Code and can leverage GitHub Copilot for AI-assisted development. 
 
-During the demo it is used as my primary OpenROAD editor. It works amazingly well for normal OpenROAD Workbench workflows, and has greatly improved my OpenROAD productivity. It also works quite well with Gorak's native source file formats.
+During the demo it is used as my primary OpenROAD editor. It works amazingly well for normal OpenROAD Workbench workflows, and has greatly improved my OpenROAD productivity. It also works quite well with gorak's native source file formats.
 
 The Actian team has requested that any queries about the OpenROAD VS Code extension should be directed to them.
 
 ## Project Goals
 
-Gorak aims to make OpenROAD projects work more like modern source-code projects.
+gorak aims to make OpenROAD projects work more like modern source-code projects.
 
 The goal is to let developers keep using OpenROAD and Workbench where they make
 sense, while making application source accessible to normal developer tooling:
 editors, Git, automated tests, code review and AI coding agents.
 
-Gorak is focused on:
+gorak is focused on:
 
 - A useful CLI for day-to-day OpenROAD development.
 - Human-readable, text-based OpenROAD source and metadata.
