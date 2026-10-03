@@ -31,17 +31,25 @@ def markup_node(
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
     if source.tag == "protofield":
-        keys = (set(source.attrib) - {"gorak_style"}) | {
-            str(child.tag) for child in source
-        }
-        candidates = [
-            candidate
-            for candidate in ("entryfield", "optionfield", "togglefield")
-            if keys <= shape(candidate).keys()
-        ]
-        if len(candidates) != 1:
-            raise ProjectError("Ambiguous or unsupported column prototype properties")
-        kind = candidates[0]
+        declared = source.get("type")
+        if declared is not None:
+            if not derives(declared, kind):
+                raise ProjectError("Unsupported column prototype type")
+            kind = declared
+        else:
+            keys = (set(source.attrib) - {"gorak_style"}) | {
+                str(child.tag) for child in source
+            }
+            candidates = [
+                candidate
+                for candidate in ("entryfield", "optionfield", "togglefield")
+                if keys <= shape(candidate).keys()
+            ]
+            if len(candidates) != 1:
+                raise ProjectError(
+                    "Ambiguous or unsupported column prototype properties"
+                )
+            kind = candidates[0]
     if str(source.tag) in shapes() and derives(str(source.tag), kind):
         kind = str(source.tag)
     node = etree.Element(tag)
@@ -51,7 +59,10 @@ def markup_node(
         raise ProjectError("gorak_style is unsupported; re-export the application")
     fields = shape(kind)
     for key, value in source.attrib.items():
-        if key == "gorak_style":
+        if key == "type" and source.tag == "protofield":
+            continue
+        if key in {"row", "column"} and tag == "row":
+            node.set(key, value)
             continue
         if key not in fields or (fields[key] in shapes() and value != ""):
             raise ProjectError(

@@ -103,7 +103,9 @@ W4GL and stylesheet JSON contain no source-version markers. The project root
 stylesheet uses named groups and styles; older palette formats require a fresh export.
 Omitted `fieldstyle`, explicit `0` (Unique Style), and positive ordinals remain
 distinct. No stylesheet lookup supplies missing WML values, and `gorak_style`
-is rejected in this format. Scripts and inline bitmap payloads remain in source.
+is rejected in this format. Scripts and inline bitmap payloads remain in source. Column prototypes preserve
+their native type as `<protofield type="entryfield" ...>`, and matrix entries
+retain native `row`/`column` attributes.
 
 Stylesheet files describe only the native Style Editor palette. Resolution is:
 

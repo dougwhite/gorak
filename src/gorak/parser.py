@@ -262,6 +262,10 @@ def frame_markup_element(
     if mapping is not None:
         mapping[element] = node
     copy_markup_attributes(node, element)
+    if defaults_index.explicit and node.tag == "protofield":
+        native_type = node.get(f"{{{NS['xsi']}}}type")
+        if native_type:
+            element.set("type", native_type)
     default_properties = defaults_index.properties_for(tag, node)
     append_markup_content(element, node, defaults_index, default_properties, mapping)
     # A coordinate must remain explicit when it prevents inherited alignment,

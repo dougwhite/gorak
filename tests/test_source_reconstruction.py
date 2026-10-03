@@ -52,3 +52,28 @@ def test_each_supported_type(tmp_path: Path, kind: str) -> None:
     source = folder / "sample.w4gl"
     write_component(source, node)
     assert equivalent(node, restore_component(source))
+
+
+@pytest.mark.parametrize("kind", ["entryfield", "buttonfield", "togglefield"])
+def test_native_prototype_type_and_matrix_position_are_explicit(
+    tmp_path: Path, kind: str
+) -> None:
+    node = etree.fromstring(
+        f'''<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="sample" xsi:type="framesource"><fielddefaults/><topform><childfields><row xsi:type="matrixfield" row="2" column="3"><childfields><row xsi:type="columnfield"><protofield xsi:type="{kind}"><name>value</name><width>100</width></protofield></row><row_class>formfield</row_class></childfields></row><row_class>formfield</row_class></childfields></topform></COMPONENT>'''
+    )
+    folder = tmp_path / "example"
+    folder.mkdir()
+    source = folder / "sample.w4gl"
+    write_component(source, node)
+    markup = source.with_suffix(".wml").read_text()
+    assert f'type="{kind}"' in markup
+    assert 'row="2"' in markup and 'column="3"' in markup
+    restored = restore_component(source)
+    assert restored.find("topform/childfields/row").get("row") == "2"
+    assert (
+        restored.find(".//protofield").get(
+            "{http://www.w3.org/2001/XMLSchema-instance}type"
+        )
+        == kind
+    )
+    assert equivalent(node, restored)
