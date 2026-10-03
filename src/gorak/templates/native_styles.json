@@ -1,5 +1,4 @@
 {
-    "schema": "gorak-native-styles-v2",
     "standalone": true,
     "properties": {
         "row_class": "formfield"

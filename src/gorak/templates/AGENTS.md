@@ -28,10 +28,10 @@ database.
 - Track `.w4gl`, `.wml`, `app.json`, `gorak.json`, `AGENTS.md`, and stylesheet JSON.
   Native stylesheet layers resolve built-in -> project -> optional application ->
   optional `<component>.fielddefaults.json`. These layers affect the Style Editor
-  only. Format-3 WML contains actual field values, geometry, and native `fieldstyle`;
+  only. WML contains actual field values, geometry, and native `fieldstyle`;
   never infer them from a stylesheet or add `gorak_style`. Use `gorak styles publish`
   for a standalone project stylesheet and `gorak styles compact --dry-run` to review
-  explicit promotion. Legacy compressed source requires authoritative migration.
+  explicit promotion. Older source formats require a fresh export; no migration reader is provided.
 - Never commit `.env` or `.openroad/`. The first may contain credentials; the
   second contains local baselines, target binding, locks, recovery evidence,
   temporary XML, and run artifacts.

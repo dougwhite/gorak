@@ -38,8 +38,6 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     edited = parse_w4gl(source, path.stem)
     before = tomllib.loads(split_w4gl(encode_w4gl(original))[0])
     after = tomllib.loads(split_w4gl(source)[0])
-    if after.get("source_format") == 3:
-        after.pop("source_format")
     after.pop("queries", None)
     after.get(original.type, {}).pop("queries", None)
     for query in node.findall("queries"):

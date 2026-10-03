@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from lxml import etree
 
-from gorak import cli, export, push, readable_source, sync_plan
+from gorak import cli, export, push, sync_plan
 from gorak.domain import Application
 from gorak.run_backend import RunResult
 
@@ -30,11 +30,9 @@ def test_untouched_compact_project_cli_round_trip(
         '{"common_model_container":{"type":"matrixfield","properties":{"bgcolor":"2"}},'
         '"field_styles":[{"type":"buttonfield","group":"buttonfield","properties":{"bgcolor":"2"}}]}\n'
     )
-    (tmp_path / "field_defaults.json").write_text(
-        '{"schema":"gorak-native-styles-v2"}\n'
-    )
+    (tmp_path / "field_defaults.json").write_text("{}\n")
     (folder / "panel.w4gl").write_text(
-        'source_format = 3\n\n[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}',
+        '[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}',
         newline="\n",
     )
     (folder / "panel.wml").write_text(
@@ -54,17 +52,6 @@ def test_untouched_compact_project_cli_round_trip(
     assert not list(tmp_path.rglob("*.xml"))
     assert all(b"defaults_inherited" not in b for b in before.values())
     monkeypatch.chdir(tmp_path)
-
-    def preview_forbidden(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError("Ordinary compact workflow must not invoke preview codecs")
-
-    for name in (
-        "encode_component",
-        "decode_component",
-        "encode_application",
-        "decode_application",
-    ):
-        monkeypatch.setattr(readable_source, name, preview_forbidden)
 
     database: list[bytes] = []
     imports: list[str] = []

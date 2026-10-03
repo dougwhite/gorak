@@ -4,7 +4,7 @@ import json
 from copy import deepcopy
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 from urllib.parse import quote
 
 from lxml import etree
@@ -14,7 +14,6 @@ from .style_values import XSI, decode_value, encode_value, numbered
 from .style_values import difference as property_difference
 from .style_values import merge as merge_properties
 
-SCHEMA = "gorak-native-styles-v2"
 Json = dict[str, Any]
 
 
@@ -127,42 +126,42 @@ def validate(stylesheet: Json) -> None:
 def complete(stylesheet: Json) -> Json:
     """A standalone root contains its complete named stylesheet, without a parent."""
     validate(stylesheet)
-    return {"schema": SCHEMA, "standalone": True, **deepcopy(stylesheet)}
+    return {"standalone": True, **deepcopy(stylesheet)}
 
 
 def empty_delta() -> Json:
     """No properties supplied means inherit the parent unchanged."""
-    return {"schema": SCHEMA}
+    return {}
 
 
 def has_overrides(layer: Json) -> bool:
-    return bool(set(layer) - {"schema"})
+    return bool(layer)
 
 
 def difference(parent: Json, desired: Json) -> Json:
     validate(parent)
     validate(desired)
-    return {"schema": SCHEMA, **property_difference(parent, desired)}
+    return property_difference(parent, desired)
 
 
-def resolve(parent: Json | None, layer: Json) -> Json:
-    if not isinstance(layer, dict) or layer.get("schema") != SCHEMA:
-        raise ProjectError("Legacy defaults require authoritative native re-export")
-    if set(layer) - {
-        "schema",
+def is_native_layer(value: Any) -> TypeGuard[Json]:
+    """Recognise named stylesheet properties without a source version marker."""
+    return isinstance(value, dict) and not set(value) - {
         "standalone",
         "properties",
         "group_order",
         "groups",
         "$order",
         "$before",
-    }:
-        raise ProjectError("Unsupported stylesheet layer properties")
-    values = {
-        key: value
-        for key, value in layer.items()
-        if key not in {"schema", "standalone"}
     }
+
+
+def resolve(parent: Json | None, layer: Json) -> Json:
+    if not is_native_layer(layer):
+        raise ProjectError(
+            "Unsupported stylesheet properties; re-export the application"
+        )
+    values = {key: value for key, value in layer.items() if key != "standalone"}
     if "standalone" in layer:
         if layer["standalone"] is not True:
             raise ProjectError("standalone must be true or omitted")
@@ -190,9 +189,9 @@ def read(path: Path) -> Json:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError) as ex:
         raise ProjectError(f"Cannot read stylesheet: {path}") from ex
-    if not isinstance(value, dict) or value.get("schema") != SCHEMA:
+    if not is_native_layer(value):
         raise ProjectError(
-            "Legacy defaults require authoritative native re-export or gorak styles migrate"
+            "Unsupported stylesheet properties; re-export the application"
         )
     return value
 
@@ -210,14 +209,6 @@ def frame_styles(source: Path) -> Json:
     return resolve(
         parent_styles(source.parent), read(source.with_suffix(".fielddefaults.json"))
     )
-
-
-def is_native_source(path: Path) -> bool:
-    import tomllib
-
-    from .parser import split_w4gl
-
-    return tomllib.loads(split_w4gl(path.read_text())[0]).get("source_format") == 3
 
 
 def entries(stylesheet: Json) -> list[Json]:

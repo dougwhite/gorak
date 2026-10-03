@@ -1,8 +1,7 @@
-"""Verified local stylesheet publication, promotion, and native migration."""
+"""Verified local stylesheet publication and promotion."""
 
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from . import native_styles as styles
@@ -35,13 +34,8 @@ def describe(root: Path, app: str | None, component: str | None) -> styles.Json:
                 raise ProjectError("Component source does not exist")
             if parse_w4gl(source.read_text(), source.stem).type != "framesource":
                 raise ProjectError("Only frames have native stylesheets")
-            if not styles.is_native_source(source):
-                raise ProjectError(
-                    "Migrate legacy frames before resolving native stylesheets"
-                )
             value = styles.frame_styles(source)
     return {
-        "schema": styles.SCHEMA,
         "stylesheet": value,
         "entries": styles.entries(value),
     }
@@ -110,10 +104,6 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                         != "framesource"
                     ):
                         continue
-                    if not styles.is_native_source(source):
-                        raise ProjectError(
-                            "Migrate legacy frames before stylesheet compaction"
-                        )
                     frames[source] = styles.frame_styles(source)
                 children = [
                     value for path, value in frames.items() if path.parent == folder
@@ -147,104 +137,4 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                 )
         else:
             raise ProjectError(f"Unknown stylesheet operation: {operation}")
-        return install(root, changes, snapshot, dry_run=dry_run)
-
-
-def migrate(root: Path, *, dry_run: bool = False) -> str:
-    """Reproject proven native source; never interpret a legacy style as identity."""
-    from lxml import etree
-
-    from .component_defaults import encode_source_w4gl
-    from .contract_source import decode_component, equivalent
-    from .parser import (
-        FRAME_MARKUP_CHILDREN,
-        encode_frame_markup,
-        parse_component_node,
-        parse_w4gl,
-    )
-    from .portable_source import DIRECTORY, cached_node, read_document
-
-    with project_lock(root, "styles-migrate"):
-        if (root / ".openroad/revision-quarantine.json").exists():
-            raise ProjectError(
-                "Resolve revision quarantine before stylesheet maintenance"
-            )
-        snapshot = fingerprint(root)
-        root_path = root / "field_defaults.json"
-        if (
-            root_path.exists()
-            and json.loads(root_path.read_text()).get("schema") == styles.SCHEMA
-        ):
-            for source in root.glob("*/*.w4gl"):
-                if parse_w4gl(source.read_text(), source.stem).type == "framesource":
-                    if not styles.is_native_source(source):
-                        raise ProjectError(
-                            "Project mixes native stylesheets and legacy frames; re-export authoritative source"
-                        )
-                    styles.frame_styles(source)
-            return "Stylesheets unchanged"
-        parent = styles.baseline()
-        expected: dict[Path, etree._Element] = {}
-        changes: dict[Path, bytes | None] = {root_path: encoded(styles.empty_delta())}
-        for manifest in sorted(root.glob("*/app.json")):
-            folder = manifest.parent
-            if folder.name.startswith("."):
-                continue
-            changes[folder / "field_defaults.json"] = None
-            for source in sorted(folder.glob("*.w4gl")):
-                if parse_w4gl(source.read_text(), source.stem).type != "framesource":
-                    continue
-                companion = folder / DIRECTORY / "components" / f"{source.stem}.xml"
-                if companion.exists():
-                    nodes = read_document(companion).findall("COMPONENT")
-                    if len(nodes) != 1 or nodes[0].get("name") != source.stem:
-                        raise ProjectError(f"Invalid native evidence for {source.name}")
-                    node = nodes[0]
-                else:
-                    node = cached_node(folder, "COMPONENT", source.stem)
-                if node is None:
-                    raise ProjectError(
-                        f"Authoritative native XML required for {source.name}; re-export first"
-                    )
-                # Refuse to overwrite locally changed or ambiguously compressed state.
-                try:
-                    matches = equivalent(node, decode_component(source))
-                except (ProjectError, ValueError) as ex:
-                    raise ProjectError(
-                        f"Cannot prove legacy field state for {source.name}; re-export authoritative source"
-                    ) from ex
-                if not matches:
-                    raise ProjectError(
-                        f"Legacy source differs from native evidence for {source.name}; reconcile before migrating"
-                    )
-                expected[source] = node
-                native = node.find("fielddefaults")
-                if native is None:
-                    native = etree.Element("fielddefaults")
-                delta = styles.difference(parent, styles.encode(native))
-                component = parse_component_node(node)
-                component.props["fielddefaults"] = delta
-                markup = encode_frame_markup(
-                    [child for child in node if child.tag in FRAME_MARKUP_CHILDREN],
-                    {},
-                    explicit=True,
-                )
-                changes[source] = encode_source_w4gl(component).encode("utf-8")
-                changes[source.with_suffix(".wml")] = markup.encode("utf-8")
-                changes[source.with_suffix(".fielddefaults.json")] = (
-                    encoded(delta) if styles.has_overrides(delta) else None
-                )
-        with TemporaryDirectory(prefix="gorak-styles-") as temporary:
-            stage = Path(temporary)
-            for path, content in changes.items():
-                if content is not None:
-                    target = stage / path.relative_to(root)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(content)
-            for source, native in expected.items():
-                restored = decode_component(stage / source.relative_to(root))
-                if not equivalent(native, restored, exact_styles=True):
-                    raise ProjectError(
-                        f"Native source verification failed for {source.name}"
-                    )
         return install(root, changes, snapshot, dry_run=dry_run)

@@ -50,9 +50,7 @@ def test_create_project_creates_default_project_skeleton(
     assert (project.root / ".env.example").read_text() == (
         FIXTURE_ROOT / ".env.example"
     ).read_text()
-    assert json.loads((project.root / "field_defaults.json").read_text()) == {
-        "schema": "gorak-native-styles-v2",
-    }
+    assert json.loads((project.root / "field_defaults.json").read_text()) == {}
     assert (project.root / ".gitignore").read_text() == ".env\n.openroad/\n"
     assert (project.root / ".gitattributes").read_text() == (
         "*.w4gl text eol=lf\n*.wml text eol=lf\n"

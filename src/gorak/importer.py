@@ -155,19 +155,10 @@ def import_component(
             from .frame_geometry import normalized_markup
 
             actual = component_tree(after, component)
-            from .readable_source import is_complete
-
-            normalized = normalized_markup(
-                current, actual, complete=is_complete(source)
-            )
+            normalized = normalized_markup(current, actual)
             from .contract_source import equivalent
-            from .native_styles import is_native_source
 
-            matches = (
-                signature(actual) == signature(current)
-                if is_complete(source)
-                else equivalent(actual, current, exact_styles=is_native_source(source))
-            )
+            matches = equivalent(actual, current)
             if not matches and normalized is None:
                 raise SourceVerificationError(
                     "Post-import verification failed; database may have changed"

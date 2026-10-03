@@ -254,8 +254,8 @@ def test_existing_import_lock_is_preserved(
 def test_import_frame_scripts_preserves_layout_and_defaults(
     tmp_path: Path, monkeypatch: MonkeyPatch, edit: str
 ) -> None:
-    from gorak.parser import encode_wml, parse_component_node
-    from tests.legacy_defaults import apply_field_default_inheritance
+    from gorak.parser import parse_component_node
+    from tests.native_source import write_component
 
     xml = Path("tests/fixtures/fm_example_frame.xml").read_bytes()
     node = etree.fromstring(xml).find("COMPONENT")
@@ -267,11 +267,9 @@ def test_import_frame_scripts_preserves_layout_and_defaults(
     cache = tmp_path / ".openroad/app"
     cache.mkdir(parents=True)
     (cache / f"{name}.xml").write_bytes(xml)
-    apply_field_default_inheritance(tmp_path, "app", [component])
     source = folder / f"{name}.w4gl"
-    source.write_text(encode_w4gl(component))
+    write_component(source, node)
     markup = source.with_suffix(".wml")
-    markup.write_text(encode_wml(component) or "")
     if edit in {"frame", "both"}:
         source.write_text(
             source.read_text().replace("some code block", "new frame code")
@@ -298,8 +296,11 @@ def test_import_frame_scripts_preserves_layout_and_defaults(
         expected = expected.replace(b"some code block", b"new frame code")
     if edit in {"field", "both"}:
         expected = expected.replace(b"Hello World!", b"Launch ready!")
-    assert importer.signature(etree.fromstring(uploaded[0])) == importer.signature(
-        etree.fromstring(expected)
+    from gorak.contract_source import equivalent
+
+    assert equivalent(
+        etree.fromstring(uploaded[0]).find("COMPONENT"),
+        etree.fromstring(expected).find("COMPONENT"),
     )
 
 

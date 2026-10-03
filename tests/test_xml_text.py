@@ -11,11 +11,11 @@ from gorak.errors import ProjectError
 from gorak.field_defaults import element_value
 from gorak.importer import signature
 from gorak.parser import encode_w4gl, parse_component_node, parse_w4gl
-from gorak.readable_source import decode_component as decode_expanded
-from gorak.readable_source import encode_component as encode_expanded
-from gorak.wml_writer import overlay_markup, parse_markup, value_node
-from gorak.xml_shapes import order_children, set_scalar
+from gorak.style_values import decode_value as value_node
+from gorak.wml_writer import parse_markup
+from gorak.xml_shapes import order_children
 from gorak.xml_text import find_text, set_text, text_value
+from tests.native_source import write_component
 
 XSI = 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
 PI = "<?ingres_invalidxmlchar 7?>"
@@ -131,8 +131,7 @@ def test_compact_wml_properties_and_events_round_trip(tmp_path: Path) -> None:
     assert "<defaultstring>" in parsed.markup
     assert PI in parsed.markup
     path = project(tmp_path)
-    path.write_text(encode_w4gl(parsed))
-    path.with_suffix(".wml").write_text(parsed.markup)
+    write_component(path, source)
     rebuilt = decode_component(path)
     assert (
         find_text(rebuilt, "topform/childfields/row/defaultstring")
@@ -142,53 +141,6 @@ def test_compact_wml_properties_and_events_round_trip(tmp_path: Path) -> None:
     assert parse_component_node(rebuilt) == parsed
 
 
-@pytest.mark.parametrize("replacement", [f"new{PI} end", "ordinary", r"literal \u0007"])
-def test_legacy_wml_edits_between_element_and_attribute(
-    tmp_path: Path, replacement: str
-) -> None:
-    source = frame()
-    markup = parse_component_node(source).markup
-    assert markup is not None
-    edited = parse_markup(markup)
-    field = edited.find(".//entryfield")
-    assert field is not None
-    old = field.find("defaultstring")
-    assert old is not None
-    field.remove(old)
-    if "<?" in replacement:
-        field.append(node(f"<defaultstring>{replacement}</defaultstring>"))
-        expected = "new\x07 end"
-    else:
-        field.set("defaultstring", replacement)
-        expected = replacement
-    event = field.find("script")
-    assert event is not None
-    set_text(event, "// changed\x02 tail", cdata=True)
-    path = tmp_path / "sample.wml"
-    path.write_bytes(etree.tostring(edited))
-    overlay_markup(source, path)
-    assert find_text(source, "topform/childfields/row/defaultstring") == expected
-    assert find_text(source, "topform/childfields/row/script") == "// changed\x02 tail"
-
-
-def test_legacy_wml_attribute_to_element(tmp_path: Path) -> None:
-    source = frame()
-    field = source.find("topform/childfields/row")
-    assert field is not None
-    set_scalar(field, "entryfield", "defaultstring", "ordinary")
-    markup = parse_component_node(source).markup
-    assert markup is not None
-    edited = parse_markup(markup)
-    entry = edited.find(".//entryfield")
-    assert entry is not None
-    entry.attrib.pop("defaultstring")
-    entry.append(node(f"<defaultstring>new{PI} tail</defaultstring>"))
-    path = tmp_path / "sample.wml"
-    path.write_bytes(etree.tostring(edited))
-    overlay_markup(source, path)
-    assert find_text(field, "defaultstring") == "new\x07 tail"
-
-
 def test_defaults_json_distinguishes_literal_escape_text() -> None:
     value = element_value(
         node(f"<defaultstring>actual{PI} literal \\u0007</defaultstring>")
@@ -196,16 +148,6 @@ def test_defaults_json_distinguishes_literal_escape_text() -> None:
     assert value == "actual\x07 literal \\u0007"
     decoded = value_node("defaultstring", json.loads(json.dumps(value)))
     assert text_value(decoded) == value
-
-
-def test_expanded_source_round_trip(tmp_path: Path) -> None:
-    source = frame()
-    encoded, markup = encode_expanded(source)
-    path = project(tmp_path)
-    path.write_text(encoded)
-    assert markup is not None
-    path.with_suffix(".wml").write_text(markup)
-    assert signature(decode_expanded(path)) == signature(source)
 
 
 def test_signature_does_not_hide_instruction_tail_whitespace_or_target() -> None:
@@ -262,61 +204,14 @@ def test_declarations_and_tagged_values_preserve_characters(tmp_path: Path) -> N
     assert parse_component_node(decode_component(path)) == parsed
 
 
-def test_inherited_defaults_and_group_names_round_trip(tmp_path: Path) -> None:
-    from gorak.contract_source import palette_node
-    from gorak.field_defaults import parse_field_defaults_node
-
-    defaults = {
-        "common_model_container": {"type": "matrixfield", "properties": {}},
-        "field_styles": [
-            {
-                "type": "entryfield",
-                "group": "custom\x07",
-                "properties": {
-                    "datatype": "varchar(30)",
-                    "defaultstring": "before\x10after",
-                    "script": "// before\x02after",
-                },
-            }
-        ],
-    }
-    assert parse_field_defaults_node(palette_node(defaults)) == defaults
-    path = project(tmp_path)
-    (tmp_path / "field_defaults.json").write_text(json.dumps(defaults))
-    path.write_text("[framesource]\n")
-    path.with_suffix(".wml").write_text(
-        '<frame><topform><entryfield name="input"/></topform></frame>'
-    )
-    rebuilt = decode_component(path)
-    assert (
-        find_text(rebuilt, "topform/childfields/row/defaultstring") == "before\x10after"
-    )
-    assert parse_field_defaults_node(rebuilt.find("fielddefaults")) == defaults
-
-
-@pytest.mark.parametrize("legacy", [False, True])
-def test_scalar_element_tail_is_not_silently_lost(tmp_path: Path, legacy: bool) -> None:
+def test_scalar_element_tail_is_not_silently_lost(tmp_path: Path) -> None:
     source = frame()
     parsed = parse_component_node(source)
     path = project(tmp_path)
-    path.write_text(encode_w4gl(parsed))
+    write_component(path, source)
     assert parsed.markup is not None
     path.with_suffix(".wml").write_text(
         parsed.markup.replace("</defaultstring>", "</defaultstring>unexpected")
     )
     with pytest.raises(ProjectError, match="Text properties|scalar markup"):
-        if legacy:
-            overlay_markup(source, path.with_suffix(".wml"))
-        else:
-            decode_component(path)
-
-
-@pytest.mark.parametrize("value", ["", "ordinary"])
-def test_expanded_scalar_attributes_remain_readable(value: str) -> None:
-    from gorak.readable_markup import decode_node, encode_node
-
-    original = node(f'<defaultstring label="example">{value}</defaultstring>')
-    markup = encode_node(original, "xs:string")
-    assert signature(decode_node(markup, "defaultstring", "xs:string")) == signature(
-        original
-    )
+        decode_component(path)

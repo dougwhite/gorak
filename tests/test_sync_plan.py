@@ -6,7 +6,6 @@ import pytest
 from gorak import sync_plan
 from gorak.connection import OpenRoadConnection
 from gorak.domain import Application
-from gorak.portable_source import write_companions
 from gorak.sync_plan import compare
 
 
@@ -45,7 +44,6 @@ def setup(
     cached = root / ".openroad/example/example.xml"
     cached.parent.mkdir(parents=True)
     cached.write_text(xml())
-    write_companions(cached, folder)
     monkeypatch.setattr(
         sync_plan, "read_applications", lambda _: [Application("example", "", "")]
     )

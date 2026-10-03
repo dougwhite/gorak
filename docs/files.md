@@ -98,8 +98,9 @@ decimal code point), inside script text or a property child element:
 
 ## Native stylesheets and field state
 
-New frame `.w4gl` files declare `source_format = 3` before `[framesource]`.
-Their WML contains actual field values, including geometry and native `fieldstyle`.
+Frame WML contains actual field values, including geometry and native `fieldstyle`.
+W4GL and stylesheet JSON contain no source-version markers. The project root
+stylesheet uses named groups and styles; older palette formats require a fresh export.
 Omitted `fieldstyle`, explicit `0` (Unique Style), and positive ordinals remain
 distinct. No stylesheet lookup supplies missing WML values, and `gorak_style`
 is rejected in this format. Scripts and inline bitmap payloads remain in source.
@@ -118,16 +119,13 @@ Baseline version selection is outside this contract.
 A stock project's root `field_defaults.json` is minimal:
 
 ```json
-{
-    "schema": "gorak-native-styles-v2"
-}
+{}
 ```
 
 An application may have `field_defaults.json`; a frame may have an adjacent
 `<component>.fielddefaults.json`. Missing child files inherit their parent.
 Normal export creates no application layer and omits empty frame deltas.
-It never promotes common frame values. Existing legacy root files must be migrated
-before native export, rather than being silently reinterpreted.
+It never promotes common frame values. Older project formats must be freshly exported.
 
 Layers contain only properties that differ from their parent. Group names retain
 repeated-group labels such as `entryfield:2`. Within each group, `style1`, `style2`,
@@ -135,7 +133,6 @@ and so on identify fixed native slots, regardless of JSON key order. For example
 
 ```json
 {
-    "schema": "gorak-native-styles-v2",
     "groups": {
         "stackfield": {
             "styles": {
@@ -178,12 +175,9 @@ identical whole frame stylesheets to applications, and identical application
 stylesheets to the project. It verifies resolved stylesheets and removes empty
 child files. Partial common-property promotion is deliberately not inferred.
 
-`gorak styles migrate --dry-run` checks historical compact frames against retained
-native XML. Migration refuses absent evidence, ambiguous compressed values, and
-local state that differs from the evidence. It rebuilds organisation from the stock
-project root plus exact native frame deltas, rather than interpreting legacy style
-ordinals. Reconcile edits or re-export authoritative source when refused.
-Before-images and operation records are retained under `.openroad/styles/`.
+Stylesheet maintenance retains before-images and operation records under
+`.openroad/styles/`. Older source formats and migration commands are not supported;
+re-export existing applications using the current CLI.
 
 ### Designer consumers
 
@@ -196,7 +190,7 @@ group ordinals and style ordinals are one-based. A designer may use samples when
 creating a field, but must materialise the resulting field values in WML.
 Editing or displaying an existing field must use its explicit WML values.
 Native `fieldstyle` is independent of these creation samples. Consumers of the old
-`field_styles`/`gorak_style` contract need an update before editing format 3.
+`field_styles`/`gorak_style` contract need an update before editing native stylesheet projects.
 
 ## Application metadata
 

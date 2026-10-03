@@ -15,7 +15,7 @@ from gorak.errors import ProjectError
 from gorak.export import apply_field_default_inheritance
 from gorak.importer import signature
 from gorak.parser import parse_component_node
-from gorak.style_commands import maintain, migrate
+from gorak.style_commands import maintain
 
 XSI = "{http://www.w3.org/2001/XMLSchema-instance}type"
 
@@ -141,13 +141,12 @@ def test_bad_parent_and_ambiguous_old_layers_fail_closed() -> None:
         styles.resolve(
             parent,
             {
-                "schema": styles.SCHEMA,
                 "groups": {
                     "entryfield": {"styles": {"style4": {"_type": "entryfield"}}}
                 },
             },
         )
-    with pytest.raises(ProjectError, match="Legacy"):
+    with pytest.raises(ProjectError, match="Unsupported stylesheet"):
         styles.resolve(parent, {"field_styles": []})
 
 
@@ -202,45 +201,6 @@ def test_publish_and_compact_preserve_every_frame_and_are_idempotent(
     assert {p: styles.frame_styles(p) for p in before} == before
     assert maintain(tmp_path, "publish") == "Stylesheets unchanged"
     assert first.with_suffix(".wml").read_bytes() == original
-
-
-def test_migration_without_native_evidence_does_not_write(tmp_path: Path) -> None:
-    write(tmp_path / "field_defaults.json", {})
-    write(tmp_path / "app/app.json", {})
-    source = tmp_path / "app/panel.w4gl"
-    source.write_text("[framesource]\n")
-    source.with_suffix(".wml").write_text("<frame><topform/></frame>")
-    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
-    with pytest.raises(ProjectError, match="Authoritative native XML"):
-        migrate(tmp_path)
-    assert {p: p.read_bytes() for p in before} == before
-
-
-def test_migrate_authoritative_legacy_and_repeat(tmp_path: Path) -> None:
-    from gorak.xml_writer import document
-
-    folder = tmp_path / "example"
-    folder.mkdir()
-    write(folder / "app.json", {})
-    write(tmp_path / "field_defaults.json", {"field_styles": []})
-    source = folder / "panel.w4gl"
-    source.write_text('[framesource]\nwindowtitle="Panel"\n')
-    source.with_suffix(".wml").write_text(
-        '<frame><topform><entryfield name="input" xleft="0" fieldstyle="0"/></topform></frame>'
-    )
-    native = decode_component(source)
-    assert native.find("fielddefaults") is not None
-    cache = tmp_path / ".openroad/example/panel.xml"
-    cache.parent.mkdir(parents=True)
-    cache.write_bytes(document([native]))
-    before = source.read_bytes()
-    migrate(tmp_path, dry_run=True)
-    assert source.read_bytes() == before
-    migrate(tmp_path)
-    assert styles.is_native_source(source)
-    assert signature(decode_component(source)) == signature(native)
-    assert migrate(tmp_path) == "Stylesheets unchanged"
-    assert list((tmp_path / ".openroad/styles").glob("*/before/example/panel.w4gl"))
 
 
 def test_native_verification_detects_wrapper_and_field_drift(tmp_path: Path) -> None:
@@ -350,7 +310,6 @@ def test_named_style_override_is_minimal_and_keeps_its_slot() -> None:
     desired["groups"]["entryfield"]["styles"]["style2"]["width"] = "29"
     layer = styles.difference(parent, desired)
     assert layer == {
-        "schema": styles.SCHEMA,
         "groups": {"entryfield": {"styles": {"style2": {"width": "29"}}}},
     }
     parent["groups"]["entryfield"]["styles"]["style1"]["width"] = "17"
@@ -374,7 +333,6 @@ def test_style_numbers_override_json_order_and_reject_gaps() -> None:
         styles.resolve(
             value,
             {
-                "schema": styles.SCHEMA,
                 "groups": {"entryfield": {"styles": {"style2": None}}},
             },
         )
@@ -427,3 +385,14 @@ def test_new_native_property_uses_short_insertion_hint() -> None:
     assert signature(styles.decode(styles.resolve(parent, layer))) == signature(
         styles.decode(desired)
     )
+
+
+def test_native_source_has_no_version_markers(tmp_path: Path) -> None:
+    source = export(tmp_path)
+    assert source.read_text().startswith("[framesource]")
+    assert "source_format" not in source.read_text()
+    assert json.loads((tmp_path / "field_defaults.json").read_text()) == {}
+    layer = json.loads(source.with_suffix(".fielddefaults.json").read_text())
+    assert "schema" not in layer
+    assert "schema" not in styles.complete(stylesheet())
+    assert styles.encode(decode_component(source).find("fielddefaults")) == stylesheet()

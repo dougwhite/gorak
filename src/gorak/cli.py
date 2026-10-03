@@ -36,7 +36,6 @@ from .export import (
     read_components,
     read_includes,
 )
-from .field_defaults import flatten_app_defaults
 from .importer import import_component
 from .local import LocalCommandError
 from .odbc_runtime import odbc_error_types
@@ -240,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     styles_subparsers = styles_parser.add_subparsers(
         dest="styles_command", required=True
     )
-    for name in ("publish", "compact", "migrate"):
+    for name in ("publish", "compact"):
         command = styles_subparsers.add_parser(name)
         command.add_argument("--dry-run", action="store_true")
 
@@ -250,21 +249,8 @@ def build_parser() -> argparse.ArgumentParser:
     styles_show.add_argument("--app")
     styles_show.add_argument("--component")
 
-    defaults_parser = subparsers.add_parser("defaults")
-    defaults_subparsers = defaults_parser.add_subparsers(dest="defaults_command")
-    defaults_subparsers.add_parser("flatten")
-
     status_parser = subparsers.add_parser("status")
     add_openroad_connection_args(status_parser)
-
-    migrate_parser = subparsers.add_parser(
-        "migrate-source", help="Convert legacy source without changing the database"
-    )
-    migrate_parser.add_argument(
-        "--field-defaults-only",
-        action="store_true",
-        help="Move compact inline defaults to JSON without reconstructing layouts or scripts",
-    )
 
     sync_parser = subparsers.add_parser("sync")
     add_openroad_connection_args(sync_parser)
@@ -776,27 +762,6 @@ def includes_list_command(args: argparse.Namespace) -> str:
 
 
 @locked_command
-def defaults_flatten_command(args: argparse.Namespace) -> str:
-    """Flatten shared app-level field defaults into the project defaults."""
-
-    project = load_project(Path.cwd())
-    from .field_defaults import read_defaults
-
-    if (
-        read_defaults(project.root / "field_defaults.json").get("schema")
-        == "gorak-native-styles-v2"
-    ):
-        raise ProjectError("Use gorak styles compact for native stylesheet projects")
-    result = flatten_app_defaults(project.root)
-    value_label = "value" if result.promoted_values == 1 else "values"
-    app_label = "application" if result.app_count == 1 else "applications"
-    return (
-        f"Flattened {result.promoted_values} field default {value_label} "
-        f"across {result.app_count} {app_label}"
-    )
-
-
-@locked_command
 def sync_command(args: argparse.Namespace) -> str:
     """Export locally tracked components that changed in OpenROAD."""
 
@@ -1181,7 +1146,7 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             return
 
         if parsed.command == "styles":
-            from .style_commands import maintain, migrate
+            from .style_commands import maintain
 
             root = load_project(Path.cwd()).root
             if parsed.styles_command == "show":
@@ -1191,16 +1156,8 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                     json.dumps(describe(root, parsed.app, parsed.component), indent=2)
                 )
                 return
-            print(
-                migrate(root, dry_run=parsed.dry_run)
-                if parsed.styles_command == "migrate"
-                else maintain(root, parsed.styles_command, dry_run=parsed.dry_run)
-            )
+            print(maintain(root, parsed.styles_command, dry_run=parsed.dry_run))
             return
-        if parsed.command == "defaults" and parsed.defaults_command == "flatten":
-            print(defaults_flatten_command(parsed))
-            return
-
         if parsed.command == "status":
             from lxml import etree
 
@@ -1265,20 +1222,6 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
         if parsed.command == "sync":
             print(sync_command(parsed))
             return
-        elif parsed.command == "migrate-source":
-            from .source_migration import migrate_source
-
-            operation = migrate_source(
-                load_project(Path.cwd()).root,
-                field_defaults_only=parsed.field_defaults_only,
-            )
-            print(
-                f"Source migrated; recovery files: {operation}"
-                if operation
-                else "Source already uses the complete readable format"
-            )
-            return
-
         if parsed.command == "component" and parsed.component_command == "import":
             print(component_import_command(parsed))
             return

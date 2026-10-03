@@ -10,7 +10,6 @@ import tomlkit
 from lxml import etree
 
 from .domain import Application, ApplicationExport, Component, IncludedApplication
-from .errors import ProjectError
 from .field_defaults import parse_field_defaults_node
 from .xml_text import (
     INVALID_XML,
@@ -459,31 +458,6 @@ class MarkupDefaultsIndex:
         candidates = self.field_styles.get(str(element.tag), [])
         values = [self.omitted_properties(element, p) for p in candidates]
         return any(value != values[0] for value in values[1:])
-
-    def properties_for_markup(self, element: etree._Element) -> dict[str, Any]:
-        """Resolve the unfiltered per-type style ordinal; never guess lost values."""
-        import re
-
-        tag = str(element.tag)
-        candidates = self.field_styles.get(tag, [])
-        selector = element.get("gorak_style")
-        field = f"{tag} {element.get('name', '<unnamed>')}"
-        if selector is not None:
-            if not re.fullmatch(r"[1-9][0-9]*", selector) or int(selector) > len(
-                candidates
-            ):
-                raise ProjectError(
-                    f"Invalid gorak_style={selector!r} on {field}; expected 1..{len(candidates)}"
-                )
-            return candidates[int(selector) - 1]
-        if tag == "topform":
-            return self.common_model_properties
-        if self.ambiguous(element):
-            raise ProjectError(
-                f"Ambiguous field defaults for {field}; select a known gorak_style (1..{len(candidates)}) "
-                "or re-export authoritative source"
-            )
-        return candidates[0] if candidates else {}
 
 
 def matching_default_count(

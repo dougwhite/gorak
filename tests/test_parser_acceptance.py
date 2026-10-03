@@ -1,5 +1,4 @@
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from lxml import etree
 
@@ -11,7 +10,6 @@ from gorak.parser import (
     parse_components_xml,
     parse_xml,
 )
-from tests.legacy_defaults import apply_field_default_inheritance
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures"
 EXAMPLE_FRAMESOURCE_PATH = Path(__file__).parent / "fixtures" / "fm_example_frame.xml"
@@ -51,16 +49,8 @@ def full_app_components_with_project_defaults() -> dict[str, Component]:
 
 
 def apply_fixture_defaults(components: list[Component]) -> None:
-    with TemporaryDirectory() as temp_dir:
-        root = Path(temp_dir)
-        (root / "field_defaults.json").write_text(
-            (FIXTURE_ROOT / "example.skel" / "field_defaults.json").read_text()
-        )
-        apply_field_default_inheritance(
-            root=root,
-            app="example_application",
-            components=components,
-        )
+    for component in components:
+        component.props.pop("fielddefaults", None)
 
 
 class TestParseXmlAcceptance:

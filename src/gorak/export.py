@@ -30,7 +30,6 @@ from .odbc_runtime import odbc_error_types
 from .parser import (
     FRAME_MARKUP_CHILDREN,
     encode_frame_markup,
-    encode_w4gl,
     parse_application_xml,
     parse_xml,
 )
@@ -79,7 +78,7 @@ def encode_xml_file(xml_path: str) -> str:
     """Parse an OpenROAD XML export and return encoded .w4gl text."""
 
     component = parse_xml(etree.parse(xml_path))
-    return encode_w4gl(component)
+    return encode_source_w4gl(component)
 
 
 def application_metadata(
@@ -117,8 +116,6 @@ def write_app_metadata(
     path = root / application.name / "app.json"
     existing = read_json(path) if path.is_file() else {}
     path.parent.mkdir(parents=True, exist_ok=True)
-    if existing.get("source_format") == 2:
-        return path
     write_json(
         path,
         application_metadata(application, existing, included_applications),

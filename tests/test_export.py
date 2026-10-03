@@ -484,7 +484,7 @@ def test_apply_field_default_inheritance_keeps_changed_nested_frame_overrides(
     )
 
     # Historical derived style rows are not authoritative native identities.
-    with pytest.raises(ProjectError, match="Legacy defaults"):
+    with pytest.raises(ProjectError, match="Unsupported stylesheet"):
         apply_field_default_inheritance(tmp_path, "sample_app", [component])
 
 
