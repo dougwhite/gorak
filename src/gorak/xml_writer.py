@@ -32,25 +32,14 @@ def datatype(row: etree._Element, declaration: str) -> None:
 
 
 def new_component(path: Path) -> etree._Element:
-    from .readable_source import decode_component, is_complete
+    from .contract_source import decode_component
 
-    if is_complete(path):
-        node = decode_component(path)
-        for query in node.findall("queries"):
-            node.remove(query)
-        return node
-    from .contract_source import decode_component as decode_contract
-
-    return decode_contract(path)
+    return decode_component(path)
 
 
 def new_application(path: Path) -> etree._Element:
     validate_name(path.name)
     metadata = read_json(path / "app.json")
-    if metadata.get("source_format") == 2:
-        from .readable_source import decode_application
-
-        return decode_application(path)
     fields = {
         "starting_component": "procstart",
         "description": "versshortremarks",

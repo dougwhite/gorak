@@ -49,7 +49,6 @@ def test_unfinished_pull_blocks_mutations(tmp_path: Path, marker: str) -> None:
         "export_component_command",
         "app_export_command",
         "component_import_command",
-        "defaults_flatten_command",
         "sync_command",
     ],
 )

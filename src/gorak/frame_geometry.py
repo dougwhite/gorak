@@ -9,7 +9,7 @@ from copy import deepcopy
 
 from lxml import etree
 
-from .parser import FRAME_MARKUP_CHILDREN, NS, encode_wml, parse_component_node
+from .parser import FRAME_MARKUP_CHILDREN, NS, parse_component_node
 from .xml_shapes import derives, node_kind
 
 COORDINATES = {"xleft", "ytop", "width", "height"}
@@ -49,9 +49,7 @@ def geometry_signature(node: etree._Element) -> object:
     return signature(copied)
 
 
-def normalized_markup(
-    expected: etree._Element, actual: etree._Element, *, complete: bool = False
-) -> str | None:
+def normalized_markup(expected: etree._Element, actual: etree._Element) -> str | None:
     """Return canonical WML only after complete pixel-equivalent XML verification."""
     from .importer import signature
 
@@ -62,10 +60,12 @@ def normalized_markup(
     component = parse_component_node(actual)
     if component.type != "framesource":
         return None
-    if complete:
-        from .readable_markup import encode_markup
+    from .parser import encode_frame_markup
 
-        return encode_markup(actual)
-    # Markup was encoded with the native frame defaults before inheritance.
-    markup = encode_wml(component)
-    return markup + "\n" if markup is not None else None
+    return (
+        encode_frame_markup(
+            [child for child in actual if child.tag in FRAME_MARKUP_CHILDREN],
+            explicit=True,
+        )
+        + "\n"
+    )

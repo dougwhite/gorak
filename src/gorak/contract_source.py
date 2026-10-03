@@ -1,13 +1,10 @@
 """Reconstruct the established compact source contract without XML companions."""
 
 from pathlib import Path
-from typing import Any
 
 from lxml import etree
 
-from .component_defaults import read_component_defaults
 from .errors import ProjectError
-from .field_defaults import effective_defaults, read_defaults
 from .parser import (
     FRAME_MARKUP_CHILDREN,
     MAINBAR_MARKUP_CHILDREN,
@@ -15,50 +12,9 @@ from .parser import (
     MarkupDefaultsIndex,
     parse_w4gl,
 )
-from .wml_writer import XSI, parse_markup, value_node
+from .wml_writer import XSI, parse_markup
 from .xml_shapes import derives, order_children, shape, shapes
 from .xml_text import is_text_node, set_text, text_value
-
-
-def palette_node(defaults: dict[str, Any]) -> etree._Element:
-    """Build palette groups from their existing JSON identities and properties."""
-    common = defaults.get("common_model_container", {})
-    result = etree.Element("fielddefaults")
-    groups: dict[str, etree._Element] = {}
-    for style in defaults.get("field_styles", []):
-        group = style["group"]
-        if group not in groups:
-            row = etree.SubElement(result, "row")
-            kind = common.get("type") or "matrixfield"
-            row.set(XSI, kind)
-            for key, value in common.get("properties", {}).items():
-                row.append(value_node(key, value))
-            set_text(
-                etree.SubElement(row, "clienttext"),
-                group.rsplit(":", 1)[0]
-                if group.rsplit(":", 1)[-1].isdigit()
-                else group,
-            )
-            children = etree.SubElement(row, "childfields")
-            etree.SubElement(children, "row_class").text = "formfield"
-            groups[group] = children
-            order_children(row, kind)
-        field = etree.Element("row")
-        field.set(XSI, style["type"])
-        field.set("row", str(len(groups[group].findall("row")) + 1))
-        field.set("column", "1")
-        for key, value in style["properties"].items():
-            field.append(value_node(key, value))
-        order_children(field, style["type"])
-        groups[group].insert(len(groups[group]) - 1, field)
-    for children in groups.values():
-        parent = children.getparent()
-        assert parent is not None
-        etree.SubElement(parent, "columns").text = "1"
-        etree.SubElement(parent, "rows").text = str(len(children.findall("row")))
-        order_children(parent, common.get("type") or "matrixfield")
-    etree.SubElement(result, "row_class").text = "formfield"
-    return result
 
 
 def markup_node(
@@ -75,43 +31,38 @@ def markup_node(
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
     if source.tag == "protofield":
-        keys = (set(source.attrib) - {"gorak_style"}) | {
-            str(child.tag) for child in source
-        }
-        candidates = [
-            candidate
-            for candidate in ("entryfield", "optionfield", "togglefield")
-            if keys <= shape(candidate).keys()
-        ]
-        if len(candidates) != 1:
-            raise ProjectError("Ambiguous or unsupported column prototype properties")
-        kind = candidates[0]
+        declared = source.get("type")
+        if declared is not None:
+            if not derives(declared, kind):
+                raise ProjectError("Unsupported column prototype type")
+            kind = declared
+        else:
+            keys = (set(source.attrib) - {"gorak_style"}) | {
+                str(child.tag) for child in source
+            }
+            candidates = [
+                candidate
+                for candidate in ("entryfield", "optionfield", "togglefield")
+                if keys <= shape(candidate).keys()
+            ]
+            if len(candidates) != 1:
+                raise ProjectError(
+                    "Ambiguous or unsupported column prototype properties"
+                )
+            kind = candidates[0]
     if str(source.tag) in shapes() and derives(str(source.tag), kind):
         kind = str(source.tag)
     node = etree.Element(tag)
     if (tag == "row" and source.tag != "row") or source.tag == "protofield":
         node.set(XSI, kind)
-    defaults = index.properties_for_markup(source)
+    if source.get("gorak_style") is not None:
+        raise ProjectError("gorak_style is unsupported; re-export the application")
     fields = shape(kind)
-    for key, value in defaults.items():
-        # Explicit coordinates describe a positioned control, not a palette-
-        # aligned one. Match the existing WML writer's new-control behavior.
-        if key == "gravity" and ("xleft" in source.attrib or "ytop" in source.attrib):
-            continue
-        if (
-            isinstance(value, str)
-            and key in fields
-            and key
-            not in {
-                "name",
-                "script",
-                "childfields",
-                "childmenufields",
-            }
-        ):
-            node.append(value_node(key, value))
     for key, value in source.attrib.items():
-        if key == "gorak_style":
+        if key == "type" and source.tag == "protofield":
+            continue
+        if key in {"row", "column"} and tag == "row":
+            node.set(key, value)
             continue
         if key not in fields or (fields[key] in shapes() and value != ""):
             raise ProjectError(
@@ -168,13 +119,14 @@ def decode_component(path: Path) -> etree._Element:
     if kind == "framesource":
         if not path.with_suffix(".wml").is_file():
             raise ProjectError("Frame requires a WML source file")
-        defaults = effective_defaults(
-            read_defaults(path.parent.parent / "field_defaults.json"),
-            read_defaults(path.parent / "field_defaults.json"),
-            read_component_defaults(path, source.props.get("fielddefaults", {})),
-        )
-        node.append(palette_node(defaults))
-        index = MarkupDefaultsIndex.from_defaults(defaults)
+        from . import native_styles
+
+        if "fielddefaults" in source.props:
+            raise ProjectError(
+                "Inline field defaults are unsupported; re-export the application"
+            )
+        node.append(native_styles.decode(native_styles.frame_styles(path)))
+        index = MarkupDefaultsIndex({}, {}, explicit=True)
         markup = parse_markup(path.with_suffix(".wml").read_text())
         if markup.tag != "frame" or markup.attrib or (markup.text or "").strip():
             raise ProjectError("Frame markup requires a plain <frame> root")
@@ -196,7 +148,9 @@ def decode_component(path: Path) -> etree._Element:
     return node
 
 
-def equivalent(left: etree._Element, right: etree._Element) -> bool:
+def equivalent(
+    left: etree._Element, right: etree._Element, *, exact_styles: bool = True
+) -> bool:
     """Compare the supported readable contract; retain exact XML drift gates."""
     from .importer import signature
     from .parser import (
@@ -205,11 +159,23 @@ def equivalent(left: etree._Element, right: etree._Element) -> bool:
         parse_component_node,
     )
 
+    if exact_styles:
+        from .native_styles import encode
+
+        lstyle, rstyle = left.find("fielddefaults"), right.find("fielddefaults")
+        if (lstyle is None) != (rstyle is None):
+            return False
+        if (
+            lstyle is not None
+            and rstyle is not None
+            and encode(lstyle) != encode(rstyle)
+        ):
+            return False
     if parse_component_node(left) != parse_component_node(right):
         return False
     # Do not let default suppression (or style selection) hide changed native
     # scalar properties. Keep bitmap whitespace normalization from the parser.
-    empty = MarkupDefaultsIndex({}, {})
+    empty = MarkupDefaultsIndex({}, {}, explicit=exact_styles)
 
     def effective_markup(node: etree._Element) -> list[object]:
         return [

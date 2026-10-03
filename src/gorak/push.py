@@ -21,9 +21,8 @@ from .parser import (
     parse_component_node,
 )
 from .portable_source import restore_application, restore_component
-from .project import ProjectError, read_json
+from .project import ProjectError
 from .project_lock import open_lock
-from .readable_source import is_complete
 from .safe_pull import apply_files, fingerprint
 from .xml_writer import document, new_application, new_component
 
@@ -119,13 +118,8 @@ def _push_project(
             disk_app = parse_application_xml(
                 etree.fromstring(document([new_application(folder)]))
             )
-            complete_app = read_json(folder / "app.json").get("source_format") == 2
-            app_source_changed = complete_app and signature(
-                etree.parse(str(app_cache)).find("APPLICATION")
-            ) != signature(new_application(folder))
             if (
-                app_source_changed
-                or previous_app.application != disk_app.application
+                previous_app.application != disk_app.application
                 or previous_app.included_applications != disk_app.included_applications
             ):
                 before = operation / f"{app}-before.xml"
@@ -152,10 +146,6 @@ def _push_project(
                     "databasename",
                     "database_type",
                 }
-                if complete_app:
-                    managed = {str(child.tag) for child in current_node}
-                    current_node.attrib.clear()
-                    current_node.attrib.update(replacement.attrib)
                 for child in list(current_node):
                     if child.tag in managed:
                         current_node.remove(child)
@@ -267,16 +257,15 @@ def _push_project(
     ordered: list[str] = []
     pending = dict(creations)
     available = set(known)
+    planned_apps = {key.casefold() for key in creations if "/" not in key}
     while pending:
         ready = [
             key
             for key in pending
-            if dependencies.get(key.casefold(), set()) <= available
+            if (dependencies.get(key.casefold(), set()) & planned_apps) <= available
         ]
         if not ready:
-            raise ProjectError(
-                "New applications have missing or cyclic source includes"
-            )
+            raise ProjectError("New applications have cyclic source includes")
         for key in ready:
             ordered.append(key)
             pending.pop(key)
@@ -375,14 +364,7 @@ def _push_project(
             if component == "-":
                 actual_app = etree.parse(str(after)).find("APPLICATION")
                 expected_app = etree.parse(str(submitted)).find("APPLICATION")
-                if (
-                    actual_app is None
-                    or expected_app is None
-                    or (
-                        read_json(root / app / "app.json").get("source_format") == 2
-                        and signature(actual_app) != signature(expected_app)
-                    )
-                ):
+                if actual_app is None or expected_app is None:
                     raise SourceVerificationError(
                         f"Application source verification failed: {app}"
                     )
@@ -407,7 +389,6 @@ def _push_project(
                         normalized = normalized_markup(
                             node,
                             actual_node,
-                            complete=is_complete(root / app / f"{name}.w4gl"),
                         )
                     if normalized is not None:
                         cache_updates[root / app / f"{name}.wml"] = normalized.encode()
@@ -418,28 +399,12 @@ def _push_project(
             for source in sources:
                 actual_node = component_tree(after, source.stem)
                 expected_node = component_tree(submitted, source.stem)
-                if is_complete(source):
-                    from .frame_geometry import normalized_markup
+                from .contract_source import equivalent
 
-                    normalized = normalized_markup(
-                        expected_node, actual_node, complete=is_complete(source)
+                if not equivalent(actual_node, expected_node):
+                    raise SourceVerificationError(
+                        f"Readable source verification failed: {source.stem}"
                     )
-                    if normalized is not None:
-                        cache_updates[source.with_suffix(".wml")] = normalized.encode()
-                    if (
-                        signature(actual_node) != signature(expected_node)
-                        and normalized is None
-                    ):
-                        raise SourceVerificationError(
-                            f"Portable XML verification failed: {source.stem}"
-                        )
-                if not is_complete(source):
-                    from .contract_source import equivalent
-
-                    if not equivalent(actual_node, expected_node):
-                        raise SourceVerificationError(
-                            f"Readable source verification failed: {source.stem}"
-                        )
                 actual = parse_component_node(actual_node)
                 expected = parse_component_node(expected_node)
                 if (

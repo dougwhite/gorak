@@ -27,6 +27,10 @@ Gorak:
 5. installs the verified synchronization baseline; and
 6. compiles the affected database source.
 
+Applications included in the same push are imported in dependency order. Missing
+external includes do not block source restoration; compilation reports unresolved
+dependencies. Cyclic includes among new applications remain a preflight error.
+
 A compiler error makes `gorak sync --push` exit nonzero, but it does not undo a
 successfully verified source import. Use the printed command to see full compiler
 diagnostics:

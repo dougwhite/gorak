@@ -1,6 +1,5 @@
 """The established compact source remains directly importable without migration."""
 
-import json
 from pathlib import Path
 
 import pytest
@@ -18,18 +17,7 @@ def project(tmp_path: Path) -> Path:
     folder = tmp_path / "example"
     folder.mkdir()
     (folder / "app.json").write_text("{}")
-    defaults = {
-        "common_model_container": {"type": "matrixfield", "properties": {}},
-        "field_styles": [
-            {
-                "type": "buttonfield",
-                "group": "buttonfield",
-                "properties": {"bgcolor": "2", "width": "100"},
-            }
-        ],
-    }
-    (tmp_path / "field_defaults.json").write_text(json.dumps(defaults))
-    (folder / "field_defaults.json").write_text("{}")
+    (tmp_path / "field_defaults.json").write_text("{}")
     return folder
 
 
@@ -46,16 +34,8 @@ def test_compact_frame_reconstructs_without_xml_and_preserves_bytes(
     node = decode_component(path)
     field = node.find("topform/childfields/row")
     assert field is not None and field.get(XSI) == "buttonfield"
-    assert field.findtext("bgcolor") == "2"
+    assert field.find("bgcolor") is None
     assert field.findtext("xleft") == "500"
-    palette = node.find("fielddefaults/row")
-    assert (
-        palette is not None
-        and palette.findtext("columns") == "1"
-        and palette.findtext("rows") == "1"
-    )
-    assert palette.find("childfields/row").get("row") == "1"
-    assert palette.find("childfields/row").get("column") == "1"
     assert {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
 
 
@@ -82,19 +62,13 @@ def test_compact_class_declarations_and_empty_structures(tmp_path: Path) -> None
         ('xleft="100" ytop="200"', None),
         ('xleft="500" gravity="17"', "17"),
         ('ytop="700" gravity="19"', "19"),
-        ("", "17"),
+        ("", None),
     ],
 )
 def test_compact_positioned_control_alignment_round_trip(
     tmp_path: Path, attributes: str, expected_gravity: str | None
 ) -> None:
     folder = project(tmp_path)
-    defaults_path = tmp_path / "field_defaults.json"
-    defaults = json.loads(defaults_path.read_text())
-    defaults["field_styles"][0]["properties"].update(
-        {"gravity": "17", "xleft": "100", "ytop": "200"}
-    )
-    defaults_path.write_text(json.dumps(defaults))
     path = folder / "panel.w4gl"
     path.write_text("[framesource]\n===\ninitialize()={}\n")
     path.with_suffix(".wml").write_text(
@@ -143,10 +117,6 @@ def test_comparison_keeps_unrepresented_baseline_metadata(tmp_path: Path) -> Non
 
 def test_removing_positioned_gravity_changes_existing_component(tmp_path: Path) -> None:
     folder = project(tmp_path)
-    defaults_path = tmp_path / "field_defaults.json"
-    defaults = json.loads(defaults_path.read_text())
-    defaults["field_styles"][0]["properties"]["gravity"] = "17"
-    defaults_path.write_text(json.dumps(defaults))
     path = folder / "panel.w4gl"
     path.write_text("[framesource]\n===\ninitialize()={}\n")
     markup = '<frame><topform><buttonfield name="go" xleft="500" gravity="17"/></topform></frame>'
@@ -178,28 +148,13 @@ def test_unknown_frame_property_is_refused(tmp_path: Path) -> None:
 
 def test_palette_selection_requires_explicit_selector(tmp_path: Path) -> None:
     folder = project(tmp_path)
-    defaults = json.loads((tmp_path / "field_defaults.json").read_text())
-    defaults["field_styles"] = [
-        {
-            "type": "tablefield",
-            "group": "tablefield",
-            "properties": {"fgcolor": "2", "hasheaderbuttons": "1"},
-        },
-        {
-            "type": "tablefield",
-            "group": "tablefield",
-            "properties": {"fgcolor": "5", "hasheaderbuttons": "0"},
-        },
-    ]
-    (tmp_path / "field_defaults.json").write_text(json.dumps(defaults))
     path = folder / "panel.w4gl"
     path.write_text("[framesource]\n===\ninitialize()={}")
     path.with_suffix(".wml").write_text(
         '<frame><topform><tablefield name="items" gorak_style="1" fgcolor="5"/></topform></frame>'
     )
-    node = decode_component(path)
-    # An explicit override must not switch the selected palette.
-    assert node.findtext("topform/childfields/row/hasheaderbuttons") == "1"
+    with pytest.raises(ProjectError, match="gorak_style"):
+        decode_component(path)
 
 
 def test_queries_ignored_in_both_export_and_import(tmp_path: Path) -> None:
@@ -218,13 +173,13 @@ def test_queries_ignored_in_both_export_and_import(tmp_path: Path) -> None:
     assert "queries" not in encode_w4gl(parse_component_node(node))
 
 
-def test_bitmap_transport_line_wrap_does_not_change_readable_source() -> None:
+def test_explicit_bitmap_text_is_verified_exactly() -> None:
     from gorak.contract_source import equivalent
 
     source = '<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="panel" xsi:type="framesource"><topform><bgbitmap><obj_encoded>opaque line one\nline two</obj_encoded></bgbitmap></topform></COMPONENT>'
     before = etree.fromstring(source)
     after = etree.fromstring(source.replace("\n", " "))
-    assert equivalent(before, after)
+    assert not equivalent(before, after)
     after.find("topform/bgbitmap/obj_encoded").text = "changed bitmap"
     assert not equivalent(before, after)
 

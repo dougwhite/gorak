@@ -139,7 +139,7 @@ class TestParseW4gl:
 
         component = parse_w4gl(source, name="p4_example_procedure")
 
-        assert encode_w4gl(component) == source.strip()
+        assert encode_w4gl(component) == source.strip() + "\n"
 
     def test_frame_component_encodes_topform_as_wml_markup(self) -> None:
         xml = _wrap_xml("""
@@ -829,7 +829,7 @@ class TestW4glEncode:
             }
         """).strip()
 
-        assert result == expected
+        assert result == expected + "\n"
 
 
 class TestWmlEncode:
@@ -857,7 +857,7 @@ class TestWmlEncode:
             defaultvalue = "5"
         """).strip()
 
-        assert result == expected
+        assert result == expected + "\n"
 
     def test_component_with_taggedvalues_encodes_toml_section(self) -> None:
         component = Component(
@@ -875,4 +875,16 @@ class TestWmlEncode:
             db_name = "testdb"
             db_tableprefix = ""
         """).strip()
+            + "\n"
         )
+
+
+@pytest.mark.parametrize(
+    "script", [None, "", "RETURN 0;", "RETURN 0;\n", "RETURN 0;\n\n"]
+)
+def test_w4gl_export_has_exactly_one_final_newline(script: str | None) -> None:
+    component = Component("example", "proc4glsource", {}, script=script)
+    encoded = encode_w4gl(component)
+    assert encoded.endswith("\n")
+    assert not encoded.endswith("\n\n")
+    assert encode_w4gl(parse_w4gl(encoded, "example")) == encoded

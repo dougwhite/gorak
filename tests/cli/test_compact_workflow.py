@@ -1,4 +1,4 @@
-"""ORAPI-era source exercises the CLI without preview codecs or XML companions."""
+"""Explicit native source exercises the CLI without preview codecs or caches."""
 
 import json
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from lxml import etree
 
-from gorak import cli, export, push, readable_source, sync_plan
+from gorak import cli, export, push, sync_plan
 from gorak.domain import Application
 from gorak.run_backend import RunResult
 
@@ -15,8 +15,7 @@ from gorak.run_backend import RunResult
 def test_untouched_compact_project_cli_round_trip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # Synthetic, checked-in contract spellings; do not generate the input with
-    # today's exporter, which would hide a source-format regression.
+    # Handwritten source exercises the public format independently of the exporter.
     folder = tmp_path / "example"
     folder.mkdir()
     (tmp_path / "gorak.json").write_text('{"name":"example","tests":["example"]}\n')
@@ -31,13 +30,13 @@ def test_untouched_compact_project_cli_round_trip(
         '{"common_model_container":{"type":"matrixfield","properties":{"bgcolor":"2"}},'
         '"field_styles":[{"type":"buttonfield","group":"buttonfield","properties":{"bgcolor":"2"}}]}\n'
     )
-    (folder / "field_defaults.json").write_text("{}\n")
+    (tmp_path / "field_defaults.json").write_text("{}\n")
     (folder / "panel.w4gl").write_text(
-        '[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}',
+        '[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}\n',
         newline="\n",
     )
     (folder / "panel.wml").write_text(
-        '<frame>\n  <topform>\n    <buttonfield name="go" textlabel="Go"/>\n'
+        '<frame>\n  <topform bgcolor="2">\n    <buttonfield name="go" textlabel="Go"/>\n'
         "  </topform>\n</frame>\n",
         newline="\n",
     )
@@ -45,28 +44,14 @@ def test_untouched_compact_project_cli_round_trip(
         '[classsource]\nsuperclass = "userobject"\n\n[attributes]\n'
         'count = "INTEGER NOT NULL"\n\n[methods]\n'
         'get_count = "METHOD RETURNING INTEGER NOT NULL"\n\n===\n\n'
-        "method get_count()={return CurObject.count;}",
+        "method get_count()={return CurObject.count;}\n",
         newline="\n",
     )
     sources = [p for p in tmp_path.rglob("*") if p.is_file() and p.name != ".env"]
     before = {p: p.read_bytes() for p in sources}
     assert not list(tmp_path.rglob("*.xml"))
-    assert all(
-        b"source_format" not in b and b"defaults_inherited" not in b
-        for b in before.values()
-    )
+    assert all(b"defaults_inherited" not in b for b in before.values())
     monkeypatch.chdir(tmp_path)
-
-    def preview_forbidden(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError("Ordinary compact workflow must not invoke preview codecs")
-
-    for name in (
-        "encode_component",
-        "decode_component",
-        "encode_application",
-        "decode_application",
-    ):
-        monkeypatch.setattr(readable_source, name, preview_forbidden)
 
     database: list[bytes] = []
     imports: list[str] = []
@@ -84,7 +69,7 @@ def test_untouched_compact_project_cli_round_trip(
         assert create and component == "-" and not database
         database.append(xml.read_bytes())
         imports.append(app)
-        # Inherited value was restored without requiring it in WML.
+        # Explicit field value is restored independently of the stylesheet.
         tree = etree.fromstring(database[0])
         assert tree.findtext("COMPONENT[@name='panel']/topform/bgcolor") == "2"
 

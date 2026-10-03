@@ -1,10 +1,8 @@
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from lxml import etree
 
 from gorak.domain import Component
-from gorak.export import apply_field_default_inheritance
 from gorak.parser import (
     encode_w4gl,
     encode_wml,
@@ -51,16 +49,8 @@ def full_app_components_with_project_defaults() -> dict[str, Component]:
 
 
 def apply_fixture_defaults(components: list[Component]) -> None:
-    with TemporaryDirectory() as temp_dir:
-        root = Path(temp_dir)
-        (root / "field_defaults.json").write_text(
-            (FIXTURE_ROOT / "example.skel" / "field_defaults.json").read_text()
-        )
-        apply_field_default_inheritance(
-            root=root,
-            app="example_application",
-            components=components,
-        )
+    for component in components:
+        component.props.pop("fielddefaults", None)
 
 
 class TestParseXmlAcceptance:

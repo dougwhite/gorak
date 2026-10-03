@@ -9,7 +9,7 @@ project/
 ├── AGENTS.md
 ├── app_name/
 │   ├── app.json
-│   ├── field_defaults.json
+│   ├── field_defaults.json         # optional stylesheet delta
 │   ├── component.fielddefaults.json  # optional frame overrides
 │   ├── component.w4gl
 │   └── frame_component.wml
@@ -26,6 +26,7 @@ Do not commit:
 - `.openroad/`, which contains local synchronization baselines, target binding,
   locks, recovery evidence, temporary XML transport, and run artifacts.
 
+Generated `.w4gl` files end with exactly one newline.
 Generated `.w4gl` and `.wml` files use LF line endings on every platform;
 new projects include Git attributes to retain them on Windows.
 
@@ -96,55 +97,103 @@ decimal code point), inside script text or a property child element:
 <defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
 ```
 
-## Field defaults
+## Native stylesheets and field state
 
-The root `field_defaults.json` contains repository-wide OpenROAD field defaults.
-An application's `field_defaults.json` stores only differences from the root,
-and an optional adjacent `<component>.fielddefaults.json` stores only further
-differences from the effective application defaults (including inherited root
-values). It has the same JSON structure as the root/application defaults. Gorak
-omits or removes this file when there are no overrides. Frame defaults are not
-written into the `.w4gl` TOML header.
+Frame WML contains actual field values, including geometry and native `fieldstyle`.
+W4GL and stylesheet JSON contain no source-version markers. The project root
+stylesheet uses named groups and styles; older palette formats require a fresh export.
+Omitted `fieldstyle`, explicit `0` (Unique Style), and positive ordinals remain
+distinct. No stylesheet lookup supplies missing WML values, and `gorak_style`
+is rejected in this format. Scripts and inline bitmap payloads remain in source. Column prototypes preserve
+their native type as `<protofield type="entryfield" ...>`, and matrix entries
+retain native `row`/`column` attributes.
 
-For example, `panel.w4gl` may have a `panel.fielddefaults.json` containing:
+Stylesheet files describe only the native Style Editor palette. Resolution is:
+
+```text
+built-in stock stylesheet → project → optional application → optional frame
+```
+
+The built-in baseline is the complete native `Core.empty_frame` stylesheet from
+OpenROAD 12.0.0/21024 p16043: 30 groups, 34 entries, and 29 field types. It retains
+native wrappers, duplicate entries, geometry, scripts, and inline resources.
+Baseline version selection is outside this contract.
+
+A stock project's root `field_defaults.json` is minimal:
+
+```json
+{}
+```
+
+An application may have `field_defaults.json`; a frame may have an adjacent
+`<component>.fielddefaults.json`. Missing child files inherit their parent.
+Normal export creates no application layer and omits empty frame deltas.
+It never promotes common frame values. Older project formats must be freshly exported.
+
+Layers contain only properties that differ from their parent. Group names retain
+repeated-group labels such as `entryfield:2`. Within each group, `style1`, `style2`,
+and so on identify fixed native slots, regardless of JSON key order. For example:
 
 ```json
 {
-    "field_styles": [
-        {
-            "type": "buttonfield",
-            "group": "buttonfield",
-            "properties": {"bgcolor": "3"}
+    "groups": {
+        "stackfield": {
+            "styles": {
+                "style2": {
+                    "outlinecolor": "29"
+                }
+            }
         }
-    ]
+    }
 }
 ```
 
-This changes only that style's background color; other properties remain inherited.
-Track the JSON file with its component. Its changes participate in status, push,
-pull conflict checks and recovery just like other source files.
+This changes only the second stackfield style's outline colour. All other values
+inherit. Native values are strings: `""` is an explicit empty value, `"0"` retains
+native zero/false spellings, and `null` removes an inherited property or entry.
+Nested properties and numbered `row1`, `row2` entries use the same inheritance.
+Scripts and inline resources retain their complete text.
 
-Older inline `[fielddefaults]` TOML remains readable. Do not define overrides in
-both places: Gorak refuses competing definitions. Re-export or run
-`gorak migrate-source --field-defaults-only` to convert existing inline defaults
-locally without reconstructing layouts or scripts.
-`gorak defaults flatten` preserves effective frame defaults while promoting
-shared application values, and re-minimizes component JSON files, removing empty
-ones.
+Complete stylesheets contain `properties` for container metadata, `group_order`
+for native group order, and `groups`. Each group contains its wrapper `properties`
+and numbered `styles`. `_type` records the native XML type and `_attributes`
+retains XML attributes. A standalone root adds `"standalone": true` and contains
+all values. Ordinary child layers omit unchanged metadata and ordering.
 
-Values equal to inherited defaults are omitted from WML and reconstructed during
-import.
+Structural edits are explicit: add a complete numbered style, remove an entry
+with `null`, or supply `group_order` when adding/removing/reordering groups.
+Resolved style numbers must be contiguous from `style1`; removing a middle slot
+requires explicitly assigning the remaining slots. Gorak never renumbers supplied
+style names. When a new property belongs before an inherited property in native
+XML, a short hint such as `"$before": {"outlinestyle": "fgpattern"}` preserves its
+position. The exceptional `$order` property lists native property names when
+reordering existing XML properties. Ordinary value edits need neither hint. Literal colons and
+percent signs in native group names are percent-escaped to distinguish them from
+repeated-group suffixes.
 
-When multiple styles of one field type imply different omitted values, Gorak may
-write a `gorak_style="N"` selector:
+`gorak styles publish` writes the complete project stylesheet. Complete roots
+never consult the built-in baseline, including when resolving app/frame deltas.
+`gorak styles compact --dry-run` previews promotion; `gorak styles compact` promotes
+identical whole frame stylesheets to applications, and identical application
+stylesheets to the project. It verifies resolved stylesheets and removes empty
+child files. Partial common-property promotion is deliberately not inferred.
 
-```xml
-<tablefield name="items" gorak_style="2"/>
-```
+Stylesheet maintenance retains before-images and operation records under
+`.openroad/styles/`. Older source formats and migration commands are not supported;
+re-export existing applications using the current CLI.
 
-The selector is a 1-based position among styles of that field type. Preserve it
-unless you deliberately know which style the control should use. Gorak consumes
-the selector during import; it is not sent to OpenROAD as a field property.
+### Designer consumers
+
+Use `gorak styles show --app APP --component FRAME` to obtain the resolved
+stylesheet and an `entries` array as JSON. Python consumers can also resolve
+stylesheets through `gorak.native_styles.project_styles`, `parent_styles`,
+or `frame_styles`. `entries(resolved)` exposes `(group, group_ordinal,
+style_ordinal)` identities, field type, and the complete native sample. Repeated
+group ordinals and style ordinals are one-based. A designer may use samples when
+creating a field, but must materialise the resulting field values in WML.
+Editing or displaying an existing field must use its explicit WML values.
+Native `fieldstyle` is independent of these creation samples. Consumers of the old
+`field_styles`/`gorak_style` contract need an update before editing native stylesheet projects.
 
 ## Application metadata
 

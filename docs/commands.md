@@ -245,32 +245,25 @@ the project configuration for one invocation. See [Remote Helpers](remote.md).
 
 ## Maintenance and diagnostics
 
-### `gorak defaults flatten`
+### `gorak styles publish|compact [--dry-run]`
 
-Finds field-default values shared by application layers and promotes them into
-the repository `field_defaults.json`. Re-minimizes adjacent
-`<component>.fielddefaults.json` overrides against the effective application
-defaults and removes empty files, preserving effective frame values.
+`publish` writes the complete effective project stylesheet, retaining project
+customisations and leaving application/frame meaning unchanged. The complete root
+no longer consults the built-in baseline.
 
-### `gorak migrate-source`
+`compact` promotes identical native stylesheets from frames to applications and
+from applications to the project. Every affected stylesheet is resolved and
+verified before installation; empty child files are removed.
+Both commands support `--dry-run`, use the project lock, retain before-images,
+and leave database source unchanged. See [the stylesheet contract](files.md#native-stylesheets-and-field-state).
 
-Converts source created by older pre-alpha Gorak formats into the current compact
-representation without changing the database. Also moves legacy inline
-`[fielddefaults]` TOML to optional adjacent `<component>.fielddefaults.json`
-overrides. Reconstruction is verified before installation and before-images
-are retained under `.openroad/migrations/`. Projects already using the current
-format do not need it.
-
-Use `gorak migrate-source --field-defaults-only` to move compact inline defaults
-to JSON without reconstructing components through XML. It preserves script bytes,
-WML, application metadata and inherited default files, and verifies all remaining
-TOML values and effective defaults. This mode can migrate source whose layouts or
-component types are outside the current XML reconstruction support. It does not
-claim to validate those layouts or make unsupported types importable.
+`gorak styles show [--app APP] [--component COMPONENT]` prints a resolved complete
+stylesheet plus native entry identities and creation samples as JSON for designer
+consumers. A component requires an application. It does not write files.
 
 ### `gorak encode XML_FILE [--output PATH]`
 
-Encodes one OpenROAD XML component into a standalone legacy `.w4gl` projection
+Encodes one OpenROAD XML component into a `.w4gl` projection
 for inspection. Use application or component export for normal portable source.
 
 ### `gorak debug audit XML_FILE [--all] [--missing-only]`
