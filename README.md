@@ -1,5 +1,10 @@
 # gorak
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/branding/gorak-logo-dark.svg">
+  <img src="docs/branding/gorak-logo.svg" alt="gorak — friendly ork developer toolkit logo" width="560">
+</picture>
+
 GORAK — the Greater OpenROAD Application Kit.
 
 Work with OpenROAD source using readable files, Git, VS Code, command-line tests,
