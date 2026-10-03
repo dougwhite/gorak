@@ -10,6 +10,10 @@ uv sync
 
 ## Run Checks
 
+GitHub Actions runs tests, Ruff, mypy, and the package build on Windows and Linux
+with Python 3.12 for pull requests and pushes to `master`. Dependencies come from
+`uv.lock`; automated tests do not require OpenROAD or a source database.
+
 ```bash
 uv run pytest
 uv run ruff check .
