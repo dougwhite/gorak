@@ -188,7 +188,8 @@ def test_publish_and_compact_preserve_every_frame_and_are_idempotent(
     before = {p: styles.frame_styles(p) for p in (first, second)}
     original = first.with_suffix(".wml").read_bytes()
     plan = maintain(tmp_path, "compact", dry_run=True)
-    assert "Remove example/one.fielddefaults.json" in plan
+    expected_path = Path("example") / "one.fielddefaults.json"
+    assert f"Remove {expected_path}" in plan
     assert first.with_suffix(".fielddefaults.json").exists()
     maintain(tmp_path, "compact")
     assert {p: styles.frame_styles(p) for p in before} == before
