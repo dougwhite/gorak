@@ -1,0 +1,74 @@
+# Development dependency map, not a tested ecosystem release manifest.
+manifest_version = 1
+canonical_repository = "dougwhite/gorak"
+fixtures = "compatibility/project"
+
+[contracts.source]
+version = 1
+description = "Project/application metadata, W4GL and explicit WML field state"
+documentation = "docs/files.md"
+
+[contracts.stylesheet]
+version = 1
+description = "Named native stylesheet layers and the stock baseline"
+documentation = "docs/files.md"
+stock = "src/gorak/templates/native_styles.json"
+
+[components.gorak]
+repository = "dougwhite/gorak"
+role = "Canonical source producer and reconstructor"
+consumes = ["source", "stylesheet"]
+bundles = []
+
+[components.lsp]
+repository = "dougwhite/gorak-lsp-rs"
+role = "Local source analysis; no CLI executable dependency"
+consumes = ["source"]
+bundles = []
+
+[components.designer]
+repository = "dougwhite/gorak-frame-designer"
+role = "Source-preserving frame editor; no CLI executable dependency"
+consumes = ["source", "stylesheet"]
+bundles = []
+
+[components.vscode]
+repository = "dougwhite/gorak-vscode-ext"
+role = "Editor integration and native stylesheet JSON validation"
+consumes = ["source", "stylesheet"]
+bundles = ["lsp"]
+planned_bundles = ["designer"]
+
+[components.demo]
+repository = "dougwhite/openroad_demo"
+role = "Worked example validated against a pinned Gorak revision"
+consumes = ["source", "stylesheet"]
+bundles = []
+
+# These interfaces require documentation and consumer tests before versioning.
+[interfaces.lsp]
+producer = "lsp"
+consumers = ["vscode"]
+status = "unversioned"
+
+[interfaces.designer]
+producer = "designer"
+consumers = ["vscode"]
+status = "integration-pending"
+
+# Record copied/generated assets separately from executable dependencies.
+[assets.designer_stock]
+contract = "stylesheet"
+producer = "gorak"
+source = "src/gorak/templates/native_styles.json"
+consumer = "designer"
+destination = "src/stock-styles.json"
+transform = "Strip historical bitmap directory paths; retain inline pixels"
+
+[assets.editor_schema]
+contract = "stylesheet"
+producer = "vscode"
+source = "schemas/native-styles.schema.json"
+consumer = "vscode"
+destination = "schemas/native-styles.schema.json"
+# Canonical schema ownership has not yet moved into Gorak.

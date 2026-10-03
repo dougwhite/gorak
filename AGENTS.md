@@ -30,6 +30,11 @@ manual acceptance honestly.
 
 ## CLI development
 
+For public format changes, follow [ecosystem compatibility](docs/ecosystem.md).
+`ecosystem.toml` identifies downstream consumers and copied assets; update the
+synthetic `compatibility/project/` inputs and their tests. Record affected consumers
+in the PR and do not claim downstream compatibility before their tests pass.
+
 Use Python 3.12 and `uv`. After behavior changes run:
 
 ```sh

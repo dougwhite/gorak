@@ -1,0 +1,8 @@
+[proc4glsource]
+datatype = "integer"
+
+===
+PROCEDURE score(capsules = INTEGER NOT NULL) =
+{
+    RETURN capsules * 10;
+}

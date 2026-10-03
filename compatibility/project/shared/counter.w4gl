@@ -1,0 +1,15 @@
+[classsource]
+superclass = "userobject"
+
+[attributes]
+value = "INTEGER NOT NULL"
+
+[methods]
+increment = "METHOD RETURNING INTEGER NOT NULL"
+
+===
+METHOD increment() =
+{
+    self.value = self.value + 1;
+    RETURN self.value;
+}

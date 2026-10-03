@@ -1,0 +1,12 @@
+[framesource]
+windowwidth = "6000"
+windowheight = "3000"
+
+===
+initialize =
+declare
+    current_count = counter;
+enddeclare
+{
+    current_count.value = 0;
+}
