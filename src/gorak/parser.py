@@ -709,7 +709,7 @@ def encode_w4gl(component: Component) -> str:
     """Encode a component to TOML front matter plus script body."""
 
     props = tomlkit.dumps(toml_props(component))
-    return join_segments([props, component.script], "===")
+    return join_segments([props, component.script], "===").rstrip("\n") + "\n"
 
 
 def encode_wml(component: Component) -> str | None:
