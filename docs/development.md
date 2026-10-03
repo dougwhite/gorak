@@ -54,7 +54,7 @@ uv build
 Install the built wheel:
 
 ```bash
-uv tool install dist/gorak-0.1.0-py3-none-any.whl
+uv tool install dist/gorak-0.1.0a1-py3-none-any.whl
 ```
 
 ## Source Layout
