@@ -117,7 +117,6 @@ and prepare a Git change using the same commands as a human developer.
 - [Remote Helpers](docs/remote.md) - Windows/OpenROAD execution over SSH
 - [Push and Recovery](docs/push.md) - Push behavior, retries and safe recovery
 - [Development Guide](docs/development.md) - Contributing to Gorak
-- [Ecosystem Compatibility](docs/ecosystem.md) - Contracts and downstream dependencies
 
 ## Actian OpenROAD Extension
 
