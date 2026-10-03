@@ -40,7 +40,11 @@ def describe(root: Path, app: str | None, component: str | None) -> styles.Json:
                     "Migrate legacy frames before resolving native stylesheets"
                 )
             value = styles.frame_styles(source)
-    return {**styles.complete(value), "entries": styles.entries(value)}
+    return {
+        "schema": styles.SCHEMA,
+        "stylesheet": value,
+        "entries": styles.entries(value),
+    }
 
 
 def install(
@@ -122,7 +126,7 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
             original = styles.read(root / "field_defaults.json")
             root_layer = (
                 styles.complete(project)
-                if original["mode"] == "complete"
+                if original.get("standalone") is True
                 else styles.difference(styles.baseline(), project)
             )
             changes[root / "field_defaults.json"] = encoded(root_layer)
@@ -131,7 +135,7 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                 if styles.resolve(project, delta) != value:
                     raise ProjectError("Stylesheet compaction changed an application")
                 changes[folder / "field_defaults.json"] = (
-                    encoded(delta) if delta["changes"] else None
+                    encoded(delta) if styles.has_overrides(delta) else None
                 )
             for source, value in frames.items():
                 parent = apps[source.parent]
@@ -139,7 +143,7 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                 if styles.resolve(parent, delta) != value:
                     raise ProjectError("Stylesheet compaction changed a frame")
                 changes[source.with_suffix(".fielddefaults.json")] = (
-                    encoded(delta) if delta["changes"] else None
+                    encoded(delta) if styles.has_overrides(delta) else None
                 )
         else:
             raise ProjectError(f"Unknown stylesheet operation: {operation}")
@@ -228,7 +232,7 @@ def migrate(root: Path, *, dry_run: bool = False) -> str:
                 changes[source] = encode_source_w4gl(component).encode("utf-8")
                 changes[source.with_suffix(".wml")] = markup.encode("utf-8")
                 changes[source.with_suffix(".fielddefaults.json")] = (
-                    encoded(delta) if delta["changes"] else None
+                    encoded(delta) if styles.has_overrides(delta) else None
                 )
         with TemporaryDirectory(prefix="gorak-styles-") as temporary:
             stage = Path(temporary)

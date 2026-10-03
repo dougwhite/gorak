@@ -784,7 +784,7 @@ def defaults_flatten_command(args: argparse.Namespace) -> str:
 
     if (
         read_defaults(project.root / "field_defaults.json").get("schema")
-        == "gorak-native-styles-v1"
+        == "gorak-native-styles-v2"
     ):
         raise ProjectError("Use gorak styles compact for native stylesheet projects")
     result = flatten_app_defaults(project.root)

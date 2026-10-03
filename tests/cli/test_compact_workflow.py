@@ -31,7 +31,7 @@ def test_untouched_compact_project_cli_round_trip(
         '"field_styles":[{"type":"buttonfield","group":"buttonfield","properties":{"bgcolor":"2"}}]}\n'
     )
     (tmp_path / "field_defaults.json").write_text(
-        '{"schema":"gorak-native-styles-v1","mode":"delta","changes":[]}\n'
+        '{"schema":"gorak-native-styles-v2"}\n'
     )
     (folder / "panel.w4gl").write_text(
         'source_format = 3\n\n[framesource]\nwindowtitle = "Example"\n\n===\n\ninitialize()={}',

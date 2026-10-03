@@ -119,9 +119,7 @@ A stock project's root `field_defaults.json` is minimal:
 
 ```json
 {
-    "schema": "gorak-native-styles-v1",
-    "mode": "delta",
-    "changes": []
+    "schema": "gorak-native-styles-v2"
 }
 ```
 
@@ -131,23 +129,49 @@ Normal export creates no application layer and omits empty frame deltas.
 It never promotes common frame values. Existing legacy root files must be migrated
 before native export, rather than being silently reinterpreted.
 
-A complete layer has `schema`, `mode: "complete"`, and `stylesheet`.
-Each stylesheet node has `tag`, optional `attributes`, and either `text` or an
-ordered `children` array. Attribute names use expanded XML names for namespaces.
-The root tag is `fielddefaults`. Text is a string, including empty strings and
-native zero/false spellings. Arrays preserve every group, property, and duplicate
-style in native order. This representation includes only the stylesheet subtree.
+Layers contain only properties that differ from their parent. Group names retain
+repeated-group labels such as `entryfield:2`. Within each group, `style1`, `style2`,
+and so on identify fixed native slots, regardless of JSON key order. For example:
 
-A nonempty delta adds `parent_structure` and a `changes` array. Each change has
-`path` (string object keys and zero-based array indexes) and `value` (replacement).
-Paths target exact native positions, never a matching or closest style. Replacing
-an ordered array defines add/remove/reorder; replacing a node can remove properties
-or reset them to absence. Omission inherits unchanged parent content. Overlapping
-paths and paths that do not exist are rejected. The parent structure fingerprint
-checks tags, native group names, types, and topology, so structural parent changes
-require an explicit rebase instead of silently retargeting a child delta.
+```json
+{
+    "schema": "gorak-native-styles-v2",
+    "groups": {
+        "stackfield": {
+            "styles": {
+                "style2": {
+                    "outlinecolor": "29"
+                }
+            }
+        }
+    }
+}
+```
 
-`gorak styles publish` commits the complete project stylesheet. Complete roots
+This changes only the second stackfield style's outline colour. All other values
+inherit. Native values are strings: `""` is an explicit empty value, `"0"` retains
+native zero/false spellings, and `null` removes an inherited property or entry.
+Nested properties and numbered `row1`, `row2` entries use the same inheritance.
+Scripts and inline resources retain their complete text.
+
+Complete stylesheets contain `properties` for container metadata, `group_order`
+for native group order, and `groups`. Each group contains its wrapper `properties`
+and numbered `styles`. `_type` records the native XML type and `_attributes`
+retains XML attributes. A standalone root adds `"standalone": true` and contains
+all values. Ordinary child layers omit unchanged metadata and ordering.
+
+Structural edits are explicit: add a complete numbered style, remove an entry
+with `null`, or supply `group_order` when adding/removing/reordering groups.
+Resolved style numbers must be contiguous from `style1`; removing a middle slot
+requires explicitly assigning the remaining slots. Gorak never renumbers supplied
+style names. When a new property belongs before an inherited property in native
+XML, a short hint such as `"$before": {"outlinestyle": "fgpattern"}` preserves its
+position. The exceptional `$order` property lists native property names when
+reordering existing XML properties. Ordinary value edits need neither hint. Literal colons and
+percent signs in native group names are percent-escaped to distinguish them from
+repeated-group suffixes.
+
+`gorak styles publish` writes the complete project stylesheet. Complete roots
 never consult the built-in baseline, including when resolving app/frame deltas.
 `gorak styles compact --dry-run` previews promotion; `gorak styles compact` promotes
 identical whole frame stylesheets to applications, and identical application

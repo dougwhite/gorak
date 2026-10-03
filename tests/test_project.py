@@ -51,9 +51,7 @@ def test_create_project_creates_default_project_skeleton(
         FIXTURE_ROOT / ".env.example"
     ).read_text()
     assert json.loads((project.root / "field_defaults.json").read_text()) == {
-        "schema": "gorak-native-styles-v1",
-        "mode": "delta",
-        "changes": [],
+        "schema": "gorak-native-styles-v2",
     }
     assert (project.root / ".gitignore").read_text() == ".env\n.openroad/\n"
     assert (project.root / ".gitattributes").read_text() == (

@@ -137,13 +137,16 @@ def test_exact_structural_delta_roundtrip(operation: str) -> None:
 
 def test_bad_parent_and_ambiguous_old_layers_fail_closed() -> None:
     parent = stylesheet()
-    child = deepcopy(parent)
-    child["children"][0]["children"][0]["text"] = "renamed"
-    delta = styles.difference(parent, child)
-    changed = deepcopy(parent)
-    changed["children"].reverse()
-    with pytest.raises(ProjectError, match="parent structure"):
-        styles.resolve(changed, delta)
+    with pytest.raises(ProjectError, match="contiguous"):
+        styles.resolve(
+            parent,
+            {
+                "schema": styles.SCHEMA,
+                "groups": {
+                    "entryfield": {"styles": {"style4": {"_type": "entryfield"}}}
+                },
+            },
+        )
     with pytest.raises(ProjectError, match="Legacy"):
         styles.resolve(parent, {"field_styles": []})
 
@@ -283,7 +286,7 @@ def test_publish_retains_project_customisation_and_inherited_stock(
     write(tmp_path / "field_defaults.json", styles.difference(stock, project))
     maintain(tmp_path, "publish")
     published = styles.read(tmp_path / "field_defaults.json")
-    assert published["mode"] == "complete"
+    assert published["standalone"] is True
     assert styles.resolve(None, published) == project
     assert len(styles.entries(styles.resolve(None, published))) == 34
 
@@ -334,8 +337,93 @@ def test_designer_json_command_and_publish(
     assert not (tmp_path / ".openroad").exists()
     cli.main(["styles", "publish", "--dry-run"])
     assert "Write field_defaults.json" in capsys.readouterr().out
-    assert styles.read(tmp_path / "field_defaults.json")["mode"] == "delta"
+    assert styles.read(tmp_path / "field_defaults.json") == styles.empty_delta()
     with pytest.raises(SystemExit) as result:
         cli.main(["styles", "show", "--component", source.stem])
     assert result.value.code == 1
     assert "requires --app" in capsys.readouterr().err
+
+
+def test_named_style_override_is_minimal_and_keeps_its_slot() -> None:
+    parent = stylesheet()
+    desired = deepcopy(parent)
+    desired["groups"]["entryfield"]["styles"]["style2"]["width"] = "29"
+    layer = styles.difference(parent, desired)
+    assert layer == {
+        "schema": styles.SCHEMA,
+        "groups": {"entryfield": {"styles": {"style2": {"width": "29"}}}},
+    }
+    parent["groups"]["entryfield"]["styles"]["style1"]["width"] = "17"
+    resolved = styles.resolve(parent, layer)
+    assert resolved["groups"]["entryfield"]["styles"]["style1"]["width"] == "17"
+    assert resolved["groups"]["entryfield"]["styles"]["style2"]["width"] == "29"
+    assert resolved["groups"]["entryfield:2"] == parent["groups"]["entryfield:2"]
+
+
+def test_style_numbers_override_json_order_and_reject_gaps() -> None:
+    value = stylesheet()
+    slots = {
+        f"style{i}": {"_type": "entryfield", "width": str(i)} for i in range(12, 0, -1)
+    }
+    value["groups"]["entryfield"]["styles"] = slots
+    node = styles.decode(value)
+    assert [row.findtext("width") for row in node.findall("row/childfields")[0]] == [
+        str(i) for i in range(1, 13)
+    ]
+    with pytest.raises(ProjectError, match="contiguous"):
+        styles.resolve(
+            value,
+            {
+                "schema": styles.SCHEMA,
+                "groups": {"entryfield": {"styles": {"style2": None}}},
+            },
+        )
+
+
+def test_nested_named_properties_and_explicit_removal() -> None:
+    parent = stylesheet()
+    sample = parent["groups"]["entryfield"]["styles"]["style1"]
+    sample["items"] = {"row": {"row1": {"text": "one"}, "row2": {"text": "two"}}}
+    desired = deepcopy(parent)
+    changed = desired["groups"]["entryfield"]["styles"]["style1"]
+    changed["items"]["row"]["row2"]["text"] = "changed"
+    del changed["script"]
+    layer = styles.difference(parent, desired)
+    assert layer["groups"]["entryfield"]["styles"]["style1"] == {
+        "items": {"row": {"row2": {"text": "changed"}}},
+        "script": None,
+    }
+    resolved = styles.resolve(parent, layer)
+    assert resolved == desired
+    assert resolved["groups"]["entryfield"]["styles"]["style1"]["defaultstring"] == ""
+    assert signature(styles.decode(resolved)) == signature(styles.decode(desired))
+
+
+def test_native_property_reordering_is_explicit() -> None:
+    parent = stylesheet()
+    desired = deepcopy(parent)
+    sample = desired["groups"]["entryfield"]["styles"]["style1"]
+    desired["groups"]["entryfield"]["styles"]["style1"] = dict(
+        reversed(list(sample.items()))
+    )
+    layer = styles.difference(parent, desired)
+    assert "$order" in layer["groups"]["entryfield"]["styles"]["style1"]
+    assert signature(styles.decode(styles.resolve(parent, layer))) == signature(
+        styles.decode(desired)
+    )
+
+
+def test_new_native_property_uses_short_insertion_hint() -> None:
+    parent = stylesheet()
+    desired = deepcopy(parent)
+    sample = desired["groups"]["entryfield"]["styles"]["style2"]
+    sample = {"_type": sample["_type"], "bgcolor": "29", "width": sample["width"]}
+    desired["groups"]["entryfield"]["styles"]["style2"] = sample
+    layer = styles.difference(parent, desired)
+    assert layer["groups"]["entryfield"]["styles"]["style2"] == {
+        "bgcolor": "29",
+        "$before": {"bgcolor": "width"},
+    }
+    assert signature(styles.decode(styles.resolve(parent, layer))) == signature(
+        styles.decode(desired)
+    )

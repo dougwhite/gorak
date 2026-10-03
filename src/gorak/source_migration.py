@@ -65,7 +65,7 @@ def migrate_source(root: Path, *, field_defaults_only: bool = False) -> Path | N
                 changes[app_file] = content
                 if (folder / "field_defaults.json").is_file():
                     values = read_json(folder / "field_defaults.json")
-                    if values.get("schema") == "gorak-native-styles-v1":
+                    if values.get("schema") == "gorak-native-styles-v2":
                         copy2(
                             folder / "field_defaults.json",
                             target / "field_defaults.json",
