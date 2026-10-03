@@ -1,4 +1,4 @@
-# Gorak over SSH
+# gorak over SSH
 
 These helper files are packaged with `gorak` and used by `gorak remote install`,
 so the command works from a built distribution as well as a source checkout.
@@ -19,7 +19,7 @@ See `docs/remote.md` for the user-facing remote setup guide.
      --gorak-root 'C:\Development\gorak'
    ```
 
-   When run inside a Gorak project, `remote install` can read the user, host,
+   When run inside a gorak project, `remote install` can read the user, host,
    and remote root from the project `.env`.
 
    You can verify the installed helper manifest with:
