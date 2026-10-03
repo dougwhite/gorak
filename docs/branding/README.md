@@ -9,7 +9,7 @@ Always spell **gorak** in lowercase, including headings and UI labels.
 | Asset | Use |
 | --- | --- |
 | `gorak-logo.svg` | Horizontal logo for light backgrounds, documentation and README pages |
-| `gorak-logo-dark.svg` | Horizontal logo with pale lettering and details for dark backgrounds |
+| `gorak-logo-dark.svg` | Original mascot colors with a pale wordmark for dark backgrounds |
 | `gorak-icon.svg` | Square, transparent ork icon; master for normal-size exports |
 | `gorak-icon-small.svg` | Same icon without the bandana highlight and eye glints, for 16–32 px |
 | `gorak-icon-mono.svg` | Single-color icon; defaults to black and uses `currentColor` |
@@ -33,7 +33,7 @@ from the surrounding page: set its color inside the SVG or inline the SVG.
 | Charcoal | `#26332e` |
 | Ork green | `#86a34e` |
 | Ivory details | `#fffdf5` |
-| Pale details for dark backgrounds | `#e7eee9` |
+| Wordmark for dark backgrounds | `#e7eee9` |
 
 ## Exporting
 

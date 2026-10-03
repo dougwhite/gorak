@@ -1,8 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="360" viewBox="0 0 1120 360" role="img" aria-labelledby="title desc">
 <title id="title">gorak logo for dark backgrounds</title>
-<desc id="desc">The gorak ork and lowercase wordmark with pale details for dark backgrounds.</desc>
-<defs><style>.ink{fill:#e7eee9}.green{fill:#86a34e}.ivory{fill:#26332e}</style></defs>
+<desc id="desc">The original green and charcoal gorak ork beside a pale lowercase wordmark for dark backgrounds.</desc>
+<defs><style>.ink{fill:#26332e}.green{fill:#86a34e}.ivory{fill:#fffdf5}</style></defs>
 <g id="ork" transform="translate(12 6) scale(.43)">
 
 <path class="ink" d="M797 241 Q837 221 867 239 L930 307 Q873 285 818 293 Z M822 301 Q861 315 884 350 L840 368 Z" />
@@ -29,7 +29,7 @@
 <path class="ink" d="M449 593 Q571 610 696 592 Q690 615 573 617 Q466 615 449 593 Z" />
 </g>
 
-<g id="wordmark" class="ink" transform="translate(440 115) scale(.85)">
+<g id="wordmark" class="ink" transform="translate(440 115) scale(.85)" style="fill:#e7eee9">
 <path id="g" fill-rule="evenodd" d="M124 20 H164 V147 Q164 213 97 213 Q53 213 18 190 L39 157 Q62 175 94 175 Q122 175 122 147 V137 Q105 151 78 151 Q12 151 12 87 Q12 19 80 19 Q107 19 124 33 Z M87 58 Q55 58 55 87 Q55 115 87 115 Q120 115 120 87 Q120 58 87 58 Z" />
 <path id="o" fill-rule="evenodd" d="M253 19 C297 19 326 47 326 87 C326 127 297 153 253 153 C210 153 180 127 180 87 C180 47 210 19 253 19 Z M253 58 C233 58 221 70 221 87 C221 105 233 115 253 115 C273 115 285 105 285 87 C285 70 273 58 253 58 Z" />
 <path id="r" d="M347 21 H387 V39 Q401 19 427 19 Q440 19 452 24 L440 66 Q430 60 418 60 Q389 60 389 91 V151 H347 Z" />
