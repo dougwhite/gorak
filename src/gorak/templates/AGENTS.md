@@ -26,18 +26,14 @@ database.
 ## Source and safety
 
 - Track `.w4gl`, `.wml`, `app.json`, `gorak.json`, `AGENTS.md`, and stylesheet JSON.
-  Native stylesheet layers resolve built-in -> project -> optional application ->
-  optional `<component>.fielddefaults.json`. These layers affect the Style Editor
-  only. WML contains actual field values, geometry, and native `fieldstyle`;
-  never infer them from a stylesheet or add `gorak_style`. Use `gorak styles publish`
-  for a standalone project stylesheet and `gorak styles compact --dry-run` to review
-  explicit promotion. Older source formats require a fresh export; no migration reader is provided.
+  WML stores actual field state; stylesheet files represent the native Style Editor.
+  Never infer field values from a stylesheet or add `gorak_style`. Older source
+  formats require a fresh export.
 - Never commit `.env` or `.openroad/`. The first may contain credentials; the
   second contains local baselines, target binding, locks, recovery evidence,
   temporary XML, and run artifacts.
-- Keep WML well formed, preserve established metadata structure, and keep field
-  names and event scripts consistent. Preserve omitted native `fieldstyle`, explicit
-  zero, and positive ordinals exactly.
+- Keep WML well formed and preserve established metadata, field names, event
+  scripts, and native `fieldstyle` values.
 - Keep Workbench source editors closed while Gorak imports.
 - A conflict means disk and OpenROAD both changed relative to their common
   baseline. Stop, preserve both versions, and ask which version is authoritative.

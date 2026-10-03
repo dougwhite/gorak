@@ -247,19 +247,19 @@ the project configuration for one invocation. See [Remote Helpers](remote.md).
 
 ### `gorak styles publish|compact [--dry-run]`
 
-`publish` writes the complete effective project stylesheet, retaining project
-customisations and leaving application/frame meaning unchanged. The complete root
-no longer consults the built-in baseline.
+`publish` writes the complete project stylesheet instead of relying on Gorak's
+built-in stock baseline.
 
-`compact` promotes identical native stylesheets from frames to applications and
-from applications to the project. Every affected stylesheet is resolved and
-verified before installation; empty child files are removed.
-Both commands support `--dry-run`, use the project lock, retain before-images,
-and leave database source unchanged. See [the stylesheet contract](files.md#native-stylesheets-and-field-state).
+`compact` promotes identical frame/application stylesheets upward without
+changing their resolved contents. Both commands support `--dry-run` and do not
+modify the OpenROAD database.
 
-`gorak styles show [--app APP] [--component COMPONENT]` prints a resolved complete
-stylesheet plus native entry identities and creation samples as JSON for designer
-consumers. A component requires an application. It does not write files.
+See [Files and formats](files.md#native-stylesheets).
+
+### `gorak styles show [--app APP] [--component COMPONENT]`
+
+Prints the resolved stylesheet and native style identities as JSON. This is
+read-only and is primarily useful for inspection and designer tooling.
 
 ### `gorak encode XML_FILE [--output PATH]`
 
