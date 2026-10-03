@@ -13,6 +13,7 @@ from .errors import ProjectError
 from .style_values import XSI, decode_value, encode_value, numbered
 from .style_values import difference as property_difference
 from .style_values import merge as merge_properties
+from .xml_text import find_text
 
 Json = dict[str, Any]
 
@@ -44,7 +45,7 @@ def encode(node: etree._Element) -> Json:
     groups: Json = {}
     counts: dict[str, int] = {}
     for row in node.findall("row"):
-        name = row.findtext("clienttext", "")
+        name = find_text(row, "clienttext") or ""
         counts[name] = counts.get(name, 0) + 1
         key = group_key(name, counts[name])
         wrapper = deepcopy(row)
@@ -94,7 +95,7 @@ def decode(value: Json) -> etree._Element:
         if not isinstance(group, dict) or set(group) != {"properties", "styles"}:
             raise ProjectError(f"Invalid native stylesheet group: {key}")
         row = decode_value("row", group["properties"])
-        name = row.findtext("clienttext", "")
+        name = find_text(row, "clienttext") or ""
         counts[name] = counts.get(name, 0) + 1
         if group_key(name, counts[name]) != key:
             raise ProjectError(
@@ -216,7 +217,7 @@ def entries(stylesheet: Json) -> list[Json]:
     counts: dict[str, int] = {}
     result = []
     for group in node.findall("row"):
-        name = group.findtext("clienttext", "")
+        name = find_text(group, "clienttext") or ""
         counts[name] = counts.get(name, 0) + 1
         for ordinal, style in enumerate(group.findall("childfields/row"), 1):
             result.append(

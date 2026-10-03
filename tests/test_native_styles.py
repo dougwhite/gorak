@@ -304,6 +304,30 @@ def test_designer_json_command_and_publish(
     assert "requires --app" in capsys.readouterr().err
 
 
+def test_group_names_preserve_invalid_xml_characters_through_json_layers() -> None:
+    row = (
+        '<row xsi:type="matrixfield">'
+        "<clienttext>before<?ingres_invalidxmlchar 7?>after</clienttext>"
+        '<childfields><row xsi:type="entryfield"><width>17</width></row>'
+        "</childfields></row>"
+    )
+    node = etree.fromstring(
+        '<fielddefaults xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+        + row * 2
+        + "</fielddefaults>"
+    )
+    encoded = styles.encode(node)
+    assert encoded["group_order"] == ["before%07after", "before%07after:2"]
+    parent = styles.baseline()
+    layer = json.loads(json.dumps(styles.difference(parent, encoded)))
+    resolved = styles.resolve(parent, layer)
+    assert signature(styles.decode(resolved)) == signature(node)
+    assert [(e["group"], e["group_ordinal"]) for e in styles.entries(resolved)] == [
+        ("before\x07after", 1),
+        ("before\x07after", 2),
+    ]
+
+
 def test_named_style_override_is_minimal_and_keeps_its_slot() -> None:
     parent = stylesheet()
     desired = deepcopy(parent)
