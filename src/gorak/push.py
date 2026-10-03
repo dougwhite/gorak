@@ -257,16 +257,15 @@ def _push_project(
     ordered: list[str] = []
     pending = dict(creations)
     available = set(known)
+    planned_apps = {key.casefold() for key in creations if "/" not in key}
     while pending:
         ready = [
             key
             for key in pending
-            if dependencies.get(key.casefold(), set()) <= available
+            if (dependencies.get(key.casefold(), set()) & planned_apps) <= available
         ]
         if not ready:
-            raise ProjectError(
-                "New applications have missing or cyclic source includes"
-            )
+            raise ProjectError("New applications have cyclic source includes")
         for key in ready:
             ordered.append(key)
             pending.pop(key)

@@ -55,7 +55,7 @@ def test_preflight_rejects_unsupported_before_any_import(
 def test_creates_in_dependency_order_and_dry_run_does_not_write_db(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    app(tmp_path, "aaa", ["zzz"])
+    app(tmp_path, "aaa", ["zzz", "external_missing"])
     app(tmp_path, "zzz")
     monkeypatch.setattr(push, "read_applications", lambda _: [])
     calls: list[str] = []
@@ -118,12 +118,13 @@ def test_collision_requires_baseline(
         push.push_project(connection(), tmp_path)
 
 
-def test_missing_include_rejected_before_import(
+def test_cyclic_includes_rejected_before_import(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    app(tmp_path, "example", ["missing"])
+    app(tmp_path, "example", ["other"])
+    app(tmp_path, "other", ["example"])
     monkeypatch.setattr(push, "read_applications", lambda _: [])
-    with pytest.raises(ProjectError, match="missing or cyclic"):
+    with pytest.raises(ProjectError, match="cyclic"):
         push.push_project(connection(), tmp_path)
 
 
