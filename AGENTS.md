@@ -1,6 +1,8 @@
-# Working on Gorak
+# Working on gorak
 
-Gorak is an early-alpha Python CLI for moving Actian OpenROAD source between a
+Always spell `gorak` in lowercase, including at the start of sentences and in headings, documentation, UI text, commit messages, PR titles and release titles.
+
+gorak is an early-alpha Python CLI for moving Actian OpenROAD source between a
 source database and readable files. This checkout develops the CLI; an OpenROAD
 application project is a separate folder containing `gorak.json`.
 
