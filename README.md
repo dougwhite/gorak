@@ -1,9 +1,9 @@
-# gorak
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/branding/gorak-logo-dark.svg">
   <img src="docs/branding/gorak-logo.svg" alt="gorak — friendly ork developer toolkit logo" width="320">
 </picture>
+
+<hr>
 
 GORAK — the Greater OpenROAD Application Kit.
 
