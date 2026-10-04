@@ -39,3 +39,29 @@ jobs:
         run: uv run --locked mypy
       - name: Build wheel and source distribution
         run: uv build
+
+  ecosystem:
+    name: Publish development candidate and propose consumer updates
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: gorak-ecosystem-propagation
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish candidate and open or advance compatibility PRs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ECOSYSTEM_PR_TOKEN: ${{ secrets.ECOSYSTEM_PR_TOKEN }}
+        run: python scripts/ecosystem_release.py
