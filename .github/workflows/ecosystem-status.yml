@@ -1,0 +1,75 @@
+name: Ecosystem candidate status
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Published gorak candidate tag to refresh
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: gorak-ecosystem-status
+  cancel-in-progress: false
+
+jobs:
+  status:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion) &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      # Run only trusted default-branch code, never an incoming PR artifact.
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Find candidate from successful root run
+        id: candidate
+        env:
+          REQUESTED: ${{ inputs.candidate }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          sys.path.insert(0, 'scripts')
+          from ecosystem_release import GitHub, UPSTREAM
+          # Match published dev tag to originating CI run, independent of later package changes.
+          requested = os.environ.get('REQUESTED')
+          if requested:
+              tag = requested
+          else:
+              suffixes = ('.dev.' + os.environ['RUN_NUMBER'], '-dev.' + os.environ['RUN_NUMBER'])
+              releases = GitHub(os.environ['GITHUB_TOKEN']).pages(f'repos/{UPSTREAM}/releases?')
+              tags = [release['tag_name'] for release in releases if release['tag_name'].endswith(suffixes)]
+              if len(tags) > 1:
+                  raise ValueError('Ambiguous candidate tags')
+              tag = tags[0] if tags else ''
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              # Prevent multiline workflow-output injection from manual input.
+              if '\n' in tag or '\r' in tag:
+                  raise ValueError('Invalid candidate tag')
+              output.write(f'tag={tag}\n')
+          PY
+      - name: Track downstream CI for up to twenty minutes
+        if: steps.candidate.outputs.tag != ''
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.tag }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/ecosystem_status.py "$CANDIDATE" --wait-seconds 1200

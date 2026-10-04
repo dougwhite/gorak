@@ -69,3 +69,5 @@ Inspect the working tree before changes and before commits. Leave unrelated loca
 files alone. Do not publish private application/corpus identifiers, machine names,
 source database identities, credentials, runtime logs or copied proprietary source.
 Use neutral synthetic fixtures and examples. Do not force-push or discard work.
+
+For an ecosystem-wide candidate review, follow [coordinator instructions](scripts/COORDINATE.md).
