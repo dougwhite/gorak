@@ -33,11 +33,18 @@ The built-in gorak token creates gorak candidate tags/prereleases; the separate
 status workflow uses it to maintain tracking issues in gorak. The PAT
 creates downstream branches/PRs so normal PR CI starts unattended.
 
-A separate workflow starts after root push CI completes and creates one tracking
-issue per published candidate, collecting exact PR heads and downstream CI results
+A separate workflow starts after root push CI completes and maintains one active
+ecosystem issue, advancing it to the latest published candidate and collecting
+exact PR heads and downstream CI results
 for up to twenty minutes. No daily schedule is used. Later checks can be refreshed
 with its manual candidate input or during [coordinator review](COORDINATE.md).
-The managed status block preserves review findings and owner notes outside it.
+Intermediate candidates do not require separate review or immediate fixes: work
+on gorak for several merges, then ask Codex to bring the ecosystem up to speed.
+Open downstream PRs advance in place rather than multiplying. Old status runs
+cannot move the active issue backwards. After the owner closes a completed
+coordination issue, a later candidate starts a new round; old retries leave the
+closed issue alone. The managed status block preserves review findings and owner
+notes outside it.
 Review findings must be rechecked whenever their recorded PR heads change.
 
 This first stage never automatically merges, releases consumers, or publishes a

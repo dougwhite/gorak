@@ -1,7 +1,8 @@
-"""Maintain one candidate issue from exact downstream PR heads and CI runs."""
+"""Maintain one active ecosystem issue from exact downstream PR heads and CI runs."""
 
 import argparse
 import os
+import re
 import time
 from urllib.parse import quote
 
@@ -9,6 +10,29 @@ from ecosystem_release import CONSUMERS, UPSTREAM, GitHub
 
 START = "<!-- gorak-status:start -->"
 END = "<!-- gorak-status:end -->"
+TRACKER = "<!-- gorak-ecosystem-tracker -->"
+CANDIDATE = re.compile(r"<!-- gorak-ecosystem-candidate: ([^\s]+) -->")
+
+
+def candidate_number(tag: str) -> int:
+    match = re.fullmatch(r"v\d+\.\d+\.\d+-(?:(?:alpha|beta|rc)\.\d+\.)?dev\.(\d+)", tag)
+    if not match:
+        raise ValueError("Expected a development candidate tag")
+    return int(match[1])
+
+
+def is_latest(api: GitHub, tag: str) -> bool:
+    requested = candidate_number(tag)
+    releases = api.pages(f"repos/{UPSTREAM}/releases?")
+    numbers = []
+    for release in releases:
+        if release["draft"] or not release["prerelease"]:
+            continue
+        try:
+            numbers.append(candidate_number(release["tag_name"]))
+        except ValueError:
+            continue
+    return bool(numbers) and requested == max(numbers)
 
 
 def collect(api: GitHub, tag: str) -> tuple[str, bool]:
@@ -59,6 +83,9 @@ def collect(api: GitHub, tag: str) -> tuple[str, bool]:
         )
     block = (
         f"{START}\n"
+        f"Latest candidate: [{tag}](https://github.com/{UPSTREAM}/releases/tag/{tag})\n\n"
+        "Background compatibility checks can wait until the owner asks to bring the "
+        "ecosystem up to speed. Intermediate candidates need no separate review.\n\n"
         "| Consumer / PR | PR state | Checked head | CI |\n"
         "| --- | --- | --- | --- |\n" + "\n".join(rows) + "\n\n"
         "CI success is evidence for review, not release approval. Review findings below "
@@ -69,16 +96,33 @@ def collect(api: GitHub, tag: str) -> tuple[str, bool]:
 
 
 def update_issue(api: GitHub, tag: str, block: str) -> str:
+    requested = candidate_number(tag)
     marker = f"<!-- gorak-ecosystem-candidate: {tag} -->"
     issues = [
         issue
         for issue in api.pages(f"repos/{UPSTREAM}/issues?state=all")
-        if "pull_request" not in issue and marker in (issue.get("body") or "")
+        if "pull_request" not in issue
+        and (
+            TRACKER in (issue.get("body") or "")
+            or CANDIDATE.search(issue.get("body") or "")
+        )
     ]
-    if len(issues) > 1:
-        raise ValueError("Multiple candidate tracking issues; resolve before updating")
-    if issues:
-        issue = issues[0]
+    opened = [issue for issue in issues if issue["state"] == "open"]
+    if len(opened) > 1:
+        raise ValueError(
+            "Multiple active ecosystem tracking issues; resolve before updating"
+        )
+    # A delayed retry must not resurrect a completed round or create another issue.
+    for issue in issues:
+        previous = CANDIDATE.search(issue.get("body") or "")
+        if not previous:
+            raise ValueError("Tracking issue is missing its candidate marker")
+        if candidate_number(previous[1]) > requested or (
+            issue["state"] == "closed" and previous[1] == tag
+        ):
+            return issue["html_url"]
+    if opened:
+        issue = opened[0]
         body = issue.get("body") or ""
         if (
             body.count(START) != 1
@@ -88,22 +132,38 @@ def update_issue(api: GitHub, tag: str, block: str) -> str:
             raise ValueError(
                 "Invalid status markers; refusing to overwrite review notes"
             )
+        previous = CANDIDATE.search(body)
+        if len(CANDIDATE.findall(body)) != 1:
+            raise ValueError("Expected exactly one candidate marker")
         updated = body[: body.index(START)] + block + body[body.index(END) + len(END) :]
-        if updated != body:
+        updated = CANDIDATE.sub(lambda _: marker, updated, count=1)
+        # Migrate the old per-candidate header; keep all owner/review notes intact.
+        legacy_header = f"Candidate: [{previous[1]}](https://github.com/{UPSTREAM}/releases/tag/{previous[1]})"
+        updated = "\n".join(
+            line for line in updated.split("\n") if not line.startswith(legacy_header)
+        )
+        if TRACKER not in updated:
+            updated = TRACKER + "\n" + updated
+        title = "Coordinate latest gorak candidate"
+        if updated != body or issue.get("title") != title:
             api.call(
-                f"repos/{UPSTREAM}/issues/{issue['number']}", "PATCH", {"body": updated}
+                f"repos/{UPSTREAM}/issues/{issue['number']}",
+                "PATCH",
+                {"body": updated, "title": title},
             )
         return issue["html_url"]
     issue = api.call(
         f"repos/{UPSTREAM}/issues",
         "POST",
         {
-            "title": f"Coordinate gorak {tag}",
-            "body": f"{marker}\nCandidate: [{tag}](https://github.com/{UPSTREAM}/releases/tag/{tag})\n\n"
+            "title": "Coordinate latest gorak candidate",
+            "body": f"{TRACKER}\n{marker}\n\n"
             + block
-            + "\n\n## Coordinator review\n\nAwaiting consumer review. "
-            "Ask Codex: `Bring the ecosystem up to this candidate using scripts/COORDINATE.md`.\n\n"
-            "Merges and releases require owner instructions. No release is implied by this issue.\n",
+            + "\n\n## Coordinator review\n\nAwaiting owner-requested consumer review. "
+            "Ask Codex: `Bring the ecosystem up to the latest candidate using scripts/COORDINATE.md`.\n\n"
+            "Merges and releases require owner instructions. Close this issue after the latest "
+            "candidate's consumer PRs have been reviewed and merged. A future candidate starts "
+            "a new coordination round; no release is implied by closing this issue.\n",
         },
     )
     return issue["html_url"]
@@ -122,7 +182,18 @@ def main() -> None:
         raise ValueError("Expected a published gorak candidate prerelease")
     deadline = time.monotonic() + args.wait_seconds
     while True:
+        if not is_latest(api, args.tag):
+            print(
+                "A newer candidate supersedes this run; leaving the active issue alone"
+            )
+            return
         block, pending = collect(api, args.tag)
+        # Collection spans several API calls; check again before mutating the issue.
+        if not is_latest(api, args.tag):
+            print(
+                "A newer candidate arrived while collecting; leaving the active issue alone"
+            )
+            return
         print(update_issue(api, args.tag, block))
         if not pending or time.monotonic() >= deadline:
             if pending:

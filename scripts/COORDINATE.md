@@ -2,8 +2,12 @@
 
 Owner prompt: **Bring the ecosystem up to the latest gorak candidate.**
 
+Develop gorak through as many merges as needed before invoking this coordinator.
+Each new candidate advances the same active issue and open consumer PRs; failing
+checks may wait. Certify only the latest candidate when the owner asks.
+
 1. Read this file and the root/consumer `AGENTS.md` instructions. Find the latest
-   published development candidate and its tracking issue. Verify its immutable
+   published development candidate and the single active ecosystem tracking issue. Verify its immutable
    tag commit and contract markers. Use that same candidate for all four tasks.
 2. Delegate one isolated consumer review per repo when agents are available:
    `gorak-lsp-rs`, `gorak-frame-designer`, `gorak-vscode-ext`, `openroad_demo`.
@@ -18,7 +22,11 @@ Owner prompt: **Bring the ecosystem up to the latest gorak candidate.**
 4. Update the tracking issue's `Coordinator review` section with one combined
    report. Preserve the machine status block and owner notes. Give the owner a
    single summary: ready PRs, blocked PRs, and the next decision.
-5. Do not merge, tag, or release without the owner's instruction. When authorized,
+5. Once authorized consumer merges are complete, refresh the issue and verify all
+   four merged PRs certify the same latest candidate. Close the active issue only
+   then and only within the owner's authorized scope. Intermediate candidates need
+   no separate closure or certification. Closing an issue does not publish a release.
+6. Do not merge, tag, or release without the owner's instruction. When authorized,
    merge only reviewed current heads after CI passes. Release changed runtime
    dependencies first; update and certify the extension against those exact
    released assets/checksums before proposing a final gorak release. Report any

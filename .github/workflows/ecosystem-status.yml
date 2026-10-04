@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: gorak-ecosystem-status
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   status:
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Find candidate from successful root run
+      - name: Find candidate published by root run
         id: candidate
         env:
           REQUESTED: ${{ inputs.candidate }}
