@@ -2,7 +2,7 @@
 
 After a code/contract merge into `master` passes both CI platforms, gorak creates
 an immutable development tag and GitHub prerelease, then opens or advances a
-compatibility PR in each of the four consumers. There is no polling or manual
+compatibility PR in each of the four consumers. Candidate creation needs no polling or manual
 trigger. Documentation/branding-only changes skip propagation.
 
 Tags use the package version and CI run number, for example
@@ -29,8 +29,23 @@ access token scoped to `gorak-lsp-rs`, `gorak-frame-designer`, `gorak-vscode-ext
 and `openroad_demo`, with **Contents: read and write** and **Pull requests: read
 and write**. Choose an expiry and renew it before expiry. It does not need
 Workflows, administration, or access to other repositories. Never commit it.
-The built-in gorak token creates only gorak candidate tags/prereleases. The PAT
+The built-in gorak token creates gorak candidate tags/prereleases; the separate
+status workflow uses it to maintain tracking issues in gorak. The PAT
 creates downstream branches/PRs so normal PR CI starts unattended.
+
+A separate workflow starts after root push CI completes and maintains one active
+ecosystem issue, advancing it to the latest published candidate and collecting
+exact PR heads and downstream CI results
+for up to twenty minutes. No daily schedule is used. Later checks can be refreshed
+with its manual candidate input or during [coordinator review](COORDINATE.md).
+Intermediate candidates do not require separate review or immediate fixes: work
+on gorak for several merges, then ask Codex to bring the ecosystem up to speed.
+Open downstream PRs advance in place rather than multiplying. Old status runs
+cannot move the active issue backwards. After the owner closes a completed
+coordination issue, a later candidate starts a new round; old retries leave the
+closed issue alone. The managed status block preserves review findings and owner
+notes outside it.
+Review findings must be rechecked whenever their recorded PR heads change.
 
 This first stage never automatically merges, releases consumers, or publishes a
 final gorak release. Final release coordination must certify the complete
