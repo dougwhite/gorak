@@ -3,6 +3,9 @@
 Owner prompt: **Bring the ecosystem up to the latest gorak candidate.**
 
 Develop gorak through as many merges as needed before invoking this coordinator.
+Published LSP/designer releases also advance the extension compatibility PR and
+refresh the same tracker. Its gorak tag may stay unchanged while dependency pins
+and extension heads advance; review the exact runtime assets as well as fixtures.
 Each new candidate advances the same active issue and open consumer PRs; failing
 checks may wait. Certify only the latest candidate when the owner asks.
 

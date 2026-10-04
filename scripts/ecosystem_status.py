@@ -48,6 +48,11 @@ def collect(api: GitHub, tag: str) -> tuple[str, bool]:
             and pr["head"]["repo"]
             and pr["head"]["repo"]["full_name"] == repo
         ]
+        opened = [pr for pr in matches if pr["state"] == "open"]
+        if opened:
+            matches = opened
+        elif matches:
+            matches = [max(matches, key=lambda pr: pr.get("number", 0))]
         if len(matches) != 1:
             rows.append(
                 f"| {repo.split('/')[1]} | Missing or ambiguous proposal | — | Needs attention |"
@@ -95,7 +100,7 @@ def collect(api: GitHub, tag: str) -> tuple[str, bool]:
     return block, pending
 
 
-def update_issue(api: GitHub, tag: str, block: str) -> str:
+def update_issue(api: GitHub, tag: str, block: str, *, new_work: bool = False) -> str:
     requested = candidate_number(tag)
     marker = f"<!-- gorak-ecosystem-candidate: {tag} -->"
     issues = [
@@ -118,9 +123,18 @@ def update_issue(api: GitHub, tag: str, block: str) -> str:
         if not previous:
             raise ValueError("Tracking issue is missing its candidate marker")
         if candidate_number(previous[1]) > requested or (
-            issue["state"] == "closed" and previous[1] == tag
+            issue["state"] == "closed" and previous[1] == tag and not new_work
         ):
             return issue["html_url"]
+    if not opened and new_work:
+        # A changed runtime dependency starts work even if the gorak tag is unchanged.
+        opened = [
+            issue
+            for issue in issues
+            if CANDIDATE.search(issue.get("body") or "")[1] == tag
+        ]
+        if len(opened) > 1:
+            raise ValueError("Multiple completed issues for the current candidate")
     if opened:
         issue = opened[0]
         body = issue.get("body") or ""
@@ -145,11 +159,15 @@ def update_issue(api: GitHub, tag: str, block: str) -> str:
         if TRACKER not in updated:
             updated = TRACKER + "\n" + updated
         title = "Coordinate latest gorak candidate"
-        if updated != body or issue.get("title") != title:
+        if updated != body or issue.get("title") != title or issue["state"] == "closed":
             api.call(
                 f"repos/{UPSTREAM}/issues/{issue['number']}",
                 "PATCH",
-                {"body": updated, "title": title},
+                {
+                    "body": updated,
+                    "title": title,
+                    **({"state": "open"} if issue["state"] == "closed" else {}),
+                },
             )
         return issue["html_url"]
     issue = api.call(
@@ -173,6 +191,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag")
     parser.add_argument("--wait-seconds", type=int, default=0)
+    parser.add_argument(
+        "--new-work",
+        action="store_true",
+        help="A changed dependency PR starts a coordination round",
+    )
     args = parser.parse_args()
     if not 0 <= args.wait_seconds <= 1200:
         parser.error("wait-seconds must be between 0 and 1200")
@@ -194,7 +217,8 @@ def main() -> None:
                 "A newer candidate arrived while collecting; leaving the active issue alone"
             )
             return
-        print(update_issue(api, args.tag, block))
+        print(update_issue(api, args.tag, block, new_work=args.new_work))
+        args.new_work = False
         if not pending or time.monotonic() >= deadline:
             if pending:
                 print(

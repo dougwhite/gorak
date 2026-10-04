@@ -1,0 +1,89 @@
+name: Dependency release updates
+
+on:
+  repository_dispatch:
+    types: [gorak-dependency-released]
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Released dependency repository
+        required: true
+        type: choice
+        options: [dougwhite/gorak-lsp-rs, dougwhite/gorak-frame-designer]
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    # Serialize all extension branch writes with gorak candidate propagation.
+    concurrency:
+      group: gorak-ecosystem-propagation
+      cancel-in-progress: false
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify released assets and update extension compatibility PR
+        id: update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ECOSYSTEM_PR_TOKEN: ${{ secrets.ECOSYSTEM_PR_TOKEN }}
+        run: python scripts/ecosystem_dependencies.py
+
+  status:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: gorak-ecosystem-status
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Refresh the single ecosystem issue for changed dependencies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          sys.path.insert(0, 'scripts')
+          from ecosystem_release import GitHub, UPSTREAM
+          from ecosystem_status import candidate_number
+          candidates = []
+          for release in GitHub(os.environ['GITHUB_TOKEN']).pages(f'repos/{UPSTREAM}/releases?'):
+              if release['draft'] or not release['prerelease']:
+                  continue
+              try:
+                  candidates.append((candidate_number(release['tag_name']), release['tag_name']))
+              except ValueError:
+                  pass
+          tag = max(candidates)[1]
+          subprocess.run([sys.executable, 'scripts/ecosystem_status.py', tag, '--new-work', '--wait-seconds', '1200'], check=True)
+          PY

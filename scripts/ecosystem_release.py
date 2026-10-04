@@ -155,7 +155,21 @@ def propose(api: GitHub, repo: str, tag: str, source_version: int) -> str:
     if len(opened) > 1:
         raise ValueError(f"{repo}: more than one open gorak automation PR")
     existing = opened[0] if opened else None
+    dependency_block = ""
     if existing:
+        body = existing.get("body") or ""
+        start, end = (
+            "<!-- gorak-dependencies:start -->",
+            "<!-- gorak-dependencies:end -->",
+        )
+        if start in body or end in body:
+            if (
+                body.count(start) != 1
+                or body.count(end) != 1
+                or body.index(start) > body.index(end)
+            ):
+                raise ValueError("Invalid dependency PR markers")
+            dependency_block = body[body.index(start) : body.index(end) + len(end)]
         branch = existing["head"]["ref"]
     branch_ref = api.call(f"{endpoint}/git/ref/heads/{quote(branch, safe='')}")
     base_content = api.call(
@@ -210,6 +224,8 @@ def propose(api: GitHub, repo: str, tag: str, source_version: int) -> str:
         "pins are changed. Existing downstream fixes are retained. No automatic "
         "merge, dependent release, or final gorak release.\n"
     )
+    if dependency_block:
+        body += "\n" + dependency_block + "\n"
     data = {"title": f"Certify gorak {tag} compatibility", "body": body}
     if existing:
         pr = api.call(f"{endpoint}/pulls/{existing['number']}", "PATCH", data)
