@@ -275,3 +275,13 @@ class Proposal(unittest.TestCase):
         self.assertFalse(
             any(len(call.args) > 1 for call in self.api.call.call_args_list)
         )
+
+    def test_every_wakeup_reconciles_both_dependencies_even_if_one_changed(self):
+        with (
+            patch.object(deps, "latest_release", return_value={"tag_name": NEW}),
+            patch.object(deps, "propose", side_effect=[True, False]) as propose,
+        ):
+            self.assertTrue(deps.reconcile(self.api, self.root))
+            self.assertEqual(
+                [call.args[2] for call in propose.call_args_list], [LSP, DESIGNER]
+            )

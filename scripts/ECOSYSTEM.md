@@ -76,3 +76,9 @@ After failed notification delivery, rerun the sender's **Notify ecosystem of
 dependency release** workflow with the published tag. After receiver failure,
 rerun **Dependency release updates** in gorak with source repo and tag. These
 retries reuse commits/PRs and never need republishing or moving release tags.
+
+Every dependency notification reconciles both latest published releases. Root
+candidate propagation also reconciles them, so GitHub's replacement of pending
+concurrency jobs cannot lose an update from the other repo. Missing delivery can
+still be retried explicitly; no daily check is added. Unchanged dependency pins
+produce no extra pin commit, and installed-VSIX CI remains the certification gate.

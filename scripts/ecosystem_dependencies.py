@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tarfile
 import tempfile
 import tomllib
@@ -338,23 +339,47 @@ def propose(api, root_api, source, tag):
     return True
 
 
+def reconcile(api, root_api):
+    changed = False
+    for source in SOURCES:
+        tag = latest_release(api, source)["tag_name"]
+        changed = propose(api, root_api, source, tag) or changed
+    return changed
+
+
 def main():
-    event = json.loads(
-        Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
-    )
     if os.environ.get("GITHUB_REPOSITORY") != UPSTREAM:
         raise ValueError("Dependency coordination runs only in gorak")
-    payload = (
-        event.get("client_payload", {})
-        if "client_payload" in event
-        else event.get("inputs", {})
-    )
-    changed = propose(
-        GitHub(os.environ["ECOSYSTEM_PR_TOKEN"]),
-        GitHub(os.environ["GITHUB_TOKEN"]),
-        payload["source"],
-        payload["tag"],
-    )
+    if sys.argv[1:] == ["--reconcile"] and not os.environ.get("ECOSYSTEM_PR_TOKEN"):
+        # Docs-only root pushes can run before credentials are configured.
+        # Code candidate publication separately requires this token.
+        print("Dependency reconciliation skipped: ECOSYSTEM_PR_TOKEN is not configured")
+        return
+    api = GitHub(os.environ["ECOSYSTEM_PR_TOKEN"])
+    root_api = GitHub(os.environ["GITHUB_TOKEN"])
+    if sys.argv[1:] != ["--reconcile"]:
+        if sys.argv[1:]:
+            raise ValueError("Unexpected coordinator arguments")
+        event = json.loads(
+            Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
+        )
+        payload = (
+            event.get("client_payload", {})
+            if "client_payload" in event
+            else event.get("inputs", {})
+        )
+        source, tag = payload["source"], payload["tag"]
+        if source not in SOURCES:
+            raise ValueError("Unsupported dependency repository")
+        version(tag)
+        publication = api.call(f"repos/{source}/releases/tags/{quote(tag, safe='')}")
+        if not publication or publication["draft"]:
+            raise ValueError(
+                "Notification must identify a published dependency release"
+            )
+    # GitHub concurrency retains only the newest pending job. Every wake-up must
+    # reconcile both dependencies; a replaced notification must not lose an update.
+    changed = reconcile(api, root_api)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"changed={str(changed).lower()}\n")
 
