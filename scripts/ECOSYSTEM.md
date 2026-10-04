@@ -51,3 +51,34 @@ This first stage never automatically merges, releases consumers, or publishes a
 final gorak release. Final release coordination must certify the complete
 extension against the selected candidate before promoting final tags. That gate,
 consumer-release propagation, binaries and self-updates are subsequent work.
+
+## Dependency releases to the extension
+
+Published language-server/designer releases notify **Dependency release updates**
+in gorak. The coordinator verifies assets against SHA256SUMS, pins the LSP
+release.json SHA256 or designer archive SHA512, and regenerates the designer npm
+lock without lifecycle scripts. It advances the existing extension compatibility
+PR atomically, retaining other dependency pins and human fixes. Installed-VSIX CI
+certifies the new assets. No source merge in those repos sends a notification.
+
+This uses the same active tracking issue. Changed dependency work may reopen a
+completed issue for the same gorak candidate; an unchanged retry does not. Previous
+merged extension PRs do not hide the current open dependency PR. Old release
+notifications and attempted version regressions do not downgrade newer pins.
+
+Set `ECOSYSTEM_DISPATCH_TOKEN` in the language-server and designer repos, scoped
+only to gorak with Contents read/write, to send repository-dispatch notifications.
+The root uses its existing `ECOSYSTEM_PR_TOKEN`; no additional extension secret or
+PAT permissions are required. Merge the root coordinator before the sender changes.
+The token does not need Issues, Pull requests, Actions, Workflows or administration.
+
+After failed notification delivery, rerun the sender's **Notify ecosystem of
+dependency release** workflow with the published tag. After receiver failure,
+rerun **Dependency release updates** in gorak with source repo and tag. These
+retries reuse commits/PRs and never need republishing or moving release tags.
+
+Every dependency notification reconciles both latest published releases. Root
+candidate propagation also reconciles them, so GitHub's replacement of pending
+concurrency jobs cannot lose an update from the other repo. Missing delivery can
+still be retried explicitly; no daily check is added. Unchanged dependency pins
+produce no extra pin commit, and installed-VSIX CI remains the certification gate.

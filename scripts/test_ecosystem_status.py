@@ -240,3 +240,55 @@ class Status(unittest.TestCase):
         ):
             status.main()
             update.assert_not_called()
+
+    def test_changed_dependency_reopens_completed_round_but_retry_does_not(self):
+        api = Mock()
+        api.pages.return_value = [self.issue(state="closed")]
+        block = status.START + "\nNew dependency head\n" + status.END
+        status.update_issue(api, TAG, block, new_work=True)
+        self.assertEqual(api.call.call_args.args[2]["state"], "open")
+        self.assertIn("Owner note", api.call.call_args.args[2]["body"])
+        api.reset_mock()
+        status.update_issue(api, TAG, block)
+        api.call.assert_not_called()
+
+    def test_current_extension_pr_wins_over_merged_pr_for_same_gorak_tag(self):
+        api = Mock()
+        proposals = []
+        for repo in status.CONSUMERS:
+            pr = {
+                "number": 1,
+                "state": "closed",
+                "body": "<!-- gorak-candidate: candidate -->",
+                "head": {"repo": {"full_name": repo}, "sha": "old"},
+                "html_url": "merged",
+                "merged_at": "date",
+            }
+            proposals.append(pr)
+            if repo.endswith("vscode-ext"):
+                proposals.append(
+                    {
+                        **pr,
+                        "number": 2,
+                        "state": "open",
+                        "html_url": "new-dependency-pr",
+                        "merged_at": None,
+                        "head": {**pr["head"], "sha": "new"},
+                    }
+                )
+        api.pages.return_value = proposals
+        api.call.return_value = {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "workflow_id": 1,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "html_url": "ci",
+                }
+            ]
+        }
+        block, pending = status.collect(api, "candidate")
+        self.assertFalse(pending)
+        self.assertIn("new-dependency-pr", block)
+        self.assertIn("`new`", block)

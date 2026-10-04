@@ -127,6 +127,12 @@ class Consumer(unittest.TestCase):
         self.assertEqual(api.writes[0][2]["branch"], release.PREFIX + "older")
         self.assertEqual(api.writes[0][2]["sha"], "blob")
 
+    def test_gorak_advance_preserves_dependency_release_summary(self):
+        block = "<!-- gorak-dependencies:start -->\nLSP alpha.6 and designer alpha.2\n<!-- gorak-dependencies:end -->"
+        api = FakeConsumer([proposal(body=block)], BASE)
+        release.propose(api, REPO, TAG, 2)
+        self.assertIn(block, api.writes[-1][2]["body"])
+
     def test_contract_warning_compares_with_default_branch(self):
         text, _ = release.update_manifest(BASE, "previous-candidate", 2)
         api = FakeConsumer([proposal()], text)
