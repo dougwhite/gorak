@@ -226,7 +226,10 @@ def propose(api, root_api, source, tag):
         pr["state"] == "closed"
         and pr["head"]["repo"]
         and pr["head"]["repo"]["full_name"] == EXTENSION
-        and pr["head"]["ref"] == branch
+        and (
+            pr["head"]["ref"] == branch
+            or f"<!-- gorak-dependency: {source}@{tag} -->" in (pr.get("body") or "")
+        )
         for pr in proposals
     ):
         print("This dependency proposal was already handled")
@@ -266,7 +269,12 @@ def propose(api, root_api, source, tag):
         return False
     pin = tomllib.loads(updated["ecosystem.toml"])
     block = f"{START}\nTest released LSP `{pin['lsp_revision']}` and designer `{pin['frame_designer_revision']}`. Checksums and package lock are pinned; installed-VSIX CI must certify these exact assets.\n{END}"
-    body = existing.get("body") or "" if existing else ""
+    block = block.replace(
+        END,
+        f"<!-- gorak-dependency: dougwhite/gorak-lsp-rs@{pin['lsp_revision']} -->\n<!-- gorak-dependency: dougwhite/gorak-frame-designer@{pin['frame_designer_revision']} -->\n"
+        + END,
+    )
+    body = (existing.get("body") or "") if existing else ""
     # Preserve discussion text while advancing the root candidate marker.
     body = re.sub(r"<!-- gorak-candidate: [^\s]+ -->", "", body)
     if START in body or END in body:

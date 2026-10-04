@@ -262,3 +262,16 @@ class Proposal(unittest.TestCase):
             self.assertFalse(
                 any(len(call.args) > 1 for call in self.api.call.call_args_list)
             )
+
+    def test_closed_release_proposal_is_not_recreated_on_another_branch(self):
+        self.api.pages.return_value = [
+            {
+                **self.pr,
+                "state": "closed",
+                "body": f"<!-- gorak-dependency: {LSP}@{NEW} -->",
+            }
+        ]
+        self.assertFalse(self.invoke())
+        self.assertFalse(
+            any(len(call.args) > 1 for call in self.api.call.call_args_list)
+        )
