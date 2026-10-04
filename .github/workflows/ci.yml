@@ -60,8 +60,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Publish candidate and open or advance compatibility PRs
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ECOSYSTEM_PR_TOKEN: ${{ secrets.ECOSYSTEM_PR_TOKEN }}
         run: python scripts/ecosystem_release.py
+      - name: Reconcile published dependency releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ECOSYSTEM_PR_TOKEN: ${{ secrets.ECOSYSTEM_PR_TOKEN }}
+        run: python scripts/ecosystem_dependencies.py --reconcile
