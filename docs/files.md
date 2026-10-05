@@ -58,8 +58,16 @@ METHOD get_count() =
 Gorak currently reconstructs frames and frame templates, 4GL and 3GL procedures, user classes,
 constants, globals, include/shared scripts, and ghost frames.
 
-Unsupported source shapes are refused rather than silently discarded. Query
-Designer metadata is not currently represented.
+Unsupported source shapes are refused rather than silently discarded.
+
+Saved queries live in optional `<component>.queries.json` files with
+`{"version": 1, "queries": {...}}`. Properties retain XML order; `row1`, `row2`,
+etc. retain row order under `row`. Values are strings or nested objects; `_type`,
+`_attributes` and `_text` preserve XML types, attributes and text. An empty
+object preserves an empty collection; `"queries": null` explicitly removes it.
+Do not delete the sidecar to remove queries: updates are refused when cached
+queries exist but the file is missing. Re-export older components from
+authoritative OpenROAD source to recover previously omitted definitions.
 
 ## Frame WML
 

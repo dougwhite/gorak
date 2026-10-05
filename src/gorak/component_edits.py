@@ -47,8 +47,9 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     after = tomllib.loads(split_w4gl(source)[0])
     after.pop("queries", None)
     after.get(original.type, {}).pop("queries", None)
-    for query in node.findall("queries"):
-        node.remove(query)
+    from .query_metadata import overlay_queries
+
+    overlay_queries(node, path)
     kind = original.type
     if edited.type != kind:
         raise ProjectError("Changing component type is not supported")

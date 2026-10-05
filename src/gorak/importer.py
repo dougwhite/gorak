@@ -86,6 +86,7 @@ def import_component(
 
         defaults_files = {
             defaults_path(source): "source.fielddefaults.json",
+            source.with_suffix(".queries.json"): "source.queries.json",
             root / "field_defaults.json": "root-field_defaults.json",
             source.parent / "field_defaults.json": "app-field_defaults.json",
         }

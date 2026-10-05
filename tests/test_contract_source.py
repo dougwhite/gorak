@@ -157,7 +157,7 @@ def test_palette_selection_requires_explicit_selector(tmp_path: Path) -> None:
         decode_component(path)
 
 
-def test_queries_ignored_in_both_export_and_import(tmp_path: Path) -> None:
+def test_legacy_inline_queries_stay_out_of_w4gl(tmp_path: Path) -> None:
     from gorak.parser import encode_w4gl
 
     folder = project(tmp_path)

@@ -49,7 +49,11 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
         overlay_metadata(node, path)
         return node
     replacement = decode_component(path)
-    if node.find("queries") is None and equivalent(replacement, node):
+    from .query_metadata import overlay_queries
+
+    # Enforce missing-sidecar protection against the authoritative baseline.
+    overlay_queries(deepcopy(node), path)
+    if equivalent(replacement, node):
         return node
     node.attrib.clear()
     node.attrib.update(replacement.attrib)

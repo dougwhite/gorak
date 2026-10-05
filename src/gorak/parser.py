@@ -226,7 +226,9 @@ def parse_component_node(node: etree._Element) -> Component:
         else None
     )
 
-    return Component(name, component_type, props, script, markup)
+    from .query_metadata import encode_queries
+
+    return Component(name, component_type, props, script, markup, encode_queries(node))
 
 
 def encode_frame_markup(

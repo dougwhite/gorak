@@ -36,15 +36,16 @@ def test_apply_failure_restores_written_files(
     assert (recovery / "before/first").read_bytes() == b"old first"
 
 
+@pytest.mark.parametrize("sidecar", ["proc.fielddefaults.json", "proc.queries.json"])
 def test_deleted_database_app_removes_source_but_preserves_notes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sidecar: str
 ) -> None:
     (tmp_path / "gorak.json").write_text('{"name":"example"}')
     folder = tmp_path / "example"
     folder.mkdir()
     (folder / "app.json").write_text("{}")
     (folder / "proc.w4gl").write_text("old source")
-    (folder / "proc.fielddefaults.json").write_text('{"field_styles": []}')
+    (folder / sidecar).write_text('{"field_styles": []}')
     (folder / "notes.txt").write_text("human notes")
     cache = tmp_path / ".openroad/example"
     cache.mkdir(parents=True)
@@ -65,15 +66,9 @@ def test_deleted_database_app_removes_source_but_preserves_notes(
     )
     assert not (folder / "app.json").exists()
     assert not (folder / "proc.w4gl").exists()
-    assert not (folder / "proc.fielddefaults.json").exists()
+    assert not (folder / sidecar).exists()
     assert (
-        len(
-            list(
-                (tmp_path / ".openroad/pulls").glob(
-                    "*/before/example/proc.fielddefaults.json"
-                )
-            )
-        )
+        len(list((tmp_path / ".openroad/pulls").glob(f"*/before/example/{sidecar}")))
         == 1
     )
     assert (folder / "notes.txt").read_text() == "human notes"
