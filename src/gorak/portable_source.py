@@ -43,9 +43,9 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
     """Reconstruct edited source; preserve native serialization on a verified no-op."""
     from .component_edits import overlay_metadata
     from .contract_source import decode_component, equivalent
-    from .parser import NS
+    from .parser import FRAME_COMPONENT_TYPES, NS
 
-    if node.get(f"{{{NS['xsi']}}}type") != "framesource":
+    if node.get(f"{{{NS['xsi']}}}type") not in FRAME_COMPONENT_TYPES:
         overlay_metadata(node, path)
         return node
     replacement = decode_component(path)

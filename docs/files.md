@@ -55,7 +55,7 @@ METHOD get_count() =
 }
 ```
 
-Gorak currently reconstructs frames, 4GL and 3GL procedures, user classes,
+Gorak currently reconstructs frames and frame templates, 4GL and 3GL procedures, user classes,
 constants, globals, include/shared scripts, and ghost frames.
 
 Unsupported source shapes are refused rather than silently discarded. Query

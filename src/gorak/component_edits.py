@@ -8,7 +8,13 @@ from lxml import etree
 
 from .component_defaults import defaults_path
 from .errors import ProjectError
-from .parser import encode_w4gl, parse_component_node, parse_w4gl, split_w4gl
+from .parser import (
+    FRAME_COMPONENT_TYPES,
+    encode_w4gl,
+    parse_component_node,
+    parse_w4gl,
+    split_w4gl,
+)
 from .xml_shapes import order_children, set_scalar, shape, shapes
 from .xml_text import find_text, set_text, text_value
 
@@ -19,7 +25,7 @@ SUPPORTED_TYPES = {
     "proc3glsource",
     "scriptsource",
     "ghostsource",
-    "framesource",
+    *FRAME_COMPONENT_TYPES,
     "constsource",
 }
 
@@ -29,7 +35,8 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     from .xml_writer import datatype
 
     if (
-        node.get("{http://www.w3.org/2001/XMLSchema-instance}type") != "framesource"
+        node.get("{http://www.w3.org/2001/XMLSchema-instance}type")
+        not in FRAME_COMPONENT_TYPES
         and defaults_path(path).exists()
     ):
         raise ProjectError("Only frames support editable component field-default files")
@@ -51,7 +58,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         return
     if set(after) - {kind, "attributes", "methods", "taggedvalues", "fielddefaults"}:
         raise ProjectError("Unsupported component front matter")
-    if kind != "framesource" and after.get("fielddefaults") != before.get(
+    if kind not in FRAME_COMPONENT_TYPES and after.get("fielddefaults") != before.get(
         "fielddefaults"
     ):
         raise ProjectError(f"{kind} does not support editable field defaults")

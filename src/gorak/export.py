@@ -28,6 +28,7 @@ from .domain import (
 from .local import LocalCommandError
 from .odbc_runtime import odbc_error_types
 from .parser import (
+    FRAME_COMPONENT_TYPES,
     FRAME_MARKUP_CHILDREN,
     encode_frame_markup,
     parse_application_xml,
@@ -325,7 +326,7 @@ def apply_field_default_inheritance(
     from . import native_styles
 
     native = {node.get("name"): node for node in source_nodes or []}
-    frames = [c for c in components if c.type == "framesource"]
+    frames = [c for c in components if c.type in FRAME_COMPONENT_TYPES]
     if not frames:
         return
     parent = native_styles.parent_styles(root / app)

@@ -5,7 +5,7 @@ from typing import Any
 
 from lxml import etree
 
-from .parser import FRAME_MARKUP_CHILDREN, NS, xml_root
+from .parser import FRAME_COMPONENT_TYPES, FRAME_MARKUP_CHILDREN, NS, xml_root
 
 REPRESENTED_APP_CHILDREN = {
     "database_type",
@@ -89,7 +89,9 @@ def audit_xml(tree: etree._ElementTree | etree._Element) -> dict[str, Any]:
     components = root.findall("./COMPONENT")
 
     return {
-        "application": audit_application_node(app_node) if app_node is not None else None,
+        "application": audit_application_node(app_node)
+        if app_node is not None
+        else None,
         "components": [audit_component_node(component) for component in components],
     }
 
@@ -110,7 +112,7 @@ def audit_component_node(node: etree._Element) -> dict[str, Any]:
     name = node.get("name", "")
     component_type = node.get(f"{{{NS['xsi']}}}type", "")
     represented_children = set(REPRESENTED_COMPONENT_CHILDREN)
-    if component_type == "framesource":
+    if component_type in FRAME_COMPONENT_TYPES:
         represented_children.update(REPRESENTED_FRAME_CHILDREN)
 
     return {

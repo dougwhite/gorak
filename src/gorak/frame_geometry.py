@@ -9,7 +9,12 @@ from copy import deepcopy
 
 from lxml import etree
 
-from .parser import FRAME_MARKUP_CHILDREN, NS, parse_component_node
+from .parser import (
+    FRAME_COMPONENT_TYPES,
+    FRAME_MARKUP_CHILDREN,
+    NS,
+    parse_component_node,
+)
 from .xml_shapes import derives, node_kind
 
 COORDINATES = {"xleft", "ytop", "width", "height"}
@@ -24,7 +29,7 @@ def geometry_signature(node: etree._Element) -> object:
     from .importer import signature
 
     copied = deepcopy(node)
-    if copied.get(f"{{{NS['xsi']}}}type") != "framesource":
+    if copied.get(f"{{{NS['xsi']}}}type") not in FRAME_COMPONENT_TYPES:
         return signature(copied)
     for section in copied:
         if section.tag not in FRAME_MARKUP_CHILDREN:
@@ -58,7 +63,7 @@ def normalized_markup(expected: etree._Element, actual: etree._Element) -> str |
     if geometry_signature(expected) != geometry_signature(actual):
         return None
     component = parse_component_node(actual)
-    if component.type != "framesource":
+    if component.type not in FRAME_COMPONENT_TYPES:
         return None
     from .parser import encode_frame_markup
 
