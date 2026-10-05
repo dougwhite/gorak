@@ -43,7 +43,7 @@ def test_each_supported_type(tmp_path: Path, kind: str) -> None:
     node = etree.Element("COMPONENT", name="sample")
     node.set("{http://www.w3.org/2001/XMLSchema-instance}type", kind)
     etree.SubElement(node, "versshortremarks").text = "metadata survives"
-    if kind == "framesource":
+    if kind in {"framesource", "frametemplate"}:
         etree.SubElement(node, "fielddefaults")
         etree.SubElement(node, "topform")
     order_children(node, kind)

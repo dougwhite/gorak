@@ -20,6 +20,8 @@ from .xml_text import (
     validate_instructions,
 )
 
+FRAME_COMPONENT_TYPES = frozenset({"framesource", "frametemplate"})
+
 IGNORED_PROPERTIES = {
     "queries",
     "script",
@@ -220,7 +222,7 @@ def parse_component_node(node: etree._Element) -> Component:
     markup_nodes = [child for child in node if child.tag in FRAME_MARKUP_CHILDREN]
     markup = (
         encode_frame_markup(markup_nodes, field_defaults)
-        if component_type == "framesource" and markup_nodes
+        if component_type in FRAME_COMPONENT_TYPES and markup_nodes
         else None
     )
 

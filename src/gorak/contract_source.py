@@ -6,6 +6,7 @@ from lxml import etree
 
 from .errors import ProjectError
 from .parser import (
+    FRAME_COMPONENT_TYPES,
     FRAME_MARKUP_CHILDREN,
     MAINBAR_MARKUP_CHILDREN,
     NS,
@@ -116,7 +117,7 @@ def decode_component(path: Path) -> etree._Element:
     node = etree.Element("COMPONENT", name=path.stem, nsmap=NS)
     node.set(XSI, kind)
     overlay_metadata(node, path)
-    if kind == "framesource":
+    if kind in FRAME_COMPONENT_TYPES:
         if not path.with_suffix(".wml").is_file():
             raise ProjectError("Frame requires a WML source file")
         from . import native_styles

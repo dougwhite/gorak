@@ -55,11 +55,15 @@ METHOD get_count() =
 }
 ```
 
-Gorak currently reconstructs frames, 4GL and 3GL procedures, user classes,
+Gorak currently reconstructs frames and frame templates, 4GL and 3GL procedures, user classes,
 constants, globals, include/shared scripts, and ghost frames.
 
 Unsupported source shapes are refused rather than silently discarded. Query
 Designer metadata is not currently represented.
+
+Frame templates use `[frametemplate]` metadata in `.w4gl`, with the same `.wml`
+layout and optional stylesheet sidecar as frames. Assistant procedures remain
+separate components, referenced by `assistantproc`.
 
 ## Frame WML
 

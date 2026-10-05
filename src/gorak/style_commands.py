@@ -16,7 +16,7 @@ def encoded(value: styles.Json) -> bytes:
 
 def describe(root: Path, app: str | None, component: str | None) -> styles.Json:
     from .importer import validate_name
-    from .parser import parse_w4gl
+    from .parser import FRAME_COMPONENT_TYPES, parse_w4gl
 
     if component and not app:
         raise ProjectError("--component requires --app")
@@ -32,7 +32,10 @@ def describe(root: Path, app: str | None, component: str | None) -> styles.Json:
             source = folder / f"{component}.w4gl"
             if not source.is_file():
                 raise ProjectError("Component source does not exist")
-            if parse_w4gl(source.read_text(), source.stem).type != "framesource":
+            if (
+                parse_w4gl(source.read_text(), source.stem).type
+                not in FRAME_COMPONENT_TYPES
+            ):
                 raise ProjectError("Only frames have native stylesheets")
             value = styles.frame_styles(source)
     return {
@@ -97,11 +100,11 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                     continue
                 apps[folder] = styles.parent_styles(folder)
                 for source in sorted(folder.glob("*.w4gl")):
-                    from .parser import parse_w4gl
+                    from .parser import FRAME_COMPONENT_TYPES, parse_w4gl
 
                     if (
                         parse_w4gl(source.read_text(), source.stem).type
-                        != "framesource"
+                        not in FRAME_COMPONENT_TYPES
                     ):
                         continue
                     frames[source] = styles.frame_styles(source)
