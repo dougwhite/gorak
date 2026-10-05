@@ -61,10 +61,6 @@ constants, globals, include/shared scripts, and ghost frames.
 Unsupported source shapes are refused rather than silently discarded. Query
 Designer metadata is not currently represented.
 
-Frame templates use `[frametemplate]` metadata in `.w4gl`, with the same `.wml`
-layout and optional stylesheet sidecar as frames. Assistant procedures remain
-separate components, referenced by `assistantproc`.
-
 ## Frame WML
 
 Frames use `.w4gl` for component metadata and main script, and `.wml` for
