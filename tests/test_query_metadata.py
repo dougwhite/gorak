@@ -3,6 +3,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 from lxml import etree
@@ -28,6 +29,17 @@ def component(kind: str = "classsource") -> etree._Element:
 <tables><row><tablename>items</tablename><corrname>i</corrname></row><row><tablename>groups</tablename><corrname>g</corrname></row><row_class>querytable</row_class></tables><designtimewhere>i.group_id = g.id</designtimewhere></row>
 <row xsi:type="queryobject"><name>lookup</name><designtimewhere/><targetprefix/></row><row_class>queryobject</row_class>
 </queries></COMPONENT>''')
+    from gorak.xml_shapes import order_children
+
+    for tag, row_kind in [
+        ("queries", "queryobject"),
+        ("columns", "querycol"),
+        ("targets", "queryparm"),
+        ("tables", "querytable"),
+    ]:
+        for collection in node.iter(tag):
+            for row in collection.findall("row"):
+                order_children(row, row_kind)
     if kind == "framesource":
         etree.SubElement(node, "topform")
         etree.SubElement(node, "fielddefaults")
@@ -70,7 +82,7 @@ def test_sidecar_edits_participate_in_three_way_comparison(tmp_path: Path) -> No
     path = source(tmp_path, original)
     before = fingerprint(tmp_path)
     data = json.loads(query_path(path).read_text())
-    data["queries"]["row"]["row1"]["name"] = "edited"
+    data["queries"][0]["name"] = "edited"
     query_path(path).write_text(json.dumps(data))
     assert before != fingerprint(tmp_path)
     local = signature(comparison_component(path))
@@ -116,7 +128,7 @@ def test_invalid_metadata_is_refused(tmp_path: Path, raw: str) -> None:
 def test_empty_absent_and_control_characters(tmp_path: Path) -> None:
     path = tmp_path / "sample.w4gl"
     node = etree.fromstring(
-        "<COMPONENT><queries><row><expression>a<?ingres_invalidxmlchar 7?>b</expression></row><row_class>queryobject</row_class></queries></COMPONENT>"
+        "<COMPONENT><queries><row><query>a<?ingres_invalidxmlchar 7?>b</query></row><row_class>queryobject</row_class></queries></COMPONENT>"
     )
     write_queries(path, encode_queries(node))
     assert signature(read_queries(path)) == signature(node.find("queries"))
@@ -221,3 +233,78 @@ def test_failed_import_keeps_queries_in_recovery(
 def test_unrepresentable_query_structure_is_refused(xml: str) -> None:
     with pytest.raises(ProjectError):
         encode_queries(etree.fromstring(xml))
+
+
+def test_readable_query_format_has_arrays_and_typed_fields(tmp_path: Path) -> None:
+    node = component()
+    column = node.find("queries/row/columns/row")
+    etree.SubElement(column, "fromtable_idx").text = "1"
+    etree.SubElement(column, "datatypecode").text = "30"
+    etree.SubElement(column, "datatypelength").text = "5"
+    etree.SubElement(column, "datatypenullable").text = "0"
+    value = encode_queries(node)
+    assert value is not None
+    main = value["queries"][0]
+    assert main["name"] == "main"
+    assert main["tables"] == [
+        {"name": "items", "alias": "i"},
+        {"name": "groups", "alias": "g"},
+    ]
+    col = main["columns"][0]
+    assert col["table"] == 1
+    assert col["datatype"] == {"code": 30, "length": 5, "nullable": False}
+    assert col["targets"][0]["select_target"] is True
+    assert col["targets"][0]["update_target"] is False
+    assert "row_class" not in json.dumps(value)
+    assert main["where"] == "i.group_id = g.id"
+    assert value["queries"][1]["where"] == ""
+    assert "columns" not in value["queries"][1]
+    # Object-key order is not meaningful; array order is authoritative.
+    path = tmp_path / "sample.w4gl"
+    query_path(path).write_text(json.dumps(value, sort_keys=True))
+    assert (
+        encode_queries(
+            etree.fromstring(
+                b"<COMPONENT>" + etree.tostring(read_queries(path)) + b"</COMPONENT>"
+            )
+        )
+        == value
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        {"unknown": 1},
+        {"distinct": 1},
+        {"distinct": "true"},
+        {"columns": [{"table": True}]},
+        {"columns": [{"table": -1}]},
+        {"columns": [{"datatype": {"unknown": 1}}]},
+        {"tables": {}},
+        {"name": None},
+        {"type": "unrecognised"},
+    ],
+)
+def test_readable_format_rejects_unknown_or_wrong_types(
+    tmp_path: Path, query: dict[str, Any]
+) -> None:
+    path = tmp_path / "sample.w4gl"
+    query_path(path).write_text(json.dumps({"version": 1, "queries": [query]}))
+    with pytest.raises(ProjectError):
+        read_queries(path)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "<row><breaks/></row><row_class>queryobject</row_class>",
+        "<row><isdistinct>2</isdistinct></row><row_class>queryobject</row_class>",
+        '<row><name extra="x">main</name></row><row_class>queryobject</row_class>',
+        "<row/><row_class>wrong</row_class>",
+    ],
+)
+def test_unknown_native_query_data_is_refused(content: str) -> None:
+    node = etree.fromstring(f"<COMPONENT><queries>{content}</queries></COMPONENT>")
+    with pytest.raises(ProjectError):
+        encode_queries(node)

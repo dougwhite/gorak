@@ -7,7 +7,7 @@ from typing import Any
 from lxml import etree
 
 from .errors import ProjectError
-from .style_values import decode_value, encode_value
+from .query_values import decode_collection, encode_collection
 
 
 def query_path(source: Path) -> Path:
@@ -21,7 +21,7 @@ def encode_queries(node: etree._Element) -> dict[str, Any] | None:
     if not nodes:
         return None
     try:
-        return {"version": 1, "queries": encode_value(nodes[0], object_value=True)}
+        return {"version": 1, "queries": encode_collection(nodes[0], "queryobject")}
     except ProjectError as ex:
         raise ProjectError(f"Cannot preserve query metadata: {ex}") from ex
 
@@ -54,11 +54,7 @@ def read_queries(source: Path) -> etree._Element | None:
             )
         if data["queries"] is None:
             return None
-        if not isinstance(data["queries"], dict):
-            raise ProjectError(
-                "queries must be an object, or null for explicit removal"
-            )
-        return decode_value("queries", data["queries"])
+        return decode_collection("queries", data["queries"], "queryobject")
     except (ValueError, OSError, ProjectError) as ex:
         raise ProjectError(f"Invalid query metadata {path}: {ex}") from ex
 

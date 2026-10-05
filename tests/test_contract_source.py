@@ -168,8 +168,9 @@ def test_legacy_inline_queries_stay_out_of_w4gl(tmp_path: Path) -> None:
     node = decode_component(path)
     assert node.find("queries") is None
     etree.SubElement(
-        etree.SubElement(node, "queries"), "query"
+        etree.SubElement(etree.SubElement(node, "queries"), "row"), "query"
     ).text = "unsupported designer data"
+    etree.SubElement(node.find("queries"), "row_class").text = "queryobject"
     assert "queries" not in encode_w4gl(parse_component_node(node))
 
 
