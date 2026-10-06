@@ -1,0 +1,4 @@
+<fieldtemplate>
+  <framefield type="buttonfield" name="action" width="1200" height="300" textlabel="Run"/>
+  <reportfield type="buttonfield" name="action" width="1200" height="300" textlabel="Report"/>
+</fieldtemplate>

@@ -21,6 +21,9 @@ from .xml_text import (
 )
 
 FRAME_COMPONENT_TYPES = frozenset({"framesource", "frametemplate"})
+WML_COMPONENT_TYPES = FRAME_COMPONENT_TYPES | {"fieldtemplate"}
+FIELD_TEMPLATE_CHILDREN = {"framefield", "reportfield"}
+TYPED_FIELD_PROPERTIES = {"protofield", "viewfield", *FIELD_TEMPLATE_CHILDREN}
 
 IGNORED_PROPERTIES = {
     "queries",
@@ -212,7 +215,16 @@ def parse_component_node(node: etree._Element) -> Component:
     if component_type is None:
         raise ValueError("<COMPONENT> node must have an xsi:type attribute")
 
-    props = extract_props(node)
+    if component_type in {"extlibsource", "fieldtemplate"}:
+        from .field_templates import validate_component
+
+        validate_component(node, component_type)
+    props = extract_props(
+        node,
+        IGNORED_PROPERTIES | FIELD_TEMPLATE_CHILDREN
+        if component_type == "fieldtemplate"
+        else None,
+    )
     from .macro_variables import read_macros
 
     macros = read_macros(node)
@@ -257,6 +269,11 @@ def parse_component_node(node: etree._Element) -> Component:
         else None
     )
 
+    if component_type == "fieldtemplate":
+        from .field_templates import encode_layout
+
+        markup = encode_layout(node)
+
     from .query_metadata import encode_queries
 
     return Component(name, component_type, props, script, markup, encode_queries(node))
@@ -297,7 +314,7 @@ def frame_markup_element(
     if mapping is not None:
         mapping[element] = node
     copy_markup_attributes(node, element)
-    if defaults_index.explicit and node.tag in {"protofield", "viewfield"}:
+    if defaults_index.explicit and node.tag in TYPED_FIELD_PROPERTIES:
         native_type = node.get(f"{{{NS['xsi']}}}type")
         if native_type:
             element.set("type", native_type)

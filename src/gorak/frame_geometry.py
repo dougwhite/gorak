@@ -10,9 +10,10 @@ from copy import deepcopy
 from lxml import etree
 
 from .parser import (
-    FRAME_COMPONENT_TYPES,
+    FIELD_TEMPLATE_CHILDREN,
     FRAME_MARKUP_CHILDREN,
     NS,
+    WML_COMPONENT_TYPES,
     parse_component_node,
 )
 from .xml_shapes import derives, node_kind
@@ -29,10 +30,10 @@ def geometry_signature(node: etree._Element) -> object:
     from .importer import signature
 
     copied = deepcopy(node)
-    if copied.get(f"{{{NS['xsi']}}}type") not in FRAME_COMPONENT_TYPES:
+    if copied.get(f"{{{NS['xsi']}}}type") not in WML_COMPONENT_TYPES:
         return signature(copied)
     for section in copied:
-        if section.tag not in FRAME_MARKUP_CHILDREN:
+        if section.tag not in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN:
             continue
         for child in list(section.iter()):
             if child.tag not in COORDINATES or len(child) or child.attrib:
@@ -63,8 +64,12 @@ def normalized_markup(expected: etree._Element, actual: etree._Element) -> str |
     if geometry_signature(expected) != geometry_signature(actual):
         return None
     component = parse_component_node(actual)
-    if component.type not in FRAME_COMPONENT_TYPES:
+    if component.type not in WML_COMPONENT_TYPES:
         return None
+    if component.type == "fieldtemplate":
+        from .field_templates import encode_layout
+
+        return encode_layout(actual) + "\n"
     from .parser import encode_frame_markup
 
     return (

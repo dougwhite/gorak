@@ -56,7 +56,7 @@ METHOD get_count() =
 ```
 
 Gorak currently reconstructs frames and frame templates, 4GL and 3GL procedures, user classes,
-constants, globals, include/shared scripts, and ghost frames.
+constants, globals, include/shared scripts, ghost frames, external libraries and field templates.
 
 Unsupported source shapes are refused rather than silently discarded.
 
@@ -64,6 +64,9 @@ Saved query metadata lives in optional `<component>.queries.json` files.
 
 Macro definitions use ordered tables such as `[[framesource.macro_vars]]`, with `name`,
 `value` and optional `shortremark`; re-export older sources to recover omitted definitions.
+
+External libraries use `[extlibsource]` metadata; field templates use `[fieldtemplate]`
+metadata and a `.wml` layout with typed `framefield`/`reportfield` sections.
 
 ## Frame WML
 

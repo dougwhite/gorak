@@ -19,6 +19,8 @@ from .xml_shapes import order_children, set_scalar, shape, shapes
 from .xml_text import find_text, set_text, text_value
 
 SUPPORTED_TYPES = {
+    "extlibsource",
+    "fieldtemplate",
     "classsource",
     "proc4glsource",
     "globsource",
