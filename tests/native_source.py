@@ -24,4 +24,4 @@ def write_component(path: Path, node: etree._Element) -> None:
     write_queries(path, component.queries)
     if component.markup is not None:
         path.with_suffix(".wml").write_text(component.markup)
-        write_component_defaults(path, component.props["fielddefaults"])
+        write_component_defaults(path, component.props.get("fielddefaults", {}))

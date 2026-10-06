@@ -6,10 +6,12 @@ from lxml import etree
 
 from .errors import ProjectError
 from .parser import (
+    FIELD_TEMPLATE_CHILDREN,
     FRAME_COMPONENT_TYPES,
     FRAME_MARKUP_CHILDREN,
     MAINBAR_MARKUP_CHILDREN,
     NS,
+    TYPED_FIELD_PROPERTIES,
     MarkupDefaultsIndex,
     parse_w4gl,
 )
@@ -31,7 +33,7 @@ def markup_node(
         return result
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
-    if source.tag in {"protofield", "viewfield"}:
+    if source.tag in TYPED_FIELD_PROPERTIES:
         declared = source.get("type")
         if declared is not None:
             if not derives(declared, kind):
@@ -57,14 +59,14 @@ def markup_node(
     if (
         (tag == "row" and source.tag != "row")
         or source.tag == "protofield"
-        or (source.tag == "viewfield" and source.get("type") is not None)
+        or (source.tag in TYPED_FIELD_PROPERTIES and source.get("type") is not None)
     ):
         node.set(XSI, kind)
     if source.get("gorak_style") is not None:
         raise ProjectError("gorak_style is unsupported; re-export the application")
     fields = shape(kind)
     for key, value in source.attrib.items():
-        if key == "type" and source.tag in {"protofield", "viewfield"}:
+        if key == "type" and source.tag in TYPED_FIELD_PROPERTIES:
             continue
         if key in {"row", "column"} and tag == "row":
             node.set(key, value)
@@ -155,6 +157,10 @@ def decode_component(path: Path) -> etree._Element:
                 node.append(markup_node(section, tag, shape(kind)[tag], index))
         if "topform" not in seen:
             raise ProjectError("Frame requires a topform section")
+    if kind == "fieldtemplate":
+        from .field_templates import decode_layout
+
+        node.extend(decode_layout(path))
     from .class_icons import overlay_icons
 
     overlay_icons(node, path)
@@ -223,7 +229,7 @@ def equivalent(
         return [
             signature(frame_markup_element(child, empty))
             for child in node
-            if child.tag in FRAME_MARKUP_CHILDREN
+            if child.tag in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN
         ]
 
     return effective_markup(left) == effective_markup(right)

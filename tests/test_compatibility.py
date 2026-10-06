@@ -25,7 +25,7 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     shutil.copytree(ROOT / "compatibility/project", source)
     shutil.copytree(source, projected)
     paths = sorted(source.glob("*/*.w4gl"))
-    assert len(paths) == 4
+    assert len(paths) == 6
     for metadata in source.glob("*/app.json"):
         native = etree.fromstring(document([restore_application(metadata.parent)]))
         from gorak.image_assets import externalize
@@ -51,6 +51,18 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         restore_component(source / "example/unstyled.w4gl").find("fielddefaults")
         is None
     )
+    library = restore_component(source / "example/automation.w4gl")
+    assert library.findtext("uniqueid") == "{00020430-0000-0000-C000-000000000046}"
+    assert library.findtext("minorversion") == "0"
+    template = restore_component(source / "example/action.w4gl")
+    assert (
+        template.find("framefield").get(
+            "{http://www.w3.org/2001/XMLSchema-instance}type"
+        )
+        == "buttonfield"
+    )
+    assert template.findtext("framefield/textlabel") == "Run"
+    assert template.findtext("reportfield/textlabel") == "Report"
     panel = restore_component(source / "example/panel.w4gl")
     assert panel.findtext("macro_vars/row/name") == "$CAPTION"
     assert panel.findtext("macro_vars/row/value") == "Preview"

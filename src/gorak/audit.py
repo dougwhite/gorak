@@ -119,6 +119,11 @@ def audit_component_node(node: etree._Element) -> dict[str, Any]:
     if component_type in FRAME_COMPONENT_TYPES:
         represented_children.update(REPRESENTED_FRAME_CHILDREN)
 
+    if component_type == "fieldtemplate":
+        from .parser import FIELD_TEMPLATE_CHILDREN
+
+        represented_children.update(FIELD_TEMPLATE_CHILDREN)
+
     return {
         "name": name,
         "type": component_type,
