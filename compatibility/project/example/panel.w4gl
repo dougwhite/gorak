@@ -1,4 +1,5 @@
 [framesource]
+windowicon = {src = "images/badge.png", path = "art/badge.png"}
 windowwidth = "6000"
 windowheight = "3000"
 

@@ -598,7 +598,7 @@ def application_to_dict(application: Application) -> dict[str, str]:
     return {
         key: value
         for key, value in data.items()
-        if key not in {"database_name", "database_type"} or value
+        if key not in {"database_name", "database_type", "window_icon"} or value
     }
 
 

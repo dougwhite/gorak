@@ -79,7 +79,9 @@ class ApplicationExportPaths:
 def encode_xml_file(xml_path: str) -> str:
     """Parse an OpenROAD XML export and return encoded .w4gl text."""
 
-    component = parse_xml(etree.parse(xml_path))
+    from .portable_source import read_document
+
+    component = parse_xml(read_document(Path(xml_path)))
     return encode_source_w4gl(component)
 
 
@@ -105,6 +107,8 @@ def application_metadata(
     if application.database_type:
         metadata["database_type"] = application.database_type
 
+    if application.window_icon:
+        metadata["window_icon"] = application.window_icon
     return metadata
 
 
@@ -238,6 +242,8 @@ def export_application_to_paths(
     app: str,
     paths: ApplicationExportPaths,
     progress: Callable[[str], None] | None,
+    *,
+    asset_origins: Path | None = None,
 ) -> ApplicationExport:
     """Export one full application XML and encode all top-level components."""
 
@@ -253,6 +259,10 @@ def export_application_to_paths(
         n.tag not in {"APPLICATION", "COMPONENT"} for n in tree
     ):
         raise ProjectError("Unsupported export document structure")
+    from .image_assets import AssetWriter, externalize
+
+    writer = AssetWriter(paths.source_dir, origins_from=asset_origins)
+    tree = externalize(tree, paths.source_dir, app, writer=writer)
     exported = parse_application_xml(tree)
     application_node = tree.find("APPLICATION")
     if application_node is None or len(tree.findall("APPLICATION")) != 1:
@@ -270,13 +280,21 @@ def export_application_to_paths(
     encoded = [(c.name, (encode_source_w4gl(c), c.markup)) for c in components]
     if len({name.casefold() for name, _ in encoded}) != len(encoded):
         raise ProjectError("Duplicate exported component names")
-    for component, (name, (text, markup)) in zip(components, encoded, strict=True):
+    for component, native, (name, (text, markup)) in zip(
+        components, tree.findall("COMPONENT"), encoded, strict=True
+    ):
         progress_message(progress, f"Encoding component {app}::{name}")
+        from .class_icons import extract_icons
+
+        extract_icons(native)
         write_queries(paths.source_dir / f"{name}.w4gl", component.queries)
         write_component_w4gl(paths.source_dir, name, text, progress)
+        (paths.source_dir / f"{name}.icons.json").unlink(missing_ok=True)
         write_component_wml(paths.source_dir, name, markup, progress)
         write_component_defaults(
-            paths.source_dir / f"{name}.w4gl", component.props.get("fielddefaults", {})
+            paths.source_dir / f"{name}.w4gl",
+            component.props.get("fielddefaults", {}),
+            writer=writer,
         )
     write_json(paths.source_dir / "app.json", application_source)
     return exported
@@ -300,6 +318,10 @@ def export_component_to_paths(
     tree = read_document(paths.xml_path)
     if tree.tag != "OPENROAD" or len(tree) != 1 or tree[0].tag != "COMPONENT":
         raise ProjectError("Expected a single exported component")
+    from .image_assets import AssetWriter, externalize
+
+    writer = AssetWriter(paths.w4gl_path.parent)
+    tree = externalize(tree, paths.w4gl_path.parent, component, writer=writer)
     parsed_component = parse_xml(tree)
     normalize_component_xml_path(paths.xml_path, parsed_component.name)
     apply_field_default_inheritance(
@@ -313,8 +335,14 @@ def export_component_to_paths(
         paths.w4gl_path.parent, parsed_component.name, text, progress
     )
     write_component_wml(paths.w4gl_path.parent, parsed_component.name, markup, progress)
-    write_component_defaults(w4gl_path, parsed_component.props.get("fielddefaults", {}))
+    write_component_defaults(
+        w4gl_path, parsed_component.props.get("fielddefaults", {}), writer=writer
+    )
     write_queries(w4gl_path, parsed_component.queries)
+    from .class_icons import extract_icons
+
+    extract_icons(tree[0])
+    w4gl_path.with_suffix(".icons.json").unlink(missing_ok=True)
     return w4gl_path
 
 

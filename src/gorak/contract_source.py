@@ -129,6 +129,10 @@ def decode_component(path: Path) -> etree._Element:
         node.append(native_styles.decode(native_styles.frame_styles(path)))
         index = MarkupDefaultsIndex({}, {}, explicit=True)
         markup = parse_markup(path.with_suffix(".wml").read_text())
+        from .image_assets import resolve
+
+        resolve(markup, path.parent)
+        resolve(node, path.parent)
         if markup.tag != "frame" or markup.attrib or (markup.text or "").strip():
             raise ProjectError("Frame markup requires a plain <frame> root")
         seen: set[str] = set()
@@ -145,6 +149,9 @@ def decode_component(path: Path) -> etree._Element:
                 node.append(markup_node(section, tag, shape(kind)[tag], index))
         if "topform" not in seen:
             raise ProjectError("Frame requires a topform section")
+    from .class_icons import overlay_icons
+
+    overlay_icons(node, path)
     order_children(node, kind)
     return node
 
@@ -153,6 +160,9 @@ def equivalent(
     left: etree._Element, right: etree._Element, *, exact_styles: bool = True
 ) -> bool:
     """Compare the supported readable contract; retain exact XML drift gates."""
+    from copy import deepcopy
+
+    from .bitmap_codec import normalized
     from .importer import signature
     from .parser import (
         FRAME_MARKUP_CHILDREN,
@@ -160,6 +170,21 @@ def equivalent(
         parse_component_node,
     )
 
+    left, right = deepcopy(left), deepcopy(right)
+    for root in (left, right):
+        for bitmap in root.iter("obj_encoded"):
+            bitmap.text = normalized(bitmap.text or "")
+    for tag in ("extension", "windowicon"):
+        if tag == "extension" and all(
+            root.find("taggedvalues/row[name='class_icons']") is None
+            for root in (left, right)
+        ):
+            continue
+        a, b = left.find(tag), right.find(tag)
+        if (a is not None and len(a) > 0) != (b is not None and len(b) > 0):
+            return False
+        if a is not None and b is not None and len(a) and signature(a) != signature(b):
+            return False
     if exact_styles:
         from .native_styles import encode
 

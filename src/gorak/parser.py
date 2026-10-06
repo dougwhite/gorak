@@ -24,6 +24,7 @@ FRAME_COMPONENT_TYPES = frozenset({"framesource", "frametemplate"})
 
 IGNORED_PROPERTIES = {
     "queries",
+    "extension",
     "script",
     "fielddefaults",
     "attributes",
@@ -134,6 +135,10 @@ def parse_application_xml(
     if name is None:
         raise ValueError("<APPLICATION> node must have a name attribute")
 
+    from .bitmap_codec import normalized
+
+    icon = app_node.find("windowicon")
+
     return ApplicationExport(
         application=Application(
             name=name,
@@ -141,6 +146,11 @@ def parse_application_xml(
             description=first_text(app_node, "short_remark", "versshortremarks"),
             database_name=first_text(app_node, "databasename"),
             database_type=first_text(app_node, "database_type"),
+            window_icon=(
+                dict(icon.attrib)
+                if icon is not None and "src" in icon.attrib
+                else normalized(app_node.findtext("windowicon/obj_encoded") or "")
+            ),
         ),
         components=parse_components_xml(root),
         included_applications=parse_included_applications(app_node),
@@ -212,6 +222,19 @@ def parse_component_node(node: etree._Element) -> Component:
     taggedvalues_node = node.find("taggedvalues")
     if taggedvalues_node is not None:
         props["taggedvalues"] = extract_taggedvalues(taggedvalues_node)
+
+    if node.find("extension") is not None and (
+        node.find("extension//*[@src]") is not None
+        or (
+            node.find("extension//obj_encoded") is None
+            and node.find("taggedvalues/row[name='class_icons']") is not None
+        )
+    ):
+        from .class_icons import extract_icons
+
+        icons = extract_icons(node)
+        if icons is not None:
+            props["icons"] = icons
 
     field_defaults_node = node.find("fielddefaults")
     field_defaults: dict[str, Any] = {}
@@ -567,10 +590,19 @@ def extract_props(
     """Extract flat child-node properties from a component node."""
 
     ignored = IGNORED_PROPERTIES if ignored is None else ignored
-    props: dict[str, str] = {}
+    props: dict[str, Any] = {}
 
     for child in node:
         if child.tag not in ignored:
+            if child.tag == "windowicon":
+                from .bitmap_codec import normalized
+
+                props["windowicon"] = (
+                    dict(child.attrib)
+                    if "src" in child.attrib
+                    else normalized(child.findtext("obj_encoded") or "")
+                )
+                continue
             value = (
                 text_value(child) if is_text_node(child) else child.text or ""
             ).strip(" \t\r\n")
@@ -690,11 +722,12 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
     props = {
         key: value
         for key, value in component.props.items()
-        if key not in {"attributes", "methods", "taggedvalues", "fielddefaults"}
+        if key
+        not in {"attributes", "methods", "taggedvalues", "fielddefaults", "icons"}
     }
     doc.add(component.type, tomlkit.item(props))
 
-    for key in ["attributes", "methods", "taggedvalues", "fielddefaults"]:
+    for key in ["attributes", "methods", "taggedvalues", "fielddefaults", "icons"]:
         if key in component.props:
             doc.add(key, tomlkit.item(component.props[key]))
 

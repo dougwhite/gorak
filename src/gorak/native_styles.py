@@ -194,7 +194,10 @@ def read(path: Path) -> Json:
         raise ProjectError(
             "Unsupported stylesheet properties; re-export the application"
         )
-    return value
+    from .image_assets import stylesheet_assets
+
+    resolved: Json = stylesheet_assets(value, path.parent, exporting=False)
+    return resolved
 
 
 def project_styles(root: Path) -> Json:

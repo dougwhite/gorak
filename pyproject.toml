@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "lxml>=6.0.2",
+    "pillow>=12.0.0",
     "psutil>=7.2.2",
     "python-dotenv>=1.2.2",
     "sqlalchemy-ingres[pyodbc]>=0.0.12",

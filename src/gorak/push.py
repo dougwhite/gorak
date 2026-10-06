@@ -24,6 +24,7 @@ from .portable_source import restore_application, restore_component
 from .project import ProjectError
 from .project_lock import open_lock
 from .safe_pull import apply_files, fingerprint
+from .source_xml import from_bytes, read_tree
 from .xml_writer import document, new_application, new_component
 
 
@@ -86,7 +87,11 @@ def _push_project(
         paths = sorted(folder.glob("*.w4gl"))
         if len({p.stem.casefold() for p in paths}) != len(paths):
             raise ProjectError(f"Component names collide ignoring case: {app}")
+        from .image_assets import source_files
+
         auxiliary = [
+            *source_files(folder),
+            *source_files(root),
             *folder.glob("*.wml"),
             *folder.glob("*.fielddefaults.json"),
             *folder.glob("*.queries.json"),
@@ -118,9 +123,9 @@ def _push_project(
             continue
         app_cache = root / ".openroad" / app / f"{app}.xml"
         if app_cache.is_file():
-            previous_app = parse_application_xml(etree.parse(str(app_cache)))
+            previous_app = parse_application_xml(read_tree(str(app_cache)))
             disk_app = parse_application_xml(
-                etree.fromstring(document([new_application(folder)]))
+                from_bytes(document([new_application(folder)]))
             )
             if (
                 previous_app.application != disk_app.application
@@ -128,11 +133,8 @@ def _push_project(
             ):
                 before = operation / f"{app}-before.xml"
                 backup_application_xml(connection, app, before)
-                parser = etree.XMLParser(
-                    resolve_entities=False, no_network=True, strip_cdata=False
-                )
-                tree = etree.parse(str(before), parser)
-                original_node = etree.parse(str(app_cache), parser).find("APPLICATION")
+                tree = read_tree(before)
+                original_node = read_tree(app_cache).find("APPLICATION")
                 current_node = tree.find("APPLICATION")
                 if (
                     original_node is None
@@ -149,6 +151,7 @@ def _push_project(
                     "procstart",
                     "databasename",
                     "database_type",
+                    "windowicon",
                 }
                 for child in list(current_node):
                     if child.tag in managed:
@@ -226,7 +229,7 @@ def _push_project(
                 )
                 edits.append((app, name))
     for app, payload in list(app_updates.items()):
-        tree_root = etree.fromstring(payload)
+        tree_root = from_bytes(payload)
         sources = []
         for edited_app, name in list(edits):
             if edited_app == app:
@@ -240,7 +243,7 @@ def _push_project(
         for key in list(creations):
             if key.startswith(app + "/"):
                 _, xml, paths = creations.pop(key)
-                tree_root.extend(etree.fromstring(xml))
+                tree_root.extend(from_bytes(xml))
                 sources.extend(paths)
         start = tree_root.findtext("APPLICATION/procstart")
         if start and start.casefold() not in {
@@ -312,7 +315,7 @@ def _push_project(
     targets = list(edits)
     for key in ordered:
         app = key.split("/")[0]
-        tree = etree.fromstring(creations[key][1])
+        tree = from_bytes(creations[key][1])
         targets.extend((app, str(n.get("name"))) for n in tree.findall("COMPONENT"))
     queue_compilation(root, targets)
     pending_marker = root / ".openroad/push-pending.json"
@@ -330,8 +333,8 @@ def _push_project(
             if app in app_updates:
                 latest = operation / f"{app}-latest.xml"
                 backup_application_xml(connection, app, latest)
-                if signature(etree.parse(str(latest)).getroot()) != signature(
-                    etree.parse(str(operation / f"{app}-before.xml")).getroot()
+                if signature(read_tree(str(latest)).getroot()) != signature(
+                    read_tree(str(operation / f"{app}-before.xml")).getroot()
                 ):
                     raise ProjectError(
                         f"Database application changed during push: {app}"
@@ -366,14 +369,14 @@ def _push_project(
             else:
                 backup_component_xml(connection, app, component, after)
             if component == "-":
-                actual_app = etree.parse(str(after)).find("APPLICATION")
-                expected_app = etree.parse(str(submitted)).find("APPLICATION")
+                actual_app = read_tree(str(after)).find("APPLICATION")
+                expected_app = read_tree(str(submitted)).find("APPLICATION")
                 if actual_app is None or expected_app is None:
                     raise SourceVerificationError(
                         f"Application source verification failed: {app}"
                     )
-                exported = parse_application_xml(etree.parse(str(after)))
-                requested = parse_application_xml(etree.parse(str(submitted)))
+                exported = parse_application_xml(read_tree(str(after)))
+                requested = parse_application_xml(read_tree(str(submitted)))
                 if (
                     exported.application != requested.application
                     or exported.included_applications != requested.included_applications
@@ -382,7 +385,7 @@ def _push_project(
                         f"Created application metadata verification failed: {app}"
                     )
             if app in app_updates:
-                before_tree = etree.parse(str(submitted))
+                before_tree = read_tree(str(submitted))
                 for node in before_tree.findall("COMPONENT"):
                     name = str(node.get("name"))
                     actual_node = component_tree(after, name)

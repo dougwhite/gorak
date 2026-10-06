@@ -57,7 +57,14 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         if before != after or original.script != edited.script:
             raise ProjectError(f"Editing component type is not supported: {kind}")
         return
-    if set(after) - {kind, "attributes", "methods", "taggedvalues", "fielddefaults"}:
+    if set(after) - {
+        kind,
+        "attributes",
+        "methods",
+        "taggedvalues",
+        "fielddefaults",
+        "icons",
+    }:
         raise ProjectError("Unsupported component front matter")
     if kind not in FRAME_COMPONENT_TYPES and after.get("fielddefaults") != before.get(
         "fielddefaults"
@@ -70,6 +77,15 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         # Compact projections spell empty object/array properties as "".
         # OpenROAD removes empty containers on import; these spellings agree.
         if new == "" and old is None and shape(kind).get(key) in shapes():
+            continue
+        if key == "windowicon" and isinstance(new, (str, dict)) and new:
+            from .image_assets import encode_icon
+
+            for old_icon in node.findall("windowicon"):
+                node.remove(old_icon)
+            etree.SubElement(
+                etree.SubElement(node, "windowicon"), "obj_encoded"
+            ).text = encode_icon(path.parent, new)
             continue
         if new is not None and not isinstance(new, (str, int, bool)):
             raise ProjectError(f"Component property must be scalar: {key}")

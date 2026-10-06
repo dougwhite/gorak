@@ -3,9 +3,12 @@
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .domain import Component
+
+if TYPE_CHECKING:
+    from .image_assets import AssetWriter
 
 
 def defaults_path(source: Path) -> Path:
@@ -21,9 +24,20 @@ def minimal_component_defaults(
     return native_styles.difference(parent, native_styles.resolve(parent, overrides))
 
 
-def write_component_defaults(source: Path, overrides: dict[str, Any]) -> None:
+def write_component_defaults(
+    source: Path, overrides: dict[str, Any], *, writer: "AssetWriter | None" = None
+) -> None:
     """Write only differences from the effective app; remove an empty file."""
     values = minimal_component_defaults(source, overrides)
+    from .image_assets import stylesheet_assets
+
+    values = stylesheet_assets(
+        values,
+        source.parent,
+        exporting=True,
+        owner=source.stem + "-style",
+        _writer=writer,
+    )
     path = defaults_path(source)
     if values:
         path.write_text(

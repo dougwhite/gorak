@@ -1,11 +1,29 @@
 [classsource]
 superclass = "userobject"
 
+[taggedvalues]
+class_icons = "(icons/counter)"
+
 [attributes]
 value = "INTEGER NOT NULL"
 
 [methods]
 increment = "METHOD RETURNING INTEGER NOT NULL"
+
+[[icons.entries]]
+id = "1"
+src = "images/counter.png"
+path = "art/counter.png"
+native-flags = "12"
+
+[[icons.entries]]
+id = "2"
+src = "images/counter-active.png"
+mask = "2x2:eNprcAAAAUIAwQ=="
+
+[[icons.entries]]
+id = "3"
+src = "builtin:class-icon-16"
 
 ===
 METHOD increment() =

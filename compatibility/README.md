@@ -7,8 +7,7 @@ temporary directory before editing or reconstructing it.
 It exercises application includes, procedure and user-class metadata, methods,
 frame scripts, explicit geometry/field state, Unique Style (`fieldstyle=0`), a
 typed table-column prototype, and an invalid XML character processing instruction.
-The counter class has a saved query with a table, typed column and select target
-in an adjacent `.queries.json` file (source contract 2; sidecar schema version 1).
+It also covers saved queries, PNG references and class-icon collections.
 The button's actual colour is `6`; the project/application/frame creation-style
 colours are `6`/`7`/`8`. Existing fields must never inherit the frame palette colour.
 

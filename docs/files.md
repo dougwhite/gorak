@@ -167,3 +167,13 @@ OpenROAD export → readable source → OpenROAD import → readable re-export
 OpenROAD may canonicalize its XML representation, so byte-for-byte XML identity
 is not required. The reconstructed application should preserve the supported
 source semantics and remain stable through repeated export/import cycles.
+
+Image assets live in each application’s `images/` directory and use relative references:
+
+```xml
+<bgbitmap src="images/background.png"/>
+```
+
+Built-in images use references such as `src="builtin:pal_icon6"`.
+Optional `path` preserves the original OpenROAD filename. Class icons use
+`[[icons.entries]]` in the class’s `.w4gl` metadata.

@@ -9,11 +9,9 @@ from .project import ProjectError
 
 
 def read_document(path: Path) -> etree._Element:
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, strip_cdata=False)
-    tree = etree.parse(str(path), parser)
-    if tree.docinfo.doctype:
-        raise ProjectError(f"Source XML must not contain a document type: {path}")
-    return tree.getroot()
+    from .source_xml import read_tree
+
+    return read_tree(path).getroot()
 
 
 def cached_node(folder: Path, tag: str, name: str) -> etree._Element | None:
@@ -47,12 +45,18 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
 
     if node.get(f"{{{NS['xsi']}}}type") not in FRAME_COMPONENT_TYPES:
         overlay_metadata(node, path)
+        from .class_icons import overlay_icons
+
+        overlay_icons(node, path)
         return node
     replacement = decode_component(path)
     from .query_metadata import overlay_queries
 
     # Enforce missing-sidecar protection against the authoritative baseline.
     overlay_queries(deepcopy(node), path)
+    from .class_icons import overlay_icons
+
+    overlay_icons(deepcopy(node), path)
     if equivalent(replacement, node):
         return node
     node.attrib.clear()
@@ -92,8 +96,10 @@ def comparison_application(folder: Path) -> etree._Element:
     baseline = cached_node(folder, "APPLICATION", folder.name)
     if baseline is None:
         return desired
-    old = parse_application_xml(etree.fromstring(document([baseline])))
-    new = parse_application_xml(etree.fromstring(document([desired])))
+    from .source_xml import from_bytes
+
+    old = parse_application_xml(from_bytes(document([baseline])))
+    new = parse_application_xml(from_bytes(document([desired])))
     if (
         old.application == new.application
         and old.included_applications == new.included_applications
@@ -105,6 +111,7 @@ def comparison_application(folder: Path) -> etree._Element:
         "procstart",
         "databasename",
         "database_type",
+        "windowicon",
     }
     for child in list(baseline):
         if child.tag in managed:

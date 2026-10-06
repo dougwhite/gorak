@@ -1,1 +1,11 @@
-{"starting_component":"panel","description":"Synthetic contract example","included_applications":["shared"]}
+{
+  "starting_component": "panel",
+  "description": "Synthetic contract example",
+  "included_applications": [
+    "shared"
+  ],
+  "window_icon": {
+    "src": "images/badge.png",
+    "path": "art/badge.png"
+  }
+}

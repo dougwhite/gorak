@@ -4,11 +4,10 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
-from lxml import etree
-
 from . import local, remote
 from .connection import OpenRoadConnection, require_remote_host
 from .project import ProjectError
+from .source_xml import read_tree
 from .writer_launch import local_writer_command, remote_writer_prefix
 
 
@@ -34,7 +33,7 @@ def import_component_xml(
     from .revision_check import validate_revision_target
 
     validate_revision_target(connection)
-    empty_app = component == "-" and not etree.parse(str(xml_path)).findall("COMPONENT")
+    empty_app = component == "-" and not read_tree(xml_path).findall("COMPONENT")
     if connection.backend == "local":
         command = local.build_backup_component_command(
             connection.vnode,

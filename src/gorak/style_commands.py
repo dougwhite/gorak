@@ -140,4 +140,61 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                 )
         else:
             raise ProjectError(f"Unknown stylesheet operation: {operation}")
+        changes = externalize_changes(root, changes)
         return install(root, changes, snapshot, dry_run=dry_run)
+
+
+def externalize_changes(
+    root: Path, changes: dict[Path, bytes | None]
+) -> dict[Path, bytes | None]:
+    """Prepare stylesheet assets in isolation so dry runs and recovery stay safe."""
+    from shutil import copy2
+    from tempfile import TemporaryDirectory
+
+    from .image_assets import AssetWriter, source_files, stylesheet_assets
+
+    result = dict(changes)
+    with TemporaryDirectory(prefix="gorak-style-assets-") as temporary:
+        stage = Path(temporary)
+        for folder in {path.parent for path in changes}:
+            for asset in source_files(folder):
+                if "images" not in asset.relative_to(folder).parts:
+                    continue
+                target = stage / asset.relative_to(root)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                copy2(asset, target)
+        writers: dict[Path, AssetWriter] = {}
+        for path, content in changes.items():
+            if content is None:
+                continue
+            folder = stage / path.parent.relative_to(root)
+            if folder not in writers:
+                writers[folder] = AssetWriter(folder, origins_from=path.parent)
+            writer = writers[folder]
+            projected = stylesheet_assets(
+                json.loads(content), folder, exporting=True, _writer=writer
+            )
+            # Resolve the staged representation before installing any files.
+            restored = stylesheet_assets(projected, folder, exporting=False)
+            if canonical_bitmaps(restored) != canonical_bitmaps(json.loads(content)):
+                raise ProjectError("Stylesheet asset conversion changed native data")
+            result[path] = encoded(projected)
+        for asset in stage.rglob("*"):
+            if asset.is_file():
+                result[root / asset.relative_to(stage)] = asset.read_bytes()
+    return result
+
+
+def canonical_bitmaps(value: object) -> object:
+    from .bitmap_codec import normalized
+
+    if isinstance(value, dict):
+        return {
+            key: normalized(item)
+            if key == "obj_encoded" and isinstance(item, str)
+            else canonical_bitmaps(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [canonical_bitmaps(item) for item in value]
+    return value

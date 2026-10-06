@@ -1,0 +1,98 @@
+{
+  "imagtrm3": {
+    "file": "imagtrm3.png",
+    "sha256": "d8e2327db17a53bbecfb197196b0d5275fb13f418469c4d2e4c7c583bcd7f0ae",
+    "path": "builtin:imagtrm3",
+    "names": [
+      "ImagTrm3.BMP"
+    ]
+  },
+  "pal_icon1": {
+    "file": "pal_icon1.png",
+    "sha256": "5aacd36d0d1bef075a9bbfd04c1ad35057c710eb95c493a313804f884d3ac6bb",
+    "path": "builtin:pal_icon1",
+    "names": [
+      "pal_icon1.xbm"
+    ]
+  },
+  "pal_icon2": {
+    "file": "pal_icon2.png",
+    "sha256": "be2ab146cd0162ff45b2f589632a9ba7ee7fc15fb6ac838d47a21892b0db1c89",
+    "path": "builtin:pal_icon2",
+    "names": [
+      "pal_icon2.xbm"
+    ]
+  },
+  "pal_icon3": {
+    "file": "pal_icon3.png",
+    "sha256": "3e341f45d53fc90378922a7ac9432f31fa460191062fd642c582526df645f2db",
+    "path": "builtin:pal_icon3",
+    "names": [
+      "pal_icon3.xbm"
+    ]
+  },
+  "pal_icon4": {
+    "file": "pal_icon4.png",
+    "sha256": "fbd9b7dfbbdd5eb7b2a94217a5932e41aec3bfbca495d5b074f84863ceaba21a",
+    "path": "builtin:pal_icon4",
+    "names": [
+      "pal_icon4.xbm"
+    ]
+  },
+  "pal_icon5": {
+    "file": "pal_icon5.png",
+    "sha256": "a3c31d5f51f23204ac1eab66b4e9b8331d758308f92958ad16d119dbf1f13bb6",
+    "path": "builtin:pal_icon5",
+    "names": [
+      "pal_icon5.xbm"
+    ]
+  },
+  "pal_icon6": {
+    "file": "pal_icon6.png",
+    "sha256": "bffe171a3a2ae7c656b7f46e1a62ad512bc51eca78d1fbf80057527c74b9452b",
+    "path": "builtin:pal_icon6",
+    "names": [
+      "pal_icon6.xbm"
+    ]
+  },
+  "class-icon-16": {
+    "file": "class-icon-16.png",
+    "sha256": "8061035635850557e722ff1254b4ceb59d46a95856f592708359a5702004fcf4",
+    "path": "builtin:class-icon-16",
+    "names": [
+      "1616_2.bmp"
+    ]
+  },
+  "class-icon-32": {
+    "file": "class-icon-32.png",
+    "sha256": "9665bd12a119675b9fc35cbdc3b8db5efc0b42100ef1961dca4c6ba7c7ba7179",
+    "path": "builtin:class-icon-32",
+    "names": [
+      "3232_2.bmp"
+    ]
+  },
+  "class-icon-64": {
+    "file": "class-icon-64.png",
+    "sha256": "755bc3e27ce1af6a3a7d6890190dd8e18f10aa8308bc7952b8439293e5f32630",
+    "path": "builtin:class-icon-64",
+    "names": [
+      "6464_2.bmp"
+    ]
+  },
+  "class-icon-96": {
+    "file": "class-icon-96.png",
+    "sha256": "adbf0c013e2cdd4bc699a30db8c9663e1568d417bf5b3da5f32df202a97a8da1",
+    "path": "builtin:class-icon-96",
+    "names": [
+      "9696_2.bmp"
+    ]
+  },
+  "class-icon-128": {
+    "file": "class-icon-128.png",
+    "sha256": "c5a3a0fa4ad21a8a9e5502b9b08b6f4057548ac1e4c77cb332c750e9beee78df",
+    "path": "builtin:class-icon-128",
+    "names": [
+      "128128_2.bmp"
+    ]
+  }
+}
