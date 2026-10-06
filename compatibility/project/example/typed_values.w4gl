@@ -1,0 +1,10 @@
+[classsource]
+superclass = "userobject"
+
+[attributes]
+"amount_$T" = "FLOAT NOT NULL"
+items = "ARRAY OF SHARED!COUNTER"
+payload = "LONG BYTE NOT NULL"
+
+[methods]
+lookup = "METHOD RETURNING SHARED!COUNTER"
