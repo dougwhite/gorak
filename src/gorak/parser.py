@@ -143,7 +143,9 @@ def parse_application_xml(
         application=Application(
             name=name,
             start_component=first_text(app_node, "proc_start", "procstart"),
-            description=first_text(app_node, "short_remark", "versshortremarks"),
+            description=first_text(
+                app_node, "short_remark", "versshortremarks", strip=False
+            ),
             database_name=first_text(app_node, "databasename"),
             database_type=first_text(app_node, "database_type"),
             window_icon=(
@@ -289,7 +291,7 @@ def frame_markup_element(
     if mapping is not None:
         mapping[element] = node
     copy_markup_attributes(node, element)
-    if defaults_index.explicit and node.tag == "protofield":
+    if defaults_index.explicit and node.tag in {"protofield", "viewfield"}:
         native_type = node.get(f"{{{NS['xsi']}}}type")
         if native_type:
             element.set("type", native_type)
@@ -658,11 +660,11 @@ def extract_taggedvalues(node: etree._Element) -> dict[str, str]:
     return taggedvalues
 
 
-def first_text(node: etree._Element, *names: str) -> str:
+def first_text(node: etree._Element, *names: str, strip: bool = True) -> str:
     for name in names:
         value = find_text(node, name)
         if value is not None:
-            return value.strip(" \t\r\n")
+            return value.strip(" \t\r\n") if strip else value
 
     return ""
 

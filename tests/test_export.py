@@ -176,7 +176,7 @@ def test_normalize_application_paths_cleans_openroad_case_conflicts(
     assert (current_cache / "Sample_App.xml").read_text() == expected
 
 
-def test_merge_application_metadata_uses_sql_values_and_xml_only_values() -> None:
+def test_merge_application_metadata_preserves_xml_description_and_icon() -> None:
     assert merge_application_metadata(
         Application(
             name="sample_app",
@@ -186,14 +186,16 @@ def test_merge_application_metadata_uses_sql_values_and_xml_only_values() -> Non
         Application(
             name="sample_app",
             start_component="fm_from_xml",
-            description="XML description",
+            description="XML description\n",
+            window_icon={"src": "images/app.png", "path": r"C:\icons\app.png"},
             database_name="vnode::runtime_db",
             database_type="1",
         ),
     ) == Application(
         name="sample_app",
         start_component="fm_from_sql",
-        description="SQL description",
+        description="XML description\n",
+        window_icon={"src": "images/app.png", "path": r"C:\icons\app.png"},
         database_name="vnode::runtime_db",
         database_type="1",
     )
@@ -1025,3 +1027,28 @@ def test_read_includes_routes_to_local_backend(monkeypatch: MonkeyPatch) -> None
         "sample_app",
     ) == ["source_include"]
     assert calls == [("myvnode", "exampledb", "sample_app")]
+
+
+@pytest.mark.parametrize("description", ["", "line one\nline two\n", r"literal\ntext"])
+def test_merged_application_metadata_roundtrips_xml_text_and_icon(
+    tmp_path: Path, description: str
+) -> None:
+    # A built-in reference exercises metadata reconstruction without an image file.
+    from gorak.builtin_images import catalog
+    from gorak.parser import parse_application_xml
+    from gorak.portable_source import restore_application
+    from gorak.source_xml import from_bytes
+    from gorak.xml_writer import document
+
+    icon = {"src": "builtin:" + next(iter(catalog()))}
+    native = Application("sample", "start", description, window_icon=icon)
+    merged = merge_application_metadata(
+        Application("sample", "start", r"SQL escaped\ntext"), native
+    )
+    write_app_metadata(tmp_path, merged)
+    reconstructed = parse_application_xml(
+        from_bytes(document([restore_application(tmp_path / "sample")]))
+    )
+    assert reconstructed.application.description == description
+    assert reconstructed.application.window_icon
+    assert application_metadata(merged)["window_icon"] == icon

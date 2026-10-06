@@ -17,5 +17,8 @@
         </columnfield>
       </tablebody>
     </tablefield>
+    <viewportfield name="preview" xleft="200" ytop="2300" width="1400" height="500" fieldstyle="0">
+      <viewfield type="flexibleform" name="content" width="1400" height="500" ismovebounded="0"/>
+    </viewportfield>
   </topform>
 </frame>

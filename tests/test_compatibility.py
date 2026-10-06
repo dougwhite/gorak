@@ -65,6 +65,13 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         )
         == "entryfield"
     )
+    viewfield = panel.find(".//viewfield")
+    assert viewfield is not None
+    assert (
+        viewfield.get("{http://www.w3.org/2001/XMLSchema-instance}type")
+        == "flexibleform"
+    )
+    assert viewfield.findtext("ismovebounded") == "0"
     original = restore_component(source / "shared/counter.w4gl")
     queries = original.find("queries")
     assert queries is not None
