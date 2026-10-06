@@ -5,6 +5,8 @@
       <cursor syscursor="1"/>
       <defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
     </entryfield>
+    <entryfield name="nullable_default" datatype="integer" isnullable="1" defaultvalue="2"/>
+    <entryfield name="specified_default" datatype="integer" defaultvalue="3" defaultstring="7"/>
     <buttonfield name="calculate" xleft="200" ytop="700" width="1400" height="300" bgcolor="6" textlabel="Calculate" fieldstyle="1">
       <script><![CDATA[on click =
 {
