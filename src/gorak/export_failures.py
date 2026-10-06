@@ -1,13 +1,13 @@
 """Partial export reporting and preservation of failed component baselines."""
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
 from lxml import etree
 
-from .project import ProjectError, write_json
+from .project import ProjectError
 
 
 class ComponentProjectionError(ProjectError):
@@ -57,14 +57,11 @@ def finalize_baseline(
     """Do not record a failed projection as a successfully exported baseline."""
     from .portable_source import read_document
 
-    report = xml_path.parent / "export-failures.json"
     if not failures:
-        report.unlink(missing_ok=True)
         return
     archive = xml_path.parent / "export-errors" / uuid4().hex
     archive.mkdir(parents=True)
     (archive / xml_path.name).write_bytes(xml_path.read_bytes())
-    write_json(report, {"failures": [asdict(f) for f in failures]})
     tree = read_document(xml_path)
     failed = {f.component.casefold() for f in failures}
     for node in list(tree.findall("COMPONENT")):

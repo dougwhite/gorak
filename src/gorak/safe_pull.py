@@ -27,7 +27,7 @@ from .project import GorakContext, ProjectError
 from .project_lock import project_lock
 from .sync import SyncResult
 from .sync_guard import guard_sync
-from .sync_plan import baseline_inventory
+from .sync_plan import Change, baseline_inventory
 
 
 def fingerprint(root: Path) -> dict[str, str]:
@@ -47,10 +47,6 @@ def fingerprint(root: Path) -> dict[str, str]:
             result[path.relative_to(root).as_posix()] = hashlib.sha256(
                 path.read_bytes()
             ).hexdigest()
-    for path in (root / ".openroad").glob("*/export-failures.json"):
-        result[path.relative_to(root).as_posix()] = hashlib.sha256(
-            path.read_bytes()
-        ).hexdigest()
     for name in ["sync-target.json", "tracked-applications.json"]:
         path = root / ".openroad" / name
         if path.exists():
@@ -163,18 +159,6 @@ def _sync_project(
                 snapshot.get(key) != value for key, value in before.items()
             ):
                 raise ProjectError("Project changed while planning pull")
-            apps = {
-                c.key.split("/")[0] for c in plan if c.action in {"pull", "converged"}
-            }
-            if take_database:
-                _, tracked_apps = baseline_inventory(root)
-                apps |= {a.casefold() for a in tracked_apps}
-                apps |= {p.parent.name.casefold() for p in root.glob("*/app.json")}
-            if not apps:
-                return SyncResult(len(plan), 0, 0)
-            operation.mkdir()
-            stage = operation / "stage"
-            stage.mkdir()
             baseline, tracked = baseline_inventory(root)
             names = {name.casefold(): name for name in tracked}
             names.update(
@@ -186,6 +170,27 @@ def _sync_project(
             available = {
                 a.name.casefold(): a.name for a in read_applications(connection)
             }
+            # backupapp may omit a broken catalog component altogether. Missing
+            # successful baselines must remain pending even when XML is unchanged.
+            from .export import read_components
+
+            planned = {change.key for change in plan}
+            for app in sorted(names.keys() & available.keys()):
+                for catalog_component in read_components(connection, available[app]):
+                    key = f"{app}/{catalog_component.name}".casefold()
+                    if key not in baseline and key not in planned:
+                        plan.append(Change(key, "pull", "unchanged", "added"))
+                        planned.add(key)
+            apps = {
+                c.key.split("/")[0] for c in plan if c.action in {"pull", "converged"}
+            }
+            if take_database:
+                apps |= set(names)
+            if not apps:
+                return SyncResult(len(plan), 0, 0)
+            operation.mkdir()
+            stage = operation / "stage"
+            stage.mkdir()
             staged_xml: dict[str, Path] = {}
             changes: dict[Path, bytes | None] = {}
             defaults = root / "field_defaults.json"
@@ -213,7 +218,6 @@ def _sync_project(
                 ]
                 old_files = {
                     root / name / "app.json",
-                    root / ".openroad" / name / "export-failures.json",
                     root / name / "field_defaults.json",
                     root / name / ".gorak-source/application.xml",
                     root / name / ".gorak-source/format",
