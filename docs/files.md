@@ -174,5 +174,5 @@ Image assets live in each application’s `images/` directory and use relative r
 <bgbitmap src="images/background.png"/>
 ```
 
-Optional `path` preserves the original OpenROAD filename. Class-icon collections
-live in `<component>.icons.json`.
+Optional `path` preserves the original OpenROAD filename. Class icons use
+`[[icons.entries]]` in the class’s `.w4gl` metadata.

@@ -45,7 +45,6 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         destination = projected / path.relative_to(source)
         # Re-export must generate the sidecar, not reuse the fixture copy.
         destination.with_suffix(".queries.json").unlink(missing_ok=True)
-        destination.with_suffix(".icons.json").unlink(missing_ok=True)
         write_component(destination, native)
         assert equivalent(native, restore_component(destination))
     panel = restore_component(source / "example/panel.w4gl")
@@ -109,6 +108,7 @@ def test_image_contract_semantics(tmp_path: Path) -> None:
     assert background.origin == "art/badge.png"
     assert background.tail[7:9] == ("1", "7")
     assert not list(source.rglob("*.bitmap.json"))
+    assert not list(source.rglob("*.icons.json"))
     app = restore_application(source / "example")
     assert decode(app.findtext("windowicon/obj_encoded")).pixels == expected
     counter = restore_component(source / "shared/counter.w4gl")

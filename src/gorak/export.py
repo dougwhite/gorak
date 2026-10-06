@@ -284,14 +284,12 @@ def export_application_to_paths(
         components, tree.findall("COMPONENT"), encoded, strict=True
     ):
         progress_message(progress, f"Encoding component {app}::{name}")
-        from .class_icons import write_icons
+        from .class_icons import extract_icons
 
-        write_icons(
-            native,
-            paths.source_dir / f"{name}.w4gl",
-        )
+        extract_icons(native)
         write_queries(paths.source_dir / f"{name}.w4gl", component.queries)
         write_component_w4gl(paths.source_dir, name, text, progress)
+        (paths.source_dir / f"{name}.icons.json").unlink(missing_ok=True)
         write_component_wml(paths.source_dir, name, markup, progress)
         write_component_defaults(
             paths.source_dir / f"{name}.w4gl",
@@ -341,9 +339,10 @@ def export_component_to_paths(
         w4gl_path, parsed_component.props.get("fielddefaults", {}), writer=writer
     )
     write_queries(w4gl_path, parsed_component.queries)
-    from .class_icons import write_icons
+    from .class_icons import extract_icons
 
-    write_icons(tree[0], w4gl_path)
+    extract_icons(tree[0])
+    w4gl_path.with_suffix(".icons.json").unlink(missing_ok=True)
     return w4gl_path
 
 

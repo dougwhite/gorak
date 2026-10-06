@@ -57,7 +57,14 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         if before != after or original.script != edited.script:
             raise ProjectError(f"Editing component type is not supported: {kind}")
         return
-    if set(after) - {kind, "attributes", "methods", "taggedvalues", "fielddefaults"}:
+    if set(after) - {
+        kind,
+        "attributes",
+        "methods",
+        "taggedvalues",
+        "fielddefaults",
+        "icons",
+    }:
         raise ProjectError("Unsupported component front matter")
     if kind not in FRAME_COMPONENT_TYPES and after.get("fielddefaults") != before.get(
         "fielddefaults"

@@ -457,9 +457,7 @@ def resolve(node: etree._Element, folder: Path) -> None:
 
 
 def source_files(folder: Path) -> list[Path]:
-    return [p for p in (folder / "images").rglob("*") if p.is_file()] + list(
-        folder.glob("*.icons.json")
-    )
+    return [p for p in (folder / "images").rglob("*") if p.is_file()]
 
 
 def stylesheet_assets(

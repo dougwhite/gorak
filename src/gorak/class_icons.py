@@ -1,6 +1,6 @@
-"""Ordered class icon collections, separate from ordinary class declarations."""
+"""Ordered class icon collections in W4GL metadata."""
 
-import json
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +10,11 @@ from .errors import ProjectError
 from .style_values import XSI
 
 
-def collection(data: dict[str, Any]) -> etree._Element:
+def collection(data: dict[str, Any], key: str) -> etree._Element:
     if (
         not isinstance(data, dict)
-        or set(data) != {"version", "key", "entries"}
-        or type(data["version"]) is not int
-        or data["version"] != 1
-        or not isinstance(data["key"], str)
+        or set(data) != {"entries"}
+        or not isinstance(key, str)
         or not isinstance(data["entries"], list)
     ):
         raise ProjectError("Invalid class icon collection")
@@ -25,8 +23,8 @@ def collection(data: dict[str, Any]) -> etree._Element:
     items = etree.SubElement(lookup, "choiceitems")
     row = etree.SubElement(items, "row")
     for tag, text in [
-        ("enumdisplay", data["key"]),
-        ("enumtext", data["key"]),
+        ("enumdisplay", key),
+        ("enumtext", key),
         ("enumvalue", "2"),
     ]:
         etree.SubElement(row, tag).text = text
@@ -58,17 +56,15 @@ def collection(data: dict[str, Any]) -> etree._Element:
     return extension
 
 
-def write_icons(node: etree._Element, source: Path) -> None:
-    path = source.with_suffix(".icons.json")
+def extract_icons(node: etree._Element) -> dict[str, Any] | None:
     extension = node.find("extension")
     if extension is None or not len(extension):
-        path.unlink(missing_ok=True)
-        return
+        return None
+    if node.get(XSI) != "classsource":
+        raise ProjectError("Only classes support icons metadata")
     key = node.findtext("taggedvalues/row[name='class_icons']/value")
     try:
         data = {
-            "version": 1,
-            "key": key,
             "entries": [
                 {"id": row.findtext("enumvalue"), **dict(row.find("enumbitmap").attrib)}
                 for row in extension.findall("row")[1].findall("choiceitems/row")
@@ -76,32 +72,38 @@ def write_icons(node: etree._Element, source: Path) -> None:
         }
         from .importer import signature
 
-        if signature(collection(data)) != signature(extension):
+        if not isinstance(key, str) or signature(collection(data, key)) != signature(
+            extension
+        ):
             raise ProjectError("Unsupported class extension structure")
     except (AttributeError, IndexError, TypeError) as ex:
         raise ProjectError("Unsupported class extension structure") from ex
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    return data
 
 
 def overlay_icons(node: etree._Element, source: Path) -> None:
-    path = source.with_suffix(".icons.json")
+    from .parser import split_w4gl
+
+    if source.with_suffix(".icons.json").exists():
+        raise ProjectError("Obsolete class icon sidecar; re-export this component")
+    metadata = tomllib.loads(split_w4gl(source.read_text())[0])
     old = node.find("extension")
-    if (
-        old is not None
-        and len(old)
-        and not path.exists()
-        and node.find("taggedvalues/row[name='class_icons']") is not None
-    ):
-        raise ProjectError("Missing class icon sidecar; re-export this component")
-    if not path.exists():
+    if "icons" not in metadata:
+        if (
+            old is not None
+            and len(old)
+            and node.find("taggedvalues/row[name='class_icons']") is not None
+        ):
+            raise ProjectError(
+                "Missing class icons metadata; use [icons] entries = [] for an empty collection"
+            )
         return
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, ValueError) as ex:
-        raise ProjectError(f"Invalid class icon sidecar: {ex}") from ex
-    replacement = collection(data)
-    if node.findtext("taggedvalues/row[name='class_icons']/value") != data["key"]:
-        raise ProjectError("Class icon key does not match class_icons tagged value")
+    if node.get(XSI) != "classsource":
+        raise ProjectError("Only classes support icons metadata")
+    key = node.findtext("taggedvalues/row[name='class_icons']/value")
+    if key is None:
+        raise ProjectError("Class icons require a class_icons tagged value")
+    replacement = collection(metadata["icons"], key)
     from .image_assets import resolve
 
     resolve(replacement, source.parent)

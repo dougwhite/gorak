@@ -179,9 +179,7 @@ def prepare_tracking(
         for path in folder.parent.rglob("*"):
             if path.is_file() and (
                 path.suffix in {".w4gl", ".wml"}
-                or path.name.endswith(
-                    (".fielddefaults.json", ".queries.json", ".icons.json")
-                )
+                or path.name.endswith((".fielddefaults.json", ".queries.json"))
                 or "images" in path.relative_to(folder.parent).parts
                 or path.name in {"app.json", "field_defaults.json"}
             ):

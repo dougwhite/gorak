@@ -252,42 +252,45 @@ def test_stylesheet_bitmap_override_externalizes_and_restores(tmp_path: Path) ->
     )
 
 
-def test_class_icons_order_missing_sidecar_and_unknown_extension(
+def test_class_icons_order_missing_metadata_and_unknown_extension(
     tmp_path: Path,
 ) -> None:
-    import json
-
-    from gorak.class_icons import collection, overlay_icons, write_icons
+    from gorak.class_icons import collection, extract_icons, overlay_icons
+    from gorak.parser import encode_w4gl, parse_component_node
+    from gorak.style_values import XSI
 
     (tmp_path / "images").mkdir()
     Image.new("RGBA", (2, 2), (100, 50, 20, 255)).save(tmp_path / "images/icon.png")
     data = {
-        "version": 1,
-        "key": "(icons/example)",
         "entries": [
             {"id": "3", "src": "images/icon.png"},
             {"id": "1", "src": "images/icon.png"},
-        ],
+        ]
     }
     node = etree.fromstring(
-        b"<COMPONENT><taggedvalues><row><name>class_icons</name><value>(icons/example)</value></row></taggedvalues></COMPONENT>"
+        b'<COMPONENT name="example"><taggedvalues><row><name>class_icons</name><value>(icons/example)</value></row></taggedvalues></COMPONENT>'
     )
-    node.insert(0, collection(data))
+    node.set(XSI, "classsource")
+    node.insert(0, collection(data, "(icons/example)"))
     source = tmp_path / "example.w4gl"
-    write_icons(node, source)
-    assert json.loads(source.with_suffix(".icons.json").read_text()) == data
+    source.write_text(encode_w4gl(parse_component_node(node)))
+    assert extract_icons(node) == data
+    assert "[[icons.entries]]" in source.read_text()
+    assert not list(tmp_path.glob("*.icons.json"))
     overlay_icons(node, source)
     assert [
         r.findtext("enumvalue")
         for r in node.findall("extension/row")[1].findall("choiceitems/row")
     ] == ["3", "1"]
     assert len(list(node.iter("obj_encoded"))) == 2
-    source.with_suffix(".icons.json").unlink()
-    with pytest.raises(ProjectError, match="Missing class icon"):
+    source.write_text(
+        '[classsource]\n[taggedvalues]\nclass_icons = "(icons/example)"\n'
+    )
+    with pytest.raises(ProjectError, match="Missing class icons"):
         overlay_icons(node, source)
     node.find("extension").append(etree.Element("unknown"))
     with pytest.raises(ProjectError):
-        write_icons(node, source)
+        extract_icons(node)
 
 
 def test_shared_png_edits_affect_all_references_and_conflicts(
@@ -497,3 +500,61 @@ def test_stylesheet_reference_preserves_order_annotations(tmp_path: Path) -> Non
     projected = stylesheet_assets(native, tmp_path, exporting=True)
     assert projected["$order"] == ["src"]
     assert stylesheet_assets(projected, tmp_path, exporting=False) == native
+
+
+@pytest.mark.parametrize(
+    "icons",
+    [
+        {
+            "entries": [
+                {"id": "1", "src": "images/a.png"},
+                {"id": "1", "src": "images/b.png"},
+            ]
+        },
+        {"entries": [{"id": "1", "src": "images/a.png", "unknown": "x"}]},
+        {"entries": "invalid"},
+        {"entries": [], "key": "duplicate"},
+    ],
+)
+def test_invalid_inline_icon_collections(icons: dict[str, object]) -> None:
+    from gorak.class_icons import collection
+
+    with pytest.raises(ProjectError):
+        collection(icons, "(icons/example)")
+
+
+def test_inline_icons_empty_collection_and_key_edit(tmp_path: Path) -> None:
+    from gorak.class_icons import extract_icons
+    from gorak.parser import encode_w4gl, parse_component_node
+    from gorak.portable_source import restore_component
+
+    source = tmp_path / "example.w4gl"
+    source.write_text(
+        '[classsource]\nsuperclass = "userobject"\n'
+        '[taggedvalues]\nclass_icons = "(icons/renamed)"\n'
+        "[icons]\nentries = []\n"
+    )
+    native = restore_component(source)
+    assert extract_icons(native) == {"entries": []}
+    assert (
+        native.findtext("extension/row/choiceitems/row/enumtext") == "(icons/renamed)"
+    )
+    source.write_text(encode_w4gl(parse_component_node(native)))
+    assert signature(restore_component(source)) == signature(native)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "[classsource]\n[icons]\nentries = []\n",
+        '[proc4glsource]\n[taggedvalues]\nclass_icons = "icons"\n[icons]\nentries = []\n',
+        '[classsource]\nicons = "invalid"\n',
+    ],
+)
+def test_inline_icons_require_class_and_tagged_key(tmp_path: Path, source: str) -> None:
+    from gorak.portable_source import restore_component
+
+    path = tmp_path / "example.w4gl"
+    path.write_text(source)
+    with pytest.raises(ProjectError):
+        restore_component(path)
