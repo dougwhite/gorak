@@ -213,6 +213,12 @@ def parse_component_node(node: etree._Element) -> Component:
         raise ValueError("<COMPONENT> node must have an xsi:type attribute")
 
     props = extract_props(node)
+    from .macro_variables import read_macros
+
+    macros = read_macros(node)
+    props.pop("macro_vars", None)
+    if macros:
+        props["macro_vars"] = macros
     attributes_node = node.find("attributes")
     if attributes_node is not None:
         props["attributes"] = extract_attributes(attributes_node)

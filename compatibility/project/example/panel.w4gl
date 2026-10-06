@@ -3,6 +3,11 @@ windowicon = {src = "images/badge.png", path = "art/badge.png"}
 windowwidth = "6000"
 windowheight = "3000"
 
+[[framesource.macro_vars]]
+name = "$CAPTION"
+value = "Preview"
+shortremark = "Panel caption"
+
 ===
 initialize =
 declare

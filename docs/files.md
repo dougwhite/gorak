@@ -62,6 +62,9 @@ Unsupported source shapes are refused rather than silently discarded.
 
 Saved query metadata lives in optional `<component>.queries.json` files.
 
+Macro definitions use ordered tables such as `[[framesource.macro_vars]]`, with `name`,
+`value` and optional `shortremark`; re-export older sources to recover omitted definitions.
+
 ## Frame WML
 
 Frames use `.w4gl` for component metadata and main script, and `.wml` for

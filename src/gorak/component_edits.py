@@ -72,6 +72,12 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         raise ProjectError(f"{kind} does not support editable field defaults")
     for key in set(before[kind]) | set(after[kind]):
         old, new = before[kind].get(key), after[kind].get(key)
+        if key == "macro_vars" and shape(kind).get(key) == "macrovariable_ARRAY":
+            from .macro_variables import write_macros
+
+            write_macros(node, new)
+            order_children(node, kind)
+            continue
         if old == new:
             continue
         # Compact projections spell empty object/array properties as "".

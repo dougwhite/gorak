@@ -2,6 +2,7 @@
   <topform width="6000" height="3000">
     <bgbitmap src="images/badge.png" path="art/badge.png" native-t7="1" native-t8="7"/>
     <entryfield name="quantity" xleft="200" ytop="200" width="1400" height="300" datatype="integer" fieldstyle="0">
+      <cursor syscursor="1"/>
       <defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
     </entryfield>
     <buttonfield name="calculate" xleft="200" ytop="700" width="1400" height="300" bgcolor="6" textlabel="Calculate" fieldstyle="1">

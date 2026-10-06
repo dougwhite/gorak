@@ -48,6 +48,9 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         write_component(destination, native)
         assert equivalent(native, restore_component(destination))
     panel = restore_component(source / "example/panel.w4gl")
+    assert panel.findtext("macro_vars/row/name") == "$CAPTION"
+    assert panel.findtext("macro_vars/row/value") == "Preview"
+    assert panel.findtext(".//cursor/syscursor") == "1"
     value = panel.find("topform/childfields/row/defaultstring")
     assert value is not None
     assert text_value(value) == "before\x07after"

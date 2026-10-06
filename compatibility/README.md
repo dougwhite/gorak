@@ -7,7 +7,7 @@ temporary directory before editing or reconstructing it.
 It exercises application includes, procedure and user-class metadata, methods,
 frame scripts, explicit geometry/field state, Unique Style (`fieldstyle=0`), a
 typed table-column prototype and viewport content, and an invalid XML character instruction.
-It also covers saved queries, PNG references and class-icon collections.
+It also covers saved queries, PNG references, class icons, cursors and ordered macro definitions.
 The button's actual colour is `6`; the project/application/frame creation-style
 colours are `6`/`7`/`8`. Existing fields must never inherit the frame palette colour.
 
