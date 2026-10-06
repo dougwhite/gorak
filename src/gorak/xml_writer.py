@@ -17,8 +17,12 @@ def scalar(parent: etree._Element, name: str, value: str) -> None:
 
 def datatype(row: etree._Element, declaration: str) -> None:
     # Preserve embedded legacy control characters; do not silently repair types.
+    identifier = r"[A-Za-z_][A-Za-z0-9_\x00-\x08\x0b\x0c\x0e-\x1f]*"
+    type_name = (
+        rf"(?:{identifier}!{identifier}|LONG BYTE|{identifier}(?:\(\d+(?:,\s*\d+)?\))?)"
+    )
     match = re.fullmatch(
-        r"(ARRAY OF )?([A-Za-z_][A-Za-z0-9_\x00-\x08\x0b\x0c\x0e-\x1f]*(?:\(\d+(?:,\s*\d+)?\))?)( NOT NULL)?",
+        rf"(ARRAY OF )?({type_name})( NOT NULL)?",
         declaration,
         re.IGNORECASE,
     )

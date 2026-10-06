@@ -32,6 +32,12 @@ SUPPORTED_TYPES = {
 }
 
 
+def validate_attribute_name(value: str) -> None:
+    """Attribute names are XML metadata, not component paths or command arguments."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]{0,31}", value):
+        raise ProjectError(f"Invalid OpenROAD attribute name: {value!r}")
+
+
 def overlay_metadata(node: etree._Element, path: Path) -> None:
     from .importer import validate_name
     from .xml_writer import datatype
@@ -136,7 +142,9 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
             if name.casefold() in seen:
                 raise ProjectError(f"Duplicate declaration: {name}")
             seen.add(name.casefold())
-            if table != "taggedvalues":
+            if table == "attributes":
+                validate_attribute_name(name)
+            elif table == "methods":
                 validate_name(name)
             row = rows.get(name.casefold())
             if row is None:

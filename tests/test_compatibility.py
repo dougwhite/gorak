@@ -25,7 +25,7 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     shutil.copytree(ROOT / "compatibility/project", source)
     shutil.copytree(source, projected)
     paths = sorted(source.glob("*/*.w4gl"))
-    assert len(paths) == 6
+    assert len(paths) == 7
     for metadata in source.glob("*/app.json"):
         native = etree.fromstring(document([restore_application(metadata.parent)]))
         from gorak.image_assets import externalize
@@ -51,6 +51,17 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         restore_component(source / "example/unstyled.w4gl").find("fielddefaults")
         is None
     )
+    typed = restore_component(source / "example/typed_values.w4gl")
+    assert typed.findtext("attributes/row[displayname='amount_$T']/datatype") == "float"
+    assert (
+        typed.findtext("attributes/row[displayname='items']/datatype")
+        == "shared!counter"
+    )
+    assert typed.findtext("attributes/row[displayname='items']/isarray") == "1"
+    assert (
+        typed.findtext("attributes/row[displayname='payload']/datatype") == "long byte"
+    )
+    assert typed.findtext("methods/row/datatype") == "shared!counter"
     library = restore_component(source / "example/automation.w4gl")
     assert library.findtext("uniqueid") == "{00020430-0000-0000-C000-000000000046}"
     assert library.findtext("minorversion") == "0"

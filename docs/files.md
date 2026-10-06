@@ -60,6 +60,8 @@ constants, globals, include/shared scripts, ghost frames, external libraries and
 
 Unsupported source shapes are refused rather than silently discarded.
 
+Declarations support qualified types (`APP!CLASS`), `LONG BYTE`, and quoted attribute names containing `$`.
+
 Saved query metadata lives in optional `<component>.queries.json` files.
 
 Macro definitions use ordered tables such as `[[framesource.macro_vars]]`, with `name`,
