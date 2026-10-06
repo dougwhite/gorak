@@ -367,9 +367,11 @@ def apply_field_default_inheritance(
         if node is None:
             raise ProjectError("Native stylesheet export requires authoritative XML")
         stylesheet = node.find("fielddefaults")
-        if stylesheet is None:
-            stylesheet = etree.Element("fielddefaults")
-        delta = native_styles.difference(parent, native_styles.encode(stylesheet))
+        if native_styles.is_absent(stylesheet):
+            delta = {"absent": True}
+        else:
+            assert stylesheet is not None
+            delta = native_styles.difference(parent, native_styles.encode(stylesheet))
         markup = encode_frame_markup(
             [child for child in node if child.tag in FRAME_MARKUP_CHILDREN],
             {},

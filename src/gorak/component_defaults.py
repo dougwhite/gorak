@@ -21,7 +21,10 @@ def minimal_component_defaults(
     from . import native_styles
 
     parent = native_styles.parent_styles(source.parent)
-    return native_styles.difference(parent, native_styles.resolve(parent, overrides))
+    resolved = native_styles.resolve_frame(parent, overrides)
+    if resolved.get("absent") is True:
+        return resolved
+    return native_styles.difference(parent, resolved)
 
 
 def write_component_defaults(

@@ -40,7 +40,7 @@ def describe(root: Path, app: str | None, component: str | None) -> styles.Json:
             value = styles.frame_styles(source)
     return {
         "stylesheet": value,
-        "entries": styles.entries(value),
+        "entries": [] if value.get("absent") is True else styles.entries(value),
     }
 
 
@@ -109,7 +109,9 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                         continue
                     frames[source] = styles.frame_styles(source)
                 children = [
-                    value for path, value in frames.items() if path.parent == folder
+                    value
+                    for path, value in frames.items()
+                    if path.parent == folder and value.get("absent") is not True
                 ]
                 if children and all(value == children[0] for value in children):
                     apps[folder] = children[0]
@@ -132,8 +134,12 @@ def maintain(root: Path, operation: str, *, dry_run: bool = False) -> str:
                 )
             for source, value in frames.items():
                 parent = apps[source.parent]
-                delta = styles.difference(parent, value)
-                if styles.resolve(parent, delta) != value:
+                delta = (
+                    value
+                    if value.get("absent") is True
+                    else styles.difference(parent, value)
+                )
+                if styles.resolve_frame(parent, delta) != value:
                     raise ProjectError("Stylesheet compaction changed a frame")
                 changes[source.with_suffix(".fielddefaults.json")] = (
                     encoded(delta) if styles.has_overrides(delta) else None

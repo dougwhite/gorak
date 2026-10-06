@@ -25,7 +25,7 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     shutil.copytree(ROOT / "compatibility/project", source)
     shutil.copytree(source, projected)
     paths = sorted(source.glob("*/*.w4gl"))
-    assert len(paths) == 3
+    assert len(paths) == 4
     for metadata in source.glob("*/app.json"):
         native = etree.fromstring(document([restore_application(metadata.parent)]))
         from gorak.image_assets import externalize
@@ -47,6 +47,10 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         destination.with_suffix(".queries.json").unlink(missing_ok=True)
         write_component(destination, native)
         assert equivalent(native, restore_component(destination))
+    assert (
+        restore_component(source / "example/unstyled.w4gl").find("fielddefaults")
+        is None
+    )
     panel = restore_component(source / "example/panel.w4gl")
     assert panel.findtext("macro_vars/row/name") == "$CAPTION"
     assert panel.findtext("macro_vars/row/value") == "Preview"
