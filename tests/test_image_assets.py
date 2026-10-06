@@ -558,3 +558,61 @@ def test_inline_icons_require_class_and_tagged_key(tmp_path: Path, source: str) 
     path.write_text(source)
     with pytest.raises(ProjectError):
         restore_component(path)
+
+
+def test_all_builtin_images_roundtrip_without_local_assets(tmp_path: Path) -> None:
+    from gorak import builtin_images
+
+    for name in builtin_images.catalog():
+        ref = {"src": "builtin:" + name}
+        original = read_bitmap(tmp_path, ref)
+        # The historical filename identifies a default; pixels must also match.
+        exported = export_bitmap(tmp_path, encode(original), "unused")
+        assert exported["src"] == ref["src"]
+        assert read_bitmap(tmp_path, exported) == original
+        assert builtin_images.image_bytes(ref["src"])
+    assert not list(tmp_path.iterdir())
+
+
+def test_builtin_match_requires_pixels_and_original_name(tmp_path: Path) -> None:
+    a = read_bitmap(tmp_path, "builtin:pal_icon6")
+    changed = replace(a, pixels=bytes([a.pixels[0] ^ 255]) + a.pixels[1:])
+    assert export_bitmap(tmp_path, encode(changed), "x")["src"].startswith("images/")
+    header = list(a.header)
+    header[5] = "12:separate.xbm"
+    independent = replace(a, header=tuple(header))
+    assert (
+        export_bitmap(tmp_path, encode(independent), "x")["src"]
+        == "images/separate.png"
+    )
+
+
+def test_builtin_preserves_reference_native_overrides(tmp_path: Path) -> None:
+    original = read_bitmap(
+        tmp_path,
+        {
+            "src": "builtin:class-icon-16",
+            "path": r"art\1616_2.bmp",
+            "native-t7": "1",
+            "native-t8": "8",
+        },
+    )
+    exported = export_bitmap(tmp_path, encode(original), "unused")
+    assert exported["src"] == "builtin:class-icon-16"
+    assert exported["path"] == r"art\1616_2.bmp"
+    assert read_bitmap(tmp_path, exported) == original
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "builtin:missing",
+        "builtin:../pal_icon6",
+        "builtin:/pal_icon6",
+        "builtin:pal_icon6.png",
+    ],
+)
+def test_unknown_builtin_is_refused(tmp_path: Path, ref: str) -> None:
+    with pytest.raises(ProjectError, match="Unknown built-in"):
+        read_bitmap(tmp_path, ref)

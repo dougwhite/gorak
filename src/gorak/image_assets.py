@@ -179,12 +179,21 @@ def validate_reference(value: Any) -> dict[str, str]:
 
 def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
     ref = validate_reference(reference)
-    path = asset_path(folder, ref["src"])
-    if path.with_suffix(path.suffix + ".bitmap.json").exists():
-        raise ProjectError(
-            "Obsolete bitmap sidecar; re-export this application before using bitmap references"
-        )
-    image = read_png(path)
+    if ref["src"].startswith("builtin:"):
+        from . import builtin_images
+
+        item = builtin_images.entry(ref["src"])
+        ref.setdefault("path", str(item["path"]))
+        with Image.open(BytesIO(builtin_images.image_bytes(ref["src"]))) as source:
+            source.load()
+            image = source.copy()
+    else:
+        path = asset_path(folder, ref["src"])
+        if path.with_suffix(path.suffix + ".bitmap.json").exists():
+            raise ProjectError(
+                "Obsolete bitmap sidecar; re-export this application before using bitmap references"
+            )
+        image = read_png(path)
     if image.mode not in {"1", "P", "RGB", "RGBA"} or "transparency" in image.info:
         image = image.convert("RGBA")
     w, h = image.size
@@ -350,6 +359,13 @@ class AssetWriter:
         with Image.open(BytesIO(data)) as image:
             fields = reference_fields(bitmap, image)
         origin = bitmap.origin
+        from . import builtin_images
+
+        builtin = builtin_images.match(data, origin)
+        if builtin:
+            if fields.get("path") == builtin_images.entry(builtin)["path"]:
+                fields.pop("path")
+            return {"src": builtin, **fields}
         base = (
             re.sub(
                 r"[^A-Za-z0-9_.-]",

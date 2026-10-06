@@ -21,6 +21,10 @@ id = "2"
 src = "images/counter-active.png"
 mask = "2x2:eNprcAAAAUIAwQ=="
 
+[[icons.entries]]
+id = "3"
+src = "builtin:class-icon-16"
+
 ===
 METHOD increment() =
 {

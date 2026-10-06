@@ -113,7 +113,7 @@ def test_image_contract_semantics(tmp_path: Path) -> None:
     assert decode(app.findtext("windowicon/obj_encoded")).pixels == expected
     counter = restore_component(source / "shared/counter.w4gl")
     rows = counter.findall("extension/row")[1].findall("choiceitems/row")
-    assert [row.findtext("enumvalue") for row in rows] == ["1", "2"]
+    assert [row.findtext("enumvalue") for row in rows] == ["1", "2", "3"]
     pixels = read_bitmap(source / "shared", "images/counter.png").pixels
     assert decode(rows[0].findtext("enumbitmap/obj_encoded")).pixels == pixels
     other = read_bitmap(source / "shared", "images/counter-active.png").pixels
@@ -122,3 +122,17 @@ def test_image_contract_semantics(tmp_path: Path) -> None:
     assert restored.pixels == other
     assert restored.mask == b"\x80\x40"
     assert restored.header[12] == "12"
+
+
+def test_builtin_fixture_needs_no_local_copy(tmp_path: Path) -> None:
+    from gorak.bitmap_codec import decode
+    from gorak.image_assets import read_bitmap
+
+    source = tmp_path / "project"
+    shutil.copytree(ROOT / "compatibility/project", source)
+    counter = restore_component(source / "shared/counter.w4gl")
+    rows = counter.findall("extension/row")[1].findall("choiceitems/row")
+    assert decode(rows[2].findtext("enumbitmap/obj_encoded")) == read_bitmap(
+        source / "shared", "builtin:class-icon-16"
+    )
+    assert not (source / "shared/images/class-icon-16.png").exists()
