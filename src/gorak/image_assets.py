@@ -177,6 +177,13 @@ def validate_reference(value: Any) -> dict[str, str]:
     return dict(value)
 
 
+def encode_icon(folder: Path, reference: str | dict[str, str]) -> str:
+    """Keep unloaded native icons inline; resolve populated image references."""
+    if isinstance(reference, str) and is_empty(reference):
+        return reference
+    return encode(read_bitmap(folder, reference))
+
+
 def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
     ref = validate_reference(reference)
     if ref["src"].startswith("builtin:"):
@@ -378,10 +385,11 @@ class AssetWriter:
         if directory.is_symlink():
             raise ProjectError("Symlinked image directory")
         directory.mkdir(parents=True, exist_ok=True)
-        for candidate in sorted(directory.glob("*.png")):
+        for candidate in sorted(directory.rglob("*.png")):
             if candidate.is_symlink():
                 raise ProjectError("Symlinked image asset")
             name = candidate.relative_to(self.folder).as_posix()
+            asset_path(self.folder, name)
             known = self.origins.get(name, {name})
             if not origin and not re.fullmatch(
                 re.escape(base) + r"(?:-\d+)?", candidate.stem

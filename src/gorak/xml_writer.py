@@ -56,13 +56,12 @@ def new_application(path: Path) -> etree._Element:
         if value:
             scalar(node, tag, value)
     if metadata.get("window_icon"):
-        from .bitmap_codec import encode
-        from .image_assets import read_bitmap
+        from .image_assets import encode_icon
 
         scalar(
             etree.SubElement(node, "windowicon"),
             "obj_encoded",
-            encode(read_bitmap(path, metadata["window_icon"])),
+            encode_icon(path, metadata["window_icon"]),
         )
     includes = metadata.get("included_applications", [])
     if not isinstance(includes, list):

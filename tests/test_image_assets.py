@@ -616,3 +616,101 @@ def test_builtin_preserves_reference_native_overrides(tmp_path: Path) -> None:
 def test_unknown_builtin_is_refused(tmp_path: Path, ref: str) -> None:
     with pytest.raises(ProjectError, match="Unknown built-in"):
         read_bitmap(tmp_path, ref)
+
+
+@pytest.mark.parametrize("location", ["application", "frame"])
+def test_unloaded_window_icon_full_roundtrip(tmp_path: Path, location: str) -> None:
+    import json
+
+    from gorak.contract_source import equivalent
+    from gorak.export import application_metadata
+    from gorak.parser import parse_application_xml
+    from gorak.portable_source import restore_application, restore_component
+    from gorak.style_values import XSI
+    from tests.native_source import write_component
+
+    unloaded = (
+        "\n".join(
+            [
+                "12:bitmapobject",
+                "0",
+                "1",
+                "9",
+                "0",
+                "-1:",
+                "0",
+                "1",
+                "2",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "-1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "-1:",
+                "-1:",
+            ]
+        )
+        + "\n"
+    )
+    folder = tmp_path / "example"
+    folder.mkdir()
+    node = etree.Element(
+        "APPLICATION" if location == "application" else "COMPONENT", name="example"
+    )
+    etree.SubElement(
+        etree.SubElement(node, "windowicon"), "obj_encoded"
+    ).text = unloaded
+    if location == "application":
+        projected = externalize(node, folder, "example")
+        root = etree.Element("OPENROAD")
+        root.append(projected)
+        parsed = parse_application_xml(root)
+        metadata = application_metadata(
+            parsed.application, included_applications=parsed.included_applications
+        )
+        (folder / "app.json").write_text(json.dumps(metadata))
+        restored = restore_application(folder)
+        assert metadata["window_icon"] == unloaded
+    else:
+        from gorak import native_styles
+
+        node.set(XSI, "framesource")
+        etree.SubElement(node, "topform")
+        node.append(native_styles.decode(native_styles.baseline()))
+        source = folder / "example.w4gl"
+        write_component(source, node)
+        restored = restore_component(source)
+        assert equivalent(node, restored)
+    assert restored.findtext("windowicon/obj_encoded") == unloaded
+    assert not list(folder.rglob("*.png"))
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_nested_asset_reference_reused(tmp_path: Path, staged: bool) -> None:
+    import json
+    import shutil
+
+    from gorak.image_assets import AssetWriter
+
+    folder = tmp_path / "original"
+    folder.mkdir()
+    native = bitmap()
+    ref = export_bitmap(folder, encode(native), "unused")
+    nested = folder / "images/sub/logo.png"
+    nested.parent.mkdir()
+    (folder / ref["src"]).rename(nested)
+    ref["src"] = "images/sub/logo.png"
+    (folder / "app.json").write_text(json.dumps({"window_icon": ref}))
+    target = tmp_path / "stage" if staged else folder
+    if staged:
+        shutil.copytree(folder / "images", target / "images")
+    writer = AssetWriter(target, origins_from=folder if staged else None)
+    assert writer.export(encode(native), "unused") == ref
+    assert read_bitmap(target, ref) == native
+    assert list((target / "images").rglob("*.png")) == [target / ref["src"]]

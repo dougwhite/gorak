@@ -79,14 +79,13 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         if new == "" and old is None and shape(kind).get(key) in shapes():
             continue
         if key == "windowicon" and isinstance(new, (str, dict)) and new:
-            from .bitmap_codec import encode
-            from .image_assets import read_bitmap
+            from .image_assets import encode_icon
 
             for old_icon in node.findall("windowicon"):
                 node.remove(old_icon)
             etree.SubElement(
                 etree.SubElement(node, "windowicon"), "obj_encoded"
-            ).text = encode(read_bitmap(path.parent, new))
+            ).text = encode_icon(path.parent, new)
             continue
         if new is not None and not isinstance(new, (str, int, bool)):
             raise ProjectError(f"Component property must be scalar: {key}")

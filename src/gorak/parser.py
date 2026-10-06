@@ -149,7 +149,7 @@ def parse_application_xml(
             window_icon=(
                 dict(icon.attrib)
                 if icon is not None and "src" in icon.attrib
-                else normalized(first_text(app_node, "windowicon/obj_encoded"))
+                else normalized(app_node.findtext("windowicon/obj_encoded") or "")
             ),
         ),
         components=parse_components_xml(root),
@@ -594,8 +594,14 @@ def extract_props(
 
     for child in node:
         if child.tag not in ignored:
-            if child.tag == "windowicon" and "src" in child.attrib:
-                props["windowicon"] = dict(child.attrib)
+            if child.tag == "windowicon":
+                from .bitmap_codec import normalized
+
+                props["windowicon"] = (
+                    dict(child.attrib)
+                    if "src" in child.attrib
+                    else normalized(child.findtext("obj_encoded") or "")
+                )
                 continue
             value = (
                 text_value(child) if is_text_node(child) else child.text or ""
