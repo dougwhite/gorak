@@ -38,6 +38,13 @@ def without_rows(node: etree._Element) -> etree._Element:
     return result
 
 
+def is_absent(node: etree._Element | None) -> bool:
+    """OpenROAD drops completely empty stylesheet containers during import."""
+    return node is None or (
+        not node.attrib and not len(node) and not (node.text or "").strip()
+    )
+
+
 def encode(node: etree._Element) -> Json:
     """Preserve group metadata and samples without suppressing native properties."""
     if node.tag != "fielddefaults":
@@ -148,6 +155,7 @@ def difference(parent: Json, desired: Json) -> Json:
 def is_native_layer(value: Any) -> TypeGuard[Json]:
     """Recognise named stylesheet properties without a source version marker."""
     return isinstance(value, dict) and not set(value) - {
+        "absent",
         "standalone",
         "properties",
         "group_order",
@@ -162,6 +170,8 @@ def resolve(parent: Json | None, layer: Json) -> Json:
         raise ProjectError(
             "Unsupported stylesheet properties; re-export the application"
         )
+    if "absent" in layer:
+        raise ProjectError("Only frame stylesheet sidecars can use absent: true")
     values = {key: value for key, value in layer.items() if key != "standalone"}
     if "standalone" in layer:
         if layer["standalone"] is not True:
@@ -209,8 +219,17 @@ def parent_styles(folder: Path) -> Json:
     return resolve(project_styles(folder.parent), read(folder / "field_defaults.json"))
 
 
+def resolve_frame(parent: Json, layer: Json) -> Json:
+    """A frame can explicitly opt out of stylesheet inheritance."""
+    if "absent" in layer:
+        if layer != {"absent": True} or layer["absent"] is not True:
+            raise ProjectError("An absent stylesheet requires only absent: true")
+        return {"absent": True}
+    return resolve(parent, layer)
+
+
 def frame_styles(source: Path) -> Json:
-    return resolve(
+    return resolve_frame(
         parent_styles(source.parent), read(source.with_suffix(".fielddefaults.json"))
     )
 

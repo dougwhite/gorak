@@ -130,7 +130,9 @@ def decode_component(path: Path) -> etree._Element:
             raise ProjectError(
                 "Inline field defaults are unsupported; re-export the application"
             )
-        node.append(native_styles.decode(native_styles.frame_styles(path)))
+        stylesheet = native_styles.frame_styles(path)
+        if stylesheet.get("absent") is not True:
+            node.append(native_styles.decode(stylesheet))
         index = MarkupDefaultsIndex({}, {}, explicit=True)
         markup = parse_markup(path.with_suffix(".wml").read_text())
         from .image_assets import resolve
@@ -176,6 +178,11 @@ def equivalent(
 
     left, right = deepcopy(left), deepcopy(right)
     for root in (left, right):
+        from .native_styles import is_absent
+
+        stylesheet = root.find("fielddefaults")
+        if stylesheet is not None and is_absent(stylesheet):
+            root.remove(stylesheet)
         for bitmap in root.iter("obj_encoded"):
             bitmap.text = normalized(bitmap.text or "")
     for tag in ("extension", "windowicon"):
@@ -201,7 +208,12 @@ def equivalent(
             and encode(lstyle) != encode(rstyle)
         ):
             return False
-    if parse_component_node(left) != parse_component_node(right):
+    from dataclasses import replace
+
+    # Attribute order in serialized WML is immaterial; compare its structure below.
+    if replace(parse_component_node(left), markup=None) != replace(
+        parse_component_node(right), markup=None
+    ):
         return False
     # Do not let default suppression (or style selection) hide changed native
     # scalar properties. Keep bitmap whitespace normalization from the parser.

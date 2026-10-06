@@ -62,6 +62,9 @@ Unsupported source shapes are refused rather than silently discarded.
 
 Saved query metadata lives in optional `<component>.queries.json` files.
 
+Macro definitions use ordered tables such as `[[framesource.macro_vars]]`, with `name`,
+`value` and optional `shortremark`; re-export older sources to recover omitted definitions.
+
 ## Frame WML
 
 Frames use `.w4gl` for component metadata and main script, and `.wml` for
@@ -108,7 +111,8 @@ A stock project normally has an empty root delta:
 ```
 
 Application and frame stylesheet files contain only differences from their
-parent. Empty frame deltas are omitted.
+parent. Empty frame deltas are omitted; `{"absent": true}` preserves a frame
+with no native stylesheet.
 
 Groups and native style slots use stable names such as `entryfield:2`,
 `style1`, and `style2`. A simple override looks like:
