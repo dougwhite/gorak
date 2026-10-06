@@ -13,6 +13,7 @@ class Application:
     description: str
     database_name: str = ""
     database_type: str = ""
+    window_icon: str = ""
 
 
 @dataclass(frozen=True)

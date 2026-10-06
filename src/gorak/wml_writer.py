@@ -2,16 +2,13 @@
 
 from lxml import etree
 
-from .errors import ProjectError
+from .source_xml import from_bytes
 from .xml_text import validate_instructions
 
 XSI = "{http://www.w3.org/2001/XMLSchema-instance}type"
 
 
 def parse_markup(text: str) -> etree._Element:
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, strip_cdata=False)
-    tree = etree.fromstring(text.encode("utf-8"), parser)
-    if tree.getroottree().docinfo.doctype:
-        raise ProjectError("Frame markup must not contain a document type")
+    tree = from_bytes(text.encode("utf-8"))
     validate_instructions(tree)
     return tree

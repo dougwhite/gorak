@@ -24,6 +24,7 @@ FRAME_COMPONENT_TYPES = frozenset({"framesource", "frametemplate"})
 
 IGNORED_PROPERTIES = {
     "queries",
+    "extension",
     "script",
     "fielddefaults",
     "attributes",
@@ -134,6 +135,8 @@ def parse_application_xml(
     if name is None:
         raise ValueError("<APPLICATION> node must have a name attribute")
 
+    from .bitmap_codec import normalized
+
     return ApplicationExport(
         application=Application(
             name=name,
@@ -141,6 +144,9 @@ def parse_application_xml(
             description=first_text(app_node, "short_remark", "versshortremarks"),
             database_name=first_text(app_node, "databasename"),
             database_type=first_text(app_node, "database_type"),
+            window_icon=normalized(
+                first_text(app_node, "windowicon/src", "windowicon/obj_encoded")
+            ),
         ),
         components=parse_components_xml(root),
         included_applications=parse_included_applications(app_node),
@@ -571,6 +577,9 @@ def extract_props(
 
     for child in node:
         if child.tag not in ignored:
+            if child.tag == "windowicon" and child.find("src") is not None:
+                props["windowicon"] = child.findtext("src") or ""
+                continue
             value = (
                 text_value(child) if is_text_node(child) else child.text or ""
             ).strip(" \t\r\n")

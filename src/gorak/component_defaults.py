@@ -24,6 +24,11 @@ def minimal_component_defaults(
 def write_component_defaults(source: Path, overrides: dict[str, Any]) -> None:
     """Write only differences from the effective app; remove an empty file."""
     values = minimal_component_defaults(source, overrides)
+    from .image_assets import stylesheet_assets
+
+    values = stylesheet_assets(
+        values, source.parent, exporting=True, owner=source.stem + "-style"
+    )
     path = defaults_path(source)
     if values:
         path.write_text(

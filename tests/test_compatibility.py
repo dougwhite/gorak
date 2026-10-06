@@ -28,16 +28,24 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     assert len(paths) == 3
     for metadata in source.glob("*/app.json"):
         native = etree.fromstring(document([restore_application(metadata.parent)]))
+        from gorak.image_assets import externalize
+
+        native = externalize(
+            native, projected / metadata.parent.name, metadata.parent.name
+        )
         parsed = parse_application_xml(native)
-        assert application_metadata(
+        actual = application_metadata(
             parsed.application, included_applications=parsed.included_applications
-        ) == json.loads(metadata.read_text())
+        )
+        expected = json.loads(metadata.read_text())
+        assert actual == expected
     for path in paths:
         native = etree.fromstring(document([restore_component(path)])).find("COMPONENT")
         assert native is not None
         destination = projected / path.relative_to(source)
         # Re-export must generate the sidecar, not reuse the fixture copy.
         destination.with_suffix(".queries.json").unlink(missing_ok=True)
+        destination.with_suffix(".icons.json").unlink(missing_ok=True)
         write_component(destination, native)
         assert equivalent(native, restore_component(destination))
     panel = restore_component(source / "example/panel.w4gl")
@@ -83,3 +91,27 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     ) == json.loads((source / "shared/counter.queries.json").read_text())
     restored = restore_component(projected / "shared/counter.w4gl")
     assert signature(queries) == signature(restored.find("queries"))
+
+
+def test_image_contract_semantics(tmp_path: Path) -> None:
+    from gorak.bitmap_codec import decode
+    from gorak.image_assets import read_bitmap
+
+    source = tmp_path / "project"
+    shutil.copytree(ROOT / "compatibility/project", source)
+    panel = restore_component(source / "example/panel.w4gl")
+    expected = bytes(
+        [230, 100, 30, 255, 130, 40, 200, 127, 30, 20, 10, 0, 30, 180, 240, 255]
+    )
+    for location in ("windowicon/obj_encoded", "topform/bgbitmap/obj_encoded"):
+        assert decode(panel.findtext(location)).pixels == expected
+    app = restore_application(source / "example")
+    assert decode(app.findtext("windowicon/obj_encoded")).pixels == expected
+    counter = restore_component(source / "shared/counter.w4gl")
+    rows = counter.findall("extension/row")[1].findall("choiceitems/row")
+    assert [row.findtext("enumvalue") for row in rows] == ["1", "2"]
+    pixels = read_bitmap(source / "shared", "images/counter.png").pixels
+    assert decode(rows[0].findtext("enumbitmap/obj_encoded")).pixels == pixels
+    other = read_bitmap(source / "shared", "images/counter-active.png").pixels
+    assert other != pixels
+    assert decode(rows[1].findtext("enumbitmap/obj_encoded")).pixels == other

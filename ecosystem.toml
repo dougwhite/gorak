@@ -1,2 +1,2 @@
 gorak_cli = "0.1.0" # CLI input/output contract; change only when that contract changes
-source_version = 2 # Source format contract, including stylesheets and query sidecars
+source_version = 3 # Source format contract, including PNG assets and icon collections

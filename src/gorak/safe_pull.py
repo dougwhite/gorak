@@ -181,6 +181,12 @@ def _sync_project(
             defaults = root / "field_defaults.json"
             if defaults.exists():
                 copy2(defaults, stage / defaults.name)
+            from .image_assets import source_files
+
+            for asset in source_files(root):
+                target = stage / asset.relative_to(root)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                copy2(asset, target)
             exported_count = 0
             for app in sorted(apps):
                 name = names.get(app, available.get(app, app))
@@ -218,6 +224,11 @@ def _sync_project(
                         if path.name.removesuffix(".queries.json").casefold()
                         == component
                     )
+                    old_files.update(
+                        path
+                        for path in (root / name).glob("*.icons.json")
+                        if path.name.removesuffix(".icons.json").casefold() == component
+                    )
                     for path in (root / name / ".gorak-source/components").glob(
                         "*.xml"
                     ):
@@ -228,6 +239,7 @@ def _sync_project(
                     old_files.update((root / name).glob("*.wml"))
                     old_files.update((root / name).glob("*.fielddefaults.json"))
                     old_files.update((root / name).glob("*.queries.json"))
+                    old_files.update((root / name).glob("*.icons.json"))
                 old_files.update((root / ".openroad" / name).glob("*.xml"))
                 for path in old_files:
                     if path.is_file():
@@ -238,6 +250,15 @@ def _sync_project(
                 if app_defaults.exists():
                     (stage / name).mkdir(parents=True, exist_ok=True)
                     copy2(app_defaults, stage / name / "field_defaults.json")
+                # Seed assets for stable name allocation; never prune shared files.
+                from .image_assets import source_files
+
+                for asset in source_files(root / name):
+                    if "images" not in asset.relative_to(root / name).parts:
+                        continue
+                    target = stage / name / asset.relative_to(root / name)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    copy2(asset, target)
                 paths = application_export_paths(stage, name)
                 exported = export_application_to_paths(
                     connection, name, paths, progress

@@ -46,7 +46,7 @@ def new_application(path: Path) -> etree._Element:
         "database_name": "databasename",
         "database_type": "database_type",
     }
-    if set(metadata) - {*fields, "included_applications"}:
+    if set(metadata) - {*fields, "included_applications", "window_icon"}:
         raise ProjectError(f"Unsupported application metadata: {path}")
     node = etree.Element("APPLICATION", name=path.name)
     for key, tag in fields.items():
@@ -55,6 +55,15 @@ def new_application(path: Path) -> etree._Element:
             raise ProjectError(f"Application {key} must be a string")
         if value:
             scalar(node, tag, value)
+    if metadata.get("window_icon"):
+        from .bitmap_codec import encode
+        from .image_assets import read_bitmap
+
+        scalar(
+            etree.SubElement(node, "windowicon"),
+            "obj_encoded",
+            encode(read_bitmap(path, metadata["window_icon"])),
+        )
     includes = metadata.get("included_applications", [])
     if not isinstance(includes, list):
         raise ProjectError("included_applications must be an array")
@@ -85,6 +94,7 @@ def new_application(path: Path) -> etree._Element:
         "procstart",
         "databasename",
         "database_type",
+        "windowicon",
     ]
     node[:] = sorted(node, key=lambda child: order.index(str(child.tag)))
     return node

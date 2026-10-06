@@ -167,3 +167,6 @@ OpenROAD export → readable source → OpenROAD import → readable re-export
 OpenROAD may canonicalize its XML representation, so byte-for-byte XML identity
 is not required. The reconstructed application should preserve the supported
 source semantics and remain stable through repeated export/import cycles.
+
+[Image assets](images.md) live in each application’s `images/` directory, with relative
+references in WML or metadata and `<component>.icons.json` for class-icon collections.

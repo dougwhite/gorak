@@ -11,6 +11,11 @@ from gorak.query_metadata import write_queries
 
 
 def write_component(path: Path, node: etree._Element) -> None:
+    from gorak.class_icons import write_icons
+    from gorak.image_assets import externalize
+
+    node = externalize(node, path.parent, path.stem)
+    write_icons(node, path)
     component = parse_component_node(node)
     apply_field_default_inheritance(
         path.parent.parent, path.parent.name, [component], source_nodes=[node]

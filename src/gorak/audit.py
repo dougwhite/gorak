@@ -6,8 +6,10 @@ from typing import Any
 from lxml import etree
 
 from .parser import FRAME_COMPONENT_TYPES, FRAME_MARKUP_CHILDREN, NS, xml_root
+from .source_xml import read_tree
 
 REPRESENTED_APP_CHILDREN = {
+    "windowicon",
     "database_type",
     "databasename",
     "included_apps",
@@ -17,6 +19,7 @@ REPRESENTED_APP_CHILDREN = {
     "versshortremarks",
 }
 REPRESENTED_COMPONENT_CHILDREN = {
+    "windowicon",
     "queries",
     "attributes",
     "fielddefaults",
@@ -33,7 +36,7 @@ IGNORED_COMPONENT_CHILDREN = {"extension"}
 def audit_xml_file(path: str) -> dict[str, Any]:
     """Audit one OpenROAD XML export file by path."""
 
-    return {"path": path, **audit_xml(etree.parse(path))}
+    return {"path": path, **audit_xml(read_tree(path))}
 
 
 def audit_project_xml(root: Path) -> list[dict[str, Any]]:

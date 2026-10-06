@@ -25,10 +25,9 @@ def validate_name(value: str) -> None:
 
 
 def component_tree(path: Path, name: str) -> etree._Element:
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, strip_cdata=False)
-    tree = etree.parse(str(path), parser)
-    if tree.docinfo.doctype:
-        raise ProjectError("Import does not support XML document type declarations")
+    from .source_xml import read_tree
+
+    tree = read_tree(path)
     nodes = [n for n in tree.getroot().findall("./COMPONENT") if n.get("name") == name]
     if len(nodes) != 1:
         raise ProjectError(f"Expected exactly one component named {name} in {path}")
@@ -38,6 +37,10 @@ def component_tree(path: Path, name: str) -> etree._Element:
 def signature(node: etree._Element) -> object:
     """Compare all XML content, ignoring only element-only formatting whitespace."""
     text = node.text or ""
+    if node.tag == "obj_encoded":
+        from .bitmap_codec import normalized
+
+        text = normalized(text)
     mixed = any(isinstance(c, etree._ProcessingInstruction) for c in node)
     if len(node) and not mixed and not text.strip():
         text = ""
@@ -87,9 +90,24 @@ def import_component(
         defaults_files = {
             defaults_path(source): "source.fielddefaults.json",
             source.with_suffix(".queries.json"): "source.queries.json",
+            source.with_suffix(".icons.json"): "source.icons.json",
             root / "field_defaults.json": "root-field_defaults.json",
             source.parent / "field_defaults.json": "app-field_defaults.json",
         }
+        from .image_assets import source_files
+
+        defaults_files.update(
+            {
+                p: "assets/" + p.relative_to(source.parent).as_posix()
+                for p in source_files(source.parent)
+            }
+        )
+        defaults_files.update(
+            {
+                p: "root-assets/" + p.relative_to(root).as_posix()
+                for p in source_files(root)
+            }
+        )
         defaults_bytes = {
             path: path.read_bytes() if path.is_file() else None
             for path in defaults_files
@@ -123,7 +141,9 @@ def import_component(
                 (operation / "source.wml").write_bytes(markup_bytes)
             for path, content in defaults_bytes.items():
                 if content is not None:
-                    (operation / defaults_files[path]).write_bytes(content)
+                    retained = operation / defaults_files[path]
+                    retained.parent.mkdir(parents=True, exist_ok=True)
+                    retained.write_bytes(content)
             (operation / "baseline.xml").write_bytes(baseline_path.read_bytes())
             before = operation / "before.xml"
             backup_component_xml(connection, app, component, before)

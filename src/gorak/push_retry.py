@@ -176,15 +176,24 @@ def prepare_tracking(
     (operation / "source").mkdir()
     # Preserve readable source even when later reconciliation explicitly takes DB.
     for folder in root.glob("*/app.json"):
-        for path in folder.parent.iterdir():
+        for path in folder.parent.rglob("*"):
             if path.is_file() and (
                 path.suffix in {".w4gl", ".wml"}
-                or path.name.endswith((".fielddefaults.json", ".queries.json"))
+                or path.name.endswith(
+                    (".fielddefaults.json", ".queries.json", ".icons.json")
+                )
+                or "images" in path.relative_to(folder.parent).parts
                 or path.name in {"app.json", "field_defaults.json"}
             ):
                 copy = operation / "source" / path.relative_to(root)
                 copy.parent.mkdir(parents=True, exist_ok=True)
                 copy.write_bytes(path.read_bytes())
+    from .image_assets import source_files
+
+    for asset in source_files(root):
+        copy = operation / "source" / asset.relative_to(root)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_bytes(asset.read_bytes())
     defaults = root / "field_defaults.json"
     if defaults.exists():
         (operation / "source/field_defaults.json").write_bytes(defaults.read_bytes())

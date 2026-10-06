@@ -1,6 +1,9 @@
 [classsource]
 superclass = "userobject"
 
+[taggedvalues]
+class_icons = "(icons/counter)"
+
 [attributes]
 value = "INTEGER NOT NULL"
 

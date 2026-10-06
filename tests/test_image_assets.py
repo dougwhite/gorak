@@ -1,0 +1,405 @@
+"""Synthetic assets exercise pixels, identity, editing and native reconstruction."""
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+from lxml import etree
+from PIL import Image
+
+from gorak.bitmap_codec import Bitmap, decode, decode_buffer, encode, encode_buffer
+from gorak.errors import ProjectError
+from gorak.image_assets import export_bitmap, externalize, read_bitmap, resolve
+from gorak.importer import signature
+
+
+def bitmap(origin: str = "art/logo.png", *, mode: str = "RGBA") -> Bitmap:
+    pixels = bytes(range(16)) if mode == "RGBA" else bytes(range(12))
+    return Bitmap(
+        (
+            "12:bitmapobject",
+            "0",
+            "1",
+            "9",
+            str(len(pixels)),
+            f"{len(origin)}:{origin}",
+            "0",
+            "1",
+            "2",
+            "0",
+            "2",
+            "2",
+            "4",
+            "0",
+        ),
+        pixels,
+        ("0", "0", "0", "0", "0", "-1", "3", "0", "0", "0", "-1:", "-1:"),
+    )
+
+
+@pytest.mark.parametrize("size", [1, 2, 3, 18, 19, 255, 256, 257, 65536])
+def test_buffer_runs(size: int) -> None:
+    pixels = bytes(range(32)) + b"\xf1" * size + bytes(range(10))
+    text = encode_buffer(pixels)
+    assert all(len(line) == 64 for line in text.splitlines()[:-1])
+    assert decode_buffer(text, 0, len(pixels))[0] == pixels
+
+
+def test_native_zero_count_and_invalid_runs() -> None:
+    assert decode_buffer("R10000", 0, 256)[0] == bytes(256)
+    for text, size in [("R2000000", 5), ("rf00", 2), ("ab", 2), ("R500", 20)]:
+        with pytest.raises(ProjectError):
+            decode_buffer(text, 0, size)
+
+
+@pytest.mark.parametrize("mode", ["RGB", "RGBA"])
+def test_pixels_metadata_and_compression_roundtrip(tmp_path: Path, mode: str) -> None:
+    original = bitmap(mode=mode)
+    ref = export_bitmap(tmp_path, encode(original), "fallback")
+    assert ref == "images/logo.png"
+    assert read_bitmap(tmp_path, ref) == original
+    image = Image.open(tmp_path / ref)
+    assert image.mode == mode
+    assert image.getpixel((0, 0)) == ((2, 1, 0, 3) if mode == "RGBA" else (2, 1, 0))
+
+
+def test_asset_reuse_and_stable_collisions(tmp_path: Path) -> None:
+    a = bitmap()
+    b = replace(a, pixels=bytes(reversed(a.pixels)))
+    assert export_bitmap(tmp_path, encode(a), "x") == "images/logo.png"
+    assert export_bitmap(tmp_path, encode(a), "y") == "images/logo.png"
+    assert export_bitmap(tmp_path, encode(b), "x") == "images/logo-01.png"
+    assert export_bitmap(tmp_path, encode(b), "z") == "images/logo-01.png"
+    c = bitmap("other/logo.png")
+    assert export_bitmap(tmp_path, encode(c), "x") == "images/logo-02.png"
+    d = bitmap("art/separate.png")
+    assert export_bitmap(tmp_path, encode(d), "x") == "images/separate.png"
+
+
+def test_gorak_first_png_preserves_alpha_and_edits(tmp_path: Path) -> None:
+    (tmp_path / "images").mkdir()
+    path = tmp_path / "images/new.png"
+    im = Image.new("RGBA", (2, 1))
+    im.putdata([(100, 50, 25, 0), (200, 80, 20, 127)])
+    im.save(path)
+    obj = read_bitmap(tmp_path, "images/new.png")
+    assert obj.pixels == bytes([25, 50, 100, 0, 20, 80, 200, 127])
+    assert decode(encode(obj)).pixels == obj.pixels
+    node = etree.fromstring(b'<bgbitmap src="images/new.png"/>')
+    resolve(node, tmp_path)
+    projected = externalize(node, tmp_path, "frame")
+    resolve(projected, tmp_path)
+    assert signature(projected) == signature(node)
+
+
+def test_mask_and_mono_unused_bits(tmp_path: Path) -> None:
+    a = bitmap()
+    header = list(a.header)
+    header[4], header[10], header[12] = "4", "9", "2"
+    a = replace(a, header=tuple(header), pixels=b"\x00\x7f\xff\x81", mask=b"\x80\x00")
+    # Encode normalizes the mask length.
+    a = decode(encode(a))
+    ref = export_bitmap(tmp_path, encode(a), "x")
+    assert read_bitmap(tmp_path, ref) == a
+
+
+@pytest.mark.parametrize(
+    "reference", ["../x.png", "/tmp/x.png", "images/../x.png", "images\\x.png"]
+)
+def test_references_cannot_escape(tmp_path: Path, reference: str) -> None:
+    with pytest.raises(ProjectError):
+        read_bitmap(tmp_path, reference)
+
+
+def test_unknown_bitmap_refused_without_asset(tmp_path: Path) -> None:
+    with pytest.raises(ProjectError):
+        export_bitmap(tmp_path, "12:bitmapobject\nunknown", "x")
+    assert not list(tmp_path.rglob("*.png"))
+
+
+def test_png_first_reexport_reuses_original_file(tmp_path: Path) -> None:
+    (tmp_path / "images").mkdir()
+    path = tmp_path / "images/custom.png"
+    Image.new("RGBA", (2, 2), (32, 64, 128, 80)).save(path)
+    before = path.read_bytes()
+    native = read_bitmap(tmp_path, "images/custom.png")
+    assert export_bitmap(tmp_path, encode(native), "component") == "images/custom.png"
+    assert path.read_bytes() == before
+    assert not list(tmp_path.rglob("*.bitmap.json"))
+
+
+def test_indexed_palette_keeps_native_fourth_channel(tmp_path: Path) -> None:
+    a = bitmap()
+    header = list(a.header)
+    header[4], header[13] = "4", "2"
+    header += ["10", "20", "30", "1", "100", "150", "200", "1"]
+    a = replace(a, header=tuple(header), pixels=b"\0\1\1\0")
+    ref = export_bitmap(tmp_path, encode(a), "x")
+    assert Image.open(tmp_path / ref).mode == "P"
+    assert read_bitmap(tmp_path, ref) == a
+    im = Image.open(tmp_path / ref)
+    palette = im.getpalette()
+    assert palette is not None
+    palette[:3] = [40, 50, 60]
+    im.putpalette(palette)
+    im.save(tmp_path / ref)
+    restored = read_bitmap(tmp_path, ref)
+    assert restored.header[14:18] == ("40", "50", "60", "1")
+    assert restored.pixels == a.pixels
+
+
+def test_empty_native_placeholder_remains_inline(tmp_path: Path) -> None:
+    text = (
+        "\n".join(
+            [
+                "12:bitmapobject",
+                "0",
+                "1",
+                "9",
+                "0",
+                "-1:",
+                "0",
+                "1",
+                "2",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "-1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "-1:",
+                "-1:",
+            ]
+        )
+        + "\n"
+    )
+    node = etree.Element("bgbitmap")
+    etree.SubElement(node, "obj_encoded").text = text
+    projected = externalize(node, tmp_path, "example")
+    assert etree.tostring(projected) == etree.tostring(node)
+    assert not list(tmp_path.rglob("*.png"))
+
+
+def test_missing_mask_fails_and_edited_image_is_not_overwritten(tmp_path: Path) -> None:
+    a = bitmap()
+    ref = export_bitmap(tmp_path, encode(a), "x")
+    Image.new("RGBA", (2, 2), (255, 255, 255, 255)).save(tmp_path / ref)
+    before = (tmp_path / ref).read_bytes()
+    assert export_bitmap(tmp_path, encode(a), "x") == "images/logo-01.png"
+    assert (tmp_path / ref).read_bytes() == before
+    masked = replace(a, mask=b"\0\xff")
+    ref = export_bitmap(tmp_path, encode(masked), "x")
+    import json
+
+    meta = json.loads((tmp_path / (ref + ".bitmap.json")).read_text())
+    (tmp_path / meta["mask"]).unlink()
+    with pytest.raises(ProjectError, match="Cannot read image"):
+        read_bitmap(tmp_path, ref)
+
+
+def test_symlink_asset_refused(tmp_path: Path) -> None:
+    (tmp_path / "images").mkdir()
+    (tmp_path / "images/link.png").symlink_to(tmp_path / "outside.png")
+    with pytest.raises(ProjectError, match="Symlinked"):
+        read_bitmap(tmp_path, "images/link.png")
+
+
+def test_stylesheet_bitmap_override_externalizes_and_restores(tmp_path: Path) -> None:
+    import json
+
+    from gorak import native_styles
+    from gorak.component_defaults import write_component_defaults
+
+    folder = tmp_path / "example"
+    folder.mkdir()
+    source = folder / "panel.w4gl"
+    native = encode(bitmap())
+    values = {
+        "groups": {
+            "buttonfield": {"styles": {"style1": {"bgbitmap": {"obj_encoded": native}}}}
+        }
+    }
+    write_component_defaults(source, values)
+    path = source.with_suffix(".fielddefaults.json")
+    data = json.loads(path.read_text())
+    value = data["groups"]["buttonfield"]["styles"]["style1"]["bgbitmap"]
+    assert value == {"src": "images/logo.png"}
+    restored = native_styles.read(path)
+    assert (
+        decode(
+            restored["groups"]["buttonfield"]["styles"]["style1"]["bgbitmap"][
+                "obj_encoded"
+            ]
+        )
+        == bitmap()
+    )
+
+
+def test_class_icons_order_missing_sidecar_and_unknown_extension(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from gorak.class_icons import collection, overlay_icons, write_icons
+
+    (tmp_path / "images").mkdir()
+    Image.new("RGBA", (2, 2), (100, 50, 20, 255)).save(tmp_path / "images/icon.png")
+    data = {
+        "version": 1,
+        "key": "(icons/example)",
+        "entries": [
+            {"id": "3", "src": "images/icon.png"},
+            {"id": "1", "src": "images/icon.png"},
+        ],
+    }
+    node = etree.fromstring(
+        b"<COMPONENT><taggedvalues><row><name>class_icons</name><value>(icons/example)</value></row></taggedvalues></COMPONENT>"
+    )
+    node.insert(0, collection(data))
+    source = tmp_path / "example.w4gl"
+    write_icons(node, source)
+    assert json.loads(source.with_suffix(".icons.json").read_text()) == data
+    overlay_icons(node, source)
+    assert [
+        r.findtext("enumvalue")
+        for r in node.findall("extension/row")[1].findall("choiceitems/row")
+    ] == ["3", "1"]
+    assert len(list(node.iter("obj_encoded"))) == 2
+    source.with_suffix(".icons.json").unlink()
+    with pytest.raises(ProjectError, match="Missing class icon"):
+        overlay_icons(node, source)
+    node.find("extension").append(etree.Element("unknown"))
+    with pytest.raises(ProjectError):
+        write_icons(node, source)
+
+
+def test_shared_png_edits_affect_all_references_and_conflicts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import sync_plan
+    from gorak.connection import OpenRoadConnection
+    from gorak.domain import Application
+    from gorak.portable_source import restore_application, restore_component
+    from gorak.xml_writer import document
+
+    folder = tmp_path / "example"
+    (folder / "images").mkdir(parents=True)
+    (folder / "app.json").write_text("{}")
+    for name in ("first", "second"):
+        (folder / f"{name}.w4gl").write_text("[framesource]\n===\n")
+        (folder / f"{name}.wml").write_text(
+            '<frame><topform><bgbitmap src="images/shared.png"/></topform></frame>'
+        )
+    image = folder / "images/shared.png"
+    Image.new("RGB", (2, 2), (100, 50, 25)).save(image)
+
+    def native() -> bytes:
+        return document(
+            [
+                restore_application(folder),
+                *[restore_component(p) for p in sorted(folder.glob("*.w4gl"))],
+            ]
+        )
+
+    baseline = native()
+    cache = tmp_path / ".openroad/example/example.xml"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(baseline)
+    monkeypatch.setattr(
+        sync_plan, "read_applications", lambda _: [Application("example", "", "")]
+    )
+    monkeypatch.setattr(
+        sync_plan, "backup_application_xml", lambda c, a, p: p.write_bytes(baseline)
+    )
+    connection = OpenRoadConnection("local", "node", "db", None)
+    assert all(
+        c.action == "unchanged" for c in sync_plan.plan_project(connection, tmp_path)
+    )
+    Image.new("RGB", (2, 2), (110, 60, 30)).save(image)
+    remote = native()
+    changes = {c.key: c.action for c in sync_plan.plan_project(connection, tmp_path)}
+    assert changes["example/first"] == changes["example/second"] == "push"
+    monkeypatch.setattr(
+        sync_plan, "backup_application_xml", lambda c, a, p: p.write_bytes(remote)
+    )
+    Image.new("RGB", (2, 2), (0, 0, 255)).save(image)
+    changes = {c.key: c.action for c in sync_plan.plan_project(connection, tmp_path)}
+    assert changes["example/first"] == changes["example/second"] == "conflict"
+    image.unlink()
+    invalid_changes = sync_plan.plan_project(connection, tmp_path)
+    for change in invalid_changes:
+        if change.key in {"example/first", "example/second"}:
+            assert change.action == "conflict" and change.disk == "invalid"
+            assert "Cannot read image" in change.reason
+
+
+def test_large_inline_source_and_parser_limits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import source_xml
+    from gorak.wml_writer import parse_markup
+
+    payload = (
+        "<frame><topform><bgbitmap><obj_encoded>"
+        + ("a" * 10_100_000)
+        + "</obj_encoded></bgbitmap></topform></frame>"
+    )
+    assert (
+        len(parse_markup(payload).findtext("topform/bgbitmap/obj_encoded"))
+        == 10_100_000
+    )
+    with pytest.raises(ProjectError, match="document type"):
+        source_xml.from_bytes(
+            b'<!DOCTYPE x [<!ENTITY e SYSTEM "file:///not-readable">]><x>&e;</x>'
+        )
+    with pytest.raises(ProjectError, match="nesting"):
+        source_xml.from_bytes(b"<x>" * 257 + b"</x>" * 257)
+    monkeypatch.setattr(source_xml, "MAX_DOCUMENT_BYTES", 10)
+    with pytest.raises(ProjectError, match="document limit"):
+        source_xml.from_bytes(b"<x>too large</x>")
+
+
+def test_stylesheet_promotion_keeps_assets_and_dry_run_is_read_only(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from gorak import native_styles, style_commands
+    from gorak.component_defaults import write_component_defaults
+    from gorak.safe_pull import fingerprint
+
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    source = folder / "panel.w4gl"
+    source.write_text("[framesource]\n===\n")
+    write_component_defaults(
+        source,
+        {
+            "groups": {
+                "buttonfield": {
+                    "styles": {
+                        "style1": {"bgbitmap": {"obj_encoded": encode(bitmap())}}
+                    }
+                }
+            }
+        },
+    )
+    expected = native_styles.frame_styles(source)
+    before = fingerprint(tmp_path)
+    style_commands.maintain(tmp_path, "compact", dry_run=True)
+    assert fingerprint(tmp_path) == before
+    style_commands.maintain(tmp_path, "compact")
+    assert native_styles.frame_styles(source) == expected
+    assert (tmp_path / "images/logo.png").is_file()
+    assert (
+        "src"
+        in json.loads((tmp_path / "field_defaults.json").read_text())["groups"][
+            "buttonfield"
+        ]["styles"]["style1"]["bgbitmap"]
+    )
