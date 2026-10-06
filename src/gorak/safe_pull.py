@@ -212,6 +212,12 @@ def _sync_project(
                         if path.name.removesuffix(".fielddefaults.json").casefold()
                         == component
                     )
+                    old_files.update(
+                        path
+                        for path in (root / name).glob("*.queries.json")
+                        if path.name.removesuffix(".queries.json").casefold()
+                        == component
+                    )
                     for path in (root / name / ".gorak-source/components").glob(
                         "*.xml"
                     ):
@@ -221,6 +227,7 @@ def _sync_project(
                     old_files.update((root / name).glob("*.w4gl"))
                     old_files.update((root / name).glob("*.wml"))
                     old_files.update((root / name).glob("*.fielddefaults.json"))
+                    old_files.update((root / name).glob("*.queries.json"))
                 old_files.update((root / ".openroad" / name).glob("*.xml"))
                 for path in old_files:
                     if path.is_file():

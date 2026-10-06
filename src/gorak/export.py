@@ -35,6 +35,7 @@ from .parser import (
     parse_xml,
 )
 from .project import GorakContext, ProjectError, read_json, write_json
+from .query_metadata import write_queries
 from .remote import (
     RemoteCommandError,
     backup_application,
@@ -271,6 +272,7 @@ def export_application_to_paths(
         raise ProjectError("Duplicate exported component names")
     for component, (name, (text, markup)) in zip(components, encoded, strict=True):
         progress_message(progress, f"Encoding component {app}::{name}")
+        write_queries(paths.source_dir / f"{name}.w4gl", component.queries)
         write_component_w4gl(paths.source_dir, name, text, progress)
         write_component_wml(paths.source_dir, name, markup, progress)
         write_component_defaults(
@@ -312,6 +314,7 @@ def export_component_to_paths(
     )
     write_component_wml(paths.w4gl_path.parent, parsed_component.name, markup, progress)
     write_component_defaults(w4gl_path, parsed_component.props.get("fielddefaults", {}))
+    write_queries(w4gl_path, parsed_component.queries)
     return w4gl_path
 
 

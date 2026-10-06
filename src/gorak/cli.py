@@ -547,6 +547,9 @@ def component_export_summary(path: Path, root: Path | None) -> str:
     wml_path = path.with_suffix(".wml")
     if wml_path.is_file():
         lines.append(f"Wrote {display_path(wml_path, root)}")
+    query_path = path.with_suffix(".queries.json")
+    if query_path.is_file():
+        lines.append(f"Wrote {display_path(query_path, root)}")
     lines.append("Export complete")
     return "\n".join(lines)
 

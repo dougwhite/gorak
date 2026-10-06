@@ -17,6 +17,7 @@ REPRESENTED_APP_CHILDREN = {
     "versshortremarks",
 }
 REPRESENTED_COMPONENT_CHILDREN = {
+    "queries",
     "attributes",
     "fielddefaults",
     "methods",
@@ -26,7 +27,7 @@ REPRESENTED_COMPONENT_CHILDREN = {
 REPRESENTED_FRAME_CHILDREN = {
     *FRAME_MARKUP_CHILDREN,
 }
-IGNORED_COMPONENT_CHILDREN = {"extension", "queries"}
+IGNORED_COMPONENT_CHILDREN = {"extension"}
 
 
 def audit_xml_file(path: str) -> dict[str, Any]:

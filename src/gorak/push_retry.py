@@ -179,7 +179,7 @@ def prepare_tracking(
         for path in folder.parent.iterdir():
             if path.is_file() and (
                 path.suffix in {".w4gl", ".wml"}
-                or path.name.endswith(".fielddefaults.json")
+                or path.name.endswith((".fielddefaults.json", ".queries.json"))
                 or path.name in {"app.json", "field_defaults.json"}
             ):
                 copy = operation / "source" / path.relative_to(root)
