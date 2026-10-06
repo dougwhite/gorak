@@ -505,14 +505,23 @@ def export_component_command(args: argparse.Namespace) -> str:
     print(
         f"Exporting component {app}::{component} from {connection_source(connection)}"
     )
-    path = export_component(
-        connection=connection,
-        context=context,
-        app=app,
-        component=component,
-        output_path=cast(str | None, args.output),
-        progress=print,
-    )
+    try:
+        path = export_component(
+            connection=connection,
+            context=context,
+            app=app,
+            component=component,
+            output_path=cast(str | None, args.output),
+            progress=print,
+        )
+    except odbc_error_types(
+        ProjectError, ValueError, LocalCommandError, RemoteCommandError
+    ) as ex:
+        from .export_failures import ExportFailure, failure_summary
+
+        failure = ExportFailure(app, component, str(ex))
+        print(failure.message())
+        raise ProjectError(failure_summary(0, [failure])) from ex
     return component_export_summary(
         path, context.project.root if context.project else None
     )
@@ -539,7 +548,10 @@ def app_export_command(args: argparse.Namespace) -> str:
         progress=print,
     )
 
-    return application_export_summary(root, exported)
+    summary = application_export_summary(root, exported)
+    if exported.failures:
+        raise ProjectError(summary)
+    return summary
 
 
 def component_export_summary(path: Path, root: Path | None) -> str:
@@ -568,7 +580,12 @@ def application_export_summary(root: Path, exported: ApplicationExport) -> str:
     if wml_count:
         lines.append(f"Wrote {wml_count} .wml {file_label(wml_count)}")
     component_label = "component" if w4gl_count == 1 else "components"
-    lines.append(f"Export complete: {w4gl_count} {component_label}")
+    if exported.failures:
+        from .export_failures import failure_summary
+
+        lines.append(failure_summary(w4gl_count, exported.failures))
+    else:
+        lines.append(f"Export complete: {w4gl_count} {component_label}")
     return "\n".join(lines)
 
 
@@ -848,6 +865,10 @@ def sync_command(args: argparse.Namespace) -> str:
         raise ProjectError("--dry-run requires --push")
     print(f"Syncing from {connection_source(connection)}")
     result = sync_project(connection, context, progress=print, lock_held=True)
+    if result.failures:
+        from .export_failures import failure_summary
+
+        raise ProjectError(failure_summary(result.exported, result.failures))
     component_label = "component" if result.exported == 1 else "components"
     return (
         f"Sync complete: checked {result.checked}, "

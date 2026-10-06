@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from .export_failures import ExportFailure
+
 IncludedApplication = str | dict[str, str]
 
 
@@ -45,3 +47,4 @@ class ApplicationExport:
     application: Application
     components: list[Component]
     included_applications: list[IncludedApplication] = field(default_factory=list)
+    failures: list[ExportFailure] = field(default_factory=list)

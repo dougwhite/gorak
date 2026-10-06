@@ -232,7 +232,12 @@ def test_sync_exports_full_app_when_multiple_components_changed(
         progress: object,
     ) -> object:
         calls.append((app, paths))
-        return object()
+        from gorak.domain import Application, ApplicationExport, Component
+
+        return ApplicationExport(
+            Application(app, "", ""),
+            [Component(i.component_name, "framesource", {}) for i in items],
+        )
 
     monkeypatch.setattr(
         sync_module,

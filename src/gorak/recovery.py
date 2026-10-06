@@ -34,6 +34,13 @@ def recover_push(
             marker.unlink(missing_ok=True)
             try:
                 pulled = _sync_project(connection, root, None, take_database=True)
+                if pulled.failures:
+                    from .export_failures import failure_summary
+
+                    raise ProjectError(
+                        "Recovery remains incomplete: "
+                        + failure_summary(pulled.exported, pulled.failures)
+                    )
                 result = f"Recovery took database source: {pulled.exported} components exported"
                 (root / ".openroad/pull-pending.json").unlink(missing_ok=True)
                 (operation / "resolved").write_text(f"Authoritative side: {take}\n")

@@ -15,6 +15,12 @@ from .export import (
     export_application_to_paths,
     read_applications,
 )
+from .export_failures import (
+    ExportFailure,
+    cached_components,
+    failed_source,
+    finalize_baseline,
+)
 from .importer import signature
 from .portable_source import read_document
 from .project import GorakContext, ProjectError
@@ -41,6 +47,10 @@ def fingerprint(root: Path) -> dict[str, str]:
             result[path.relative_to(root).as_posix()] = hashlib.sha256(
                 path.read_bytes()
             ).hexdigest()
+    for path in (root / ".openroad").glob("*/export-failures.json"):
+        result[path.relative_to(root).as_posix()] = hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
     for name in ["sync-target.json", "tracked-applications.json"]:
         path = root / ".openroad" / name
         if path.exists():
@@ -188,6 +198,8 @@ def _sync_project(
                 target.parent.mkdir(parents=True, exist_ok=True)
                 copy2(asset, target)
             exported_count = 0
+            failures: list[ExportFailure] = []
+            app_failures: dict[str, list[ExportFailure]] = {}
             for app in sorted(apps):
                 name = names.get(app, available.get(app, app))
                 if app in available and name != available[app]:
@@ -201,6 +213,7 @@ def _sync_project(
                 ]
                 old_files = {
                     root / name / "app.json",
+                    root / ".openroad" / name / "export-failures.json",
                     root / name / "field_defaults.json",
                     root / name / ".gorak-source/application.xml",
                     root / name / ".gorak-source/format",
@@ -263,6 +276,14 @@ def _sync_project(
                 exported = export_application_to_paths(
                     connection, name, paths, progress, asset_origins=root / name
                 )
+                failures.extend(exported.failures)
+                app_failures[app] = exported.failures
+                for path in old_files:
+                    if (
+                        path != root / ".openroad" / name / f"{name}.xml"
+                        and failed_source(path, exported.failures)
+                    ):
+                        changes.pop(path, None)
                 staged_xml[app] = paths.xml_path
                 exported_count += len(exported.components)
             # Re-scan database inventory and compare the exact XML staged for installation.
@@ -281,6 +302,14 @@ def _sync_project(
                         raise ProjectError(
                             f"Database source changed during pull: {app}"
                         )
+            for app, xml_path in staged_xml.items():
+                finalize_baseline(
+                    xml_path,
+                    app_failures[app],
+                    cached_components(root / ".openroad" / xml_path.parent.name)
+                    if app_failures[app]
+                    else {},
+                )
             if fingerprint(root) != snapshot:
                 raise ProjectError(
                     "Local project changed during pull; source was not installed"
@@ -317,7 +346,10 @@ def _sync_project(
             if progress:
                 progress(f"Pull recovery artifacts: {operation}")
             return SyncResult(
-                len(plan), sum(c.action != "unchanged" for c in plan), exported_count
+                len(plan),
+                sum(c.action != "unchanged" for c in plan),
+                exported_count,
+                failures,
             )
     except Exception as ex:
         raise ProjectError(f"{ex}\nPull artifacts: {operation}") from ex

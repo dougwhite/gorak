@@ -21,6 +21,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_export_binding_lifecycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, component: bool, state: str
 ) -> None:
+    monkeypatch.setattr(export, "read_components", lambda *args: [])
     connection = OpenRoadConnection("local", "node", "source", None)
     context = GorakContext(GorakProject(tmp_path, "example"), {})
     target_path = tmp_path / ".openroad/sync-target.json"

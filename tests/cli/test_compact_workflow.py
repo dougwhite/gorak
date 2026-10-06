@@ -15,6 +15,7 @@ from gorak.run_backend import RunResult
 def test_untouched_compact_project_cli_round_trip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    monkeypatch.setattr(export, "read_components", lambda *a: [])
     # Handwritten source exercises the public format independently of the exporter.
     folder = tmp_path / "example"
     folder.mkdir()

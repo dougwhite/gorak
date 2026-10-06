@@ -81,7 +81,9 @@ default output format.
 
 ### `gorak app export APP [--output DIRECTORY]`
 
-Exports an application into readable Gorak source.
+Exports an application into readable gorak source. Failed components are reported
+by `application!component`; remaining components continue, with failures summarized
+at the end and a nonzero exit status. Existing source for failed components is retained.
 
 ```sh
 gorak app export salesapp

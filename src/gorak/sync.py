@@ -1,7 +1,7 @@
 """Synchronize local source files from changed OpenROAD database components."""
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .connection import OpenRoadConnection
@@ -14,7 +14,15 @@ from .export import (
     normalize_application_paths,
     read_all_component_sync_metadata,
 )
+from .export_failures import (
+    ComponentProjectionError,
+    ExportFailure,
+    cached_components,
+    finalize_baseline,
+)
+from .local import LocalCommandError
 from .project import GorakContext, ProjectError
+from .remote import RemoteCommandError
 from .sync_state import (
     component_changed,
     component_entries,
@@ -29,6 +37,7 @@ class SyncResult:
     checked: int
     changed: int
     exported: int
+    failures: list[ExportFailure] = field(default_factory=list)
 
 
 def sync_project(
@@ -60,15 +69,26 @@ def sync_project(
     if not changed:
         progress_message(progress, "No database changes found")
 
-    exported = export_changed_components(connection, root, changed, metadata, progress)
+    failures: list[ExportFailure] = []
+    exported = export_changed_components(
+        connection, root, changed, metadata, progress, failures=failures
+    )
+    failed = {component_key(f.application, f.component) for f in failures}
     for item in metadata:
         key = component_key(item.application_name, item.component_name)
+        if key in failed:
+            continue
         remove_case_variant_entries(entries, key)
         entries[key] = component_state(item)
 
     state["components"] = entries
     save_state(root, state)
-    return SyncResult(checked=len(metadata), changed=len(changed), exported=exported)
+    return SyncResult(
+        checked=len(metadata),
+        changed=len(changed),
+        exported=exported,
+        failures=failures,
+    )
 
 
 def tracked_metadata(
@@ -85,37 +105,49 @@ def export_changed_components(
     changed: list[ComponentSyncMetadata],
     metadata: list[ComponentSyncMetadata],
     progress: Callable[[str], None] | None,
+    *,
+    failures: list[ExportFailure] | None = None,
 ) -> int:
     exported = 0
-    metadata_by_app = changes_by_app(metadata)
+    failures = failures if failures is not None else []
     for app, app_changes in changes_by_app(changed).items():
         if len(app_changes) > 1:
             normalize_application_paths(root, app, progress)
             progress_message(progress, f"Exporting changed application {app}")
-            export_application_to_paths(
+            paths = application_export_paths(root, app)
+            previous = cached_components(paths.xml_path.parent)
+            result = export_application_to_paths(
                 connection=connection,
                 app=app,
                 paths=application_export_paths(root, app),
                 progress=progress,
             )
-            exported += len(metadata_by_app[app])
+            finalize_baseline(paths.xml_path, result.failures, previous)
+            failures.extend(result.failures)
+            exported += len(result.components)
             continue
 
         item = app_changes[0]
         key = component_key(item.application_name, item.component_name)
         normalize_application_paths(root, item.application_name, progress)
         progress_message(progress, f"Exporting changed component {key}")
-        export_component_to_paths(
-            connection=connection,
-            app=item.application_name,
-            component=item.component_name,
-            paths=component_export_paths(
-                root,
-                item.application_name,
-                item.component_name,
-            ),
-            progress=progress,
-        )
+        try:
+            export_component_to_paths(
+                connection=connection,
+                app=item.application_name,
+                component=item.component_name,
+                paths=component_export_paths(
+                    root,
+                    item.application_name,
+                    item.component_name,
+                ),
+                progress=progress,
+            )
+        except (ComponentProjectionError, LocalCommandError, RemoteCommandError) as ex:
+            failure = ExportFailure(item.application_name, item.component_name, str(ex))
+            failures.append(failure)
+            progress_message(progress, failure.message())
+            continue
         exported += 1
 
     return exported

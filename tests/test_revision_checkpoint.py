@@ -279,6 +279,7 @@ def test_managed_pull_reuses_owned_lock_and_installs_changed_source(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(current[0])
 
+    monkeypatch.setattr(export, "read_components", lambda *a: [])
     monkeypatch.setattr(export, "backup_application_xml", backup)
     monkeypatch.setattr(safe_pull, "backup_application_xml", backup)
     monkeypatch.setattr(
