@@ -77,3 +77,66 @@ def test_native_prototype_type_and_matrix_position_are_explicit(
         == kind
     )
     assert equivalent(node, restored)
+
+
+@pytest.mark.parametrize("kind", ["flexibleform", "matrixfield"])
+def test_viewfield_preserves_concrete_native_type(tmp_path: Path, kind: str) -> None:
+    property_xml = (
+        "<ismovebounded>1</ismovebounded>"
+        if kind == "flexibleform"
+        else "<collapsepolicy>2</collapsepolicy>"
+    )
+    node = etree.fromstring(
+        f'''<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        name="sample" xsi:type="framesource"><fielddefaults/><topform>
+        <childfields><row xsi:type="viewportfield"><name>viewport</name>
+        <viewfield xsi:type="{kind}"><name>content</name>{property_xml}</viewfield>
+        </row><row_class>formfield</row_class></childfields></topform></COMPONENT>'''
+    )
+    source = tmp_path / "sample.w4gl"
+    write_component(source, node)
+    assert f'type="{kind}"' in source.with_suffix(".wml").read_text()
+    restored = restore_component(source)
+    assert (
+        restored.find(".//viewfield").get(
+            "{http://www.w3.org/2001/XMLSchema-instance}type"
+        )
+        == kind
+    )
+    assert equivalent(node, restored)
+
+
+def test_viewfield_rejects_unrelated_type(tmp_path: Path) -> None:
+    from gorak.errors import ProjectError
+
+    source = tmp_path / "sample.w4gl"
+    source.write_text("[framesource]\n")
+    source.with_suffix(".wml").write_text(
+        '<frame><topform><viewportfield><viewfield type="bitmapobject"/>'
+        "</viewportfield></topform></frame>"
+    )
+    with pytest.raises(ProjectError, match="Unsupported viewfield type"):
+        restore_component(source)
+
+
+@pytest.mark.parametrize("kind", ["framesource", "frametemplate"])
+def test_legacy_frame_scalars_survive_without_cache(tmp_path: Path, kind: str) -> None:
+    node = etree.fromstring(
+        f'''<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        name="sample" xsi:type="{kind}"><topform><childfields>
+        <row xsi:type="entryfield"><name>input</name><lines>1</lines>
+        <maxcharacters>17</maxcharacters></row>
+        <row xsi:type="matrixfield"><name>grid</name><childfields>
+        <row xsi:type="columnfield"><name>column</name>
+        <protofield xsi:type="entryfield"><maxcharacters>22</maxcharacters></protofield>
+        </row><row_class>formfield</row_class></childfields></row>
+        <row_class>formfield</row_class></childfields></topform>
+        <fielddefaults/><frmflow/></COMPONENT>'''
+    )
+    source = tmp_path / "sample.w4gl"
+    write_component(source, node)
+    restored = restore_component(source)
+    assert restored.find("frmflow") is not None
+    assert restored.findtext(".//protofield/maxcharacters") == "22"
+    assert restored.findtext(".//childfields/row/maxcharacters") == "17"
+    assert equivalent(node, restored)

@@ -177,17 +177,17 @@ def merge_application_metadata(
     database_application: Application,
     exported_application: Application,
 ) -> Application:
-    """Combine SQL metadata with values only present in full XML exports."""
+    """Keep catalog identity and preserve full XML metadata without SQL escaping."""
 
     return Application(
         name=database_application.name,
         start_component=(
             database_application.start_component or exported_application.start_component
         ),
-        description=database_application.description
-        or exported_application.description,
+        description=exported_application.description,
         database_name=exported_application.database_name,
         database_type=exported_application.database_type,
+        window_icon=exported_application.window_icon,
     )
 
 

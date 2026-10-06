@@ -31,13 +31,13 @@ def markup_node(
         return result
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
-    if source.tag == "protofield":
+    if source.tag in {"protofield", "viewfield"}:
         declared = source.get("type")
         if declared is not None:
             if not derives(declared, kind):
-                raise ProjectError("Unsupported column prototype type")
+                raise ProjectError(f"Unsupported {source.tag} type: {declared}")
             kind = declared
-        else:
+        elif source.tag == "protofield":
             keys = (set(source.attrib) - {"gorak_style"}) | {
                 str(child.tag) for child in source
             }
@@ -54,13 +54,17 @@ def markup_node(
     if str(source.tag) in shapes() and derives(str(source.tag), kind):
         kind = str(source.tag)
     node = etree.Element(tag)
-    if (tag == "row" and source.tag != "row") or source.tag == "protofield":
+    if (
+        (tag == "row" and source.tag != "row")
+        or source.tag == "protofield"
+        or (source.tag == "viewfield" and source.get("type") is not None)
+    ):
         node.set(XSI, kind)
     if source.get("gorak_style") is not None:
         raise ProjectError("gorak_style is unsupported; re-export the application")
     fields = shape(kind)
     for key, value in source.attrib.items():
-        if key == "type" and source.tag == "protofield":
+        if key == "type" and source.tag in {"protofield", "viewfield"}:
             continue
         if key in {"row", "column"} and tag == "row":
             node.set(key, value)

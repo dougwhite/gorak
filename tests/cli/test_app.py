@@ -106,7 +106,7 @@ class TestAppExport:
         ]
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
             "starting_component": "fm_start",
-            "description": "Example application",
+            "description": "",
             "included_applications": [
                 "gorak_included",
                 {"name": "finance", "image": "finance.pkg"},
@@ -210,7 +210,7 @@ class TestAppExport:
         ]
         assert json.loads((output_dir / "sample_app" / "app.json").read_text()) == {
             "starting_component": "fm_start",
-            "description": "Example application",
+            "description": "",
             "included_applications": [
                 "gorak_included",
                 {"name": "finance", "image": "finance.pkg"},
@@ -447,7 +447,7 @@ class TestAppExport:
         ]
         assert json.loads((project_root / "sample_app" / "app.json").read_text()) == {
             "starting_component": "fm_start",
-            "description": "Example application",
+            "description": "",
             "included_applications": [
                 "gorak_included",
                 {"name": "finance", "image": "finance.pkg"},
