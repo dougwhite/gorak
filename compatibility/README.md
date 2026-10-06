@@ -11,6 +11,9 @@ It also covers saved queries, PNG references, class icons, cursors, ordered macr
 The button's actual colour is `6`; the project/application/frame creation-style
 colours are `6`/`7`/`8`. Existing fields must never inherit the frame palette colour.
 
+`duplicate_names` deliberately contains name collisions; consumers must preserve
+all fields even though native compilation rejects that frame.
+
 These cases are reconstruction and tooling inputs, not a runnable acceptance
 application or proof of full OpenROAD language/Workbench coverage. Consumers should
 assert behaviour appropriate to their role: LSP bindings and locations, designer

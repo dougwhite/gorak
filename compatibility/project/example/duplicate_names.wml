@@ -1,0 +1,15 @@
+<frame>
+  <topform>
+    <stackfield name="parent">
+      <stackfield>
+        <buttonfield name="child" textlabel="Nested">
+          <script><![CDATA[on click = { /* nested */ }]]></script>
+        </buttonfield>
+      </stackfield>
+      <buttonfield name="child" textlabel="Direct">
+        <script><![CDATA[on click = { /* direct */ }]]></script>
+      </buttonfield>
+      <buttonfield name="child" textlabel="Sibling"/>
+    </stackfield>
+  </topform>
+</frame>

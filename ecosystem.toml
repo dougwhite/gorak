@@ -1,2 +1,2 @@
 gorak_cli = "0.1.0" # CLI input/output contract; change only when that contract changes
-source_version = 7 # Source format contract, including qualified types and dollar attribute names
+source_version = 8 # Source format contract, including layouts with duplicate field names
