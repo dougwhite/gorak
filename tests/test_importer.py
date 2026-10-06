@@ -305,8 +305,12 @@ def test_import_frame_scripts_preserves_layout_and_defaults(
 
 
 @pytest.mark.parametrize("concurrent_edit", [False, True])
+@pytest.mark.parametrize("omit_default_mode", [False, True])
 def test_geometry_canonicalization_preserves_concurrent_wml_edits(
-    tmp_path: Path, monkeypatch: MonkeyPatch, concurrent_edit: bool
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    concurrent_edit: bool,
+    omit_default_mode: bool,
 ) -> None:
     from gorak import safe_pull
     from gorak.parser import encode_wml, parse_component_node
@@ -333,6 +337,14 @@ def test_geometry_canonicalization_preserves_concurrent_wml_edits(
             if uploaded
             else xml
         )
+        if uploaded and omit_default_mode:
+            tree = etree.fromstring(data)
+            modes = tree.findall(".//topform//defaultvalue")
+            assert modes
+            for mode in modes:
+                assert mode.text == "1"
+                mode.getparent().remove(mode)
+            data = etree.tostring(tree)
         path.write_bytes(data)
 
     def push(
@@ -364,3 +376,37 @@ def test_geometry_canonicalization_preserves_concurrent_wml_edits(
         result = importer.import_component(CONNECTION, tmp_path, "app", "panel")
         assert 'xleft="323"' in markup.read_text()
         assert baseline.read_bytes() == (result / "after.xml").read_bytes()
+
+
+def test_compound_normalization_does_not_relax_database_conflict_check(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    from gorak.contract_source import decode_component
+    from gorak.xml_writer import document
+
+    folder = tmp_path / "app"
+    folder.mkdir()
+    source = folder / "panel.w4gl"
+    source.write_text("[framesource]\n")
+    source.with_suffix(".wml").write_text(
+        '<frame><topform><entryfield name="value" width="1000"/></topform></frame>'
+    )
+    native = decode_component(source)
+    cache = tmp_path / ".openroad/app"
+    cache.mkdir(parents=True)
+    baseline = document([native])
+    (cache / "panel.xml").write_bytes(baseline)
+    for mode in native.findall(".//topform//defaultvalue"):
+        mode.getparent().remove(mode)
+    native.find(".//width").text = "1001"
+
+    def export(connection: OpenRoadConnection, app: str, name: str, path: Path) -> None:
+        path.write_bytes(document([native]))
+
+    monkeypatch.setattr(importer, "backup_component_xml", export)
+    monkeypatch.setattr(
+        importer, "import_component_xml", lambda *args: pytest.fail("must not import")
+    )
+    with pytest.raises(ProjectError, match="Database component changed since export"):
+        importer.import_component(CONNECTION, tmp_path, "app", "panel")
+    assert (cache / "panel.xml").read_bytes() == baseline

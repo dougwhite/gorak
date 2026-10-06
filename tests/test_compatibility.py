@@ -84,6 +84,40 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     assert template.findtext("framefield/textlabel") == "Run"
     assert template.findtext("reportfield/textlabel") == "Report"
     panel = restore_component(source / "example/panel.w4gl")
+    assert (
+        panel.findtext("topform/childfields/row[name='quantity']/defaultvalue") == "1"
+    )
+    assert (
+        panel.findtext("topform/childfields/row[name='nullable_default']/defaultvalue")
+        == "2"
+    )
+    assert (
+        panel.findtext("topform/childfields/row[name='specified_default']/defaultvalue")
+        == "3"
+    )
+    assert (
+        panel.findtext(
+            "topform/childfields/row[name='specified_default']/defaultstring"
+        )
+        == "7"
+    )
+    projected_markup = etree.parse(str(projected / "example/panel.wml"))
+    assert (
+        projected_markup.find(".//entryfield[@name='quantity']").get("defaultvalue")
+        is None
+    )
+    assert (
+        projected_markup.find(".//entryfield[@name='nullable_default']").get(
+            "defaultvalue"
+        )
+        == "2"
+    )
+    assert (
+        projected_markup.find(".//entryfield[@name='specified_default']").get(
+            "defaultvalue"
+        )
+        == "3"
+    )
     assert panel.findtext("macro_vars/row/name") == "$CAPTION"
     assert panel.findtext("macro_vars/row/value") == "Preview"
     assert panel.findtext(".//cursor/syscursor") == "1"

@@ -370,6 +370,8 @@ def append_markup_content(
     default_properties: dict[str, Any],
     mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> None:
+    from .field_modes import is_implicit_default
+
     for child in node:
         if child.tag in {"childfields", "childmenufields"}:
             append_childfields(element, child, defaults_index, mapping)
@@ -385,6 +387,8 @@ def append_markup_content(
             )
         elif is_text_node(child) and not child.attrib:
             value = text_value(child)
+            if is_implicit_default(child):
+                continue
             if not defaults_index.explicit:
                 value = value.strip(" \t\r\n")
             if child.tag == "obj_encoded" and not defaults_index.explicit:

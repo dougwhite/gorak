@@ -1,7 +1,6 @@
 <frame>
   <startmenu
     name="menu"
-    defaultvalue="1"
     bgcolor="2"
     fgcolor="1"
     designbias="16384"
@@ -15,7 +14,6 @@
   >
     <menustack
       name="file_menu"
-      defaultvalue="1"
       bgcolor="70"
       fgcolor="72"
       designbias="16384"
@@ -34,7 +32,6 @@
       <menubutton
         name="exit_btn"
         datatype="i4"
-        defaultvalue="1"
         bgcolor="70"
         fgcolor="72"
         designbias="16384"
@@ -51,7 +48,6 @@
     </menustack>
     <menustack
       name="help_menu"
-      defaultvalue="1"
       bgcolor="70"
       fgcolor="72"
       designbias="16384"
@@ -70,7 +66,6 @@
       <menubutton
         name="about_btn"
         datatype="i4"
-        defaultvalue="1"
         bgcolor="70"
         fgcolor="72"
         designbias="16384"
@@ -98,7 +93,6 @@
   >
     <tabfolder
       name="tabfolder1"
-      defaultvalue="1"
       xleft="302"
       ytop="375"
       width="3427"
@@ -180,7 +174,6 @@
       <tabpagearray row_class="tabpage">
         <row
           name="page1"
-          defaultvalue="1"
           bgcolor="70"
           fgcolor="72"
           ytop="208"
@@ -216,7 +209,6 @@
         </row>
         <row
           name="page2"
-          defaultvalue="1"
           bgcolor="70"
           fgcolor="72"
           ytop="208"
@@ -255,7 +247,6 @@
   </topform>
   <mainbarbottom
     name="bottom_bar"
-    defaultvalue="1"
     bgcolor="10"
     fgcolor="70"
     width="52822"
@@ -296,7 +287,6 @@
   </mainbarbottom>
   <mainbartop
     name="top_bar"
-    defaultvalue="1"
     bgcolor="28"
     fgcolor="70"
     width="52822"

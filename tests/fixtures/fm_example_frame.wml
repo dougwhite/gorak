@@ -23,7 +23,6 @@
   >
     <subform
       name="example_composite_field"
-      defaultvalue="1"
       xleft="156"
       ytop="198"
       width="1656"

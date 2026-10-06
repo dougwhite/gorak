@@ -104,6 +104,10 @@ def markup_node(
                 container = etree.SubElement(node, container_name)
                 etree.SubElement(container, "row_class").text = base
             container.insert(len(container) - 1, markup_node(child, "row", key, index))
+    from .field_modes import supports_default_mode
+
+    if supports_default_mode(kind) and node.find("defaultvalue") is None:
+        etree.SubElement(node, "defaultvalue").text = "1"
     order_children(node, kind)
     return node
 
@@ -218,8 +222,8 @@ def equivalent(
         parse_component_node(right), markup=None
     ):
         return False
-    # Do not let default suppression (or style selection) hide changed native
-    # scalar properties. Keep bitmap whitespace normalization from the parser.
+    # Compare explicit field state, allowing only the WML contract's implicit
+    # DV_SYSTEM mode and the parser's bitmap whitespace normalization.
     empty = MarkupDefaultsIndex({}, {}, explicit=exact_styles)
 
     def effective_markup(node: etree._Element) -> list[object]:

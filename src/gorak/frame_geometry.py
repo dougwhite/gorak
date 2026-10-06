@@ -1,7 +1,8 @@
 """Verify OpenROAD Windows geometry at its observed 96-unit logical pixel grid.
 
 Coordinates are exported in thousandths of an inch. Only the four geometry
-properties in frame markup have this equivalence; all other XML remains exact.
+properties in frame markup have pixel equivalence. Field default modes also use
+the WML contract's implicit DV_SYSTEM rule; all other XML remains exact.
 Baseline/database conflict comparisons deliberately do not use this function.
 """
 
@@ -9,6 +10,7 @@ from copy import deepcopy
 
 from lxml import etree
 
+from .field_modes import is_implicit_default
 from .parser import (
     FIELD_TEMPLATE_CHILDREN,
     FRAME_MARKUP_CHILDREN,
@@ -36,6 +38,11 @@ def geometry_signature(node: etree._Element) -> object:
         if section.tag not in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN:
             continue
         for child in list(section.iter()):
+            if is_implicit_default(child):
+                parent = child.getparent()
+                assert parent is not None
+                parent.remove(child)
+                continue
             if child.tag not in COORDINATES or len(child) or child.attrib:
                 continue
             parent = child.getparent()
