@@ -8,6 +8,7 @@ from lxml import etree
 
 from gorak.contract_source import equivalent
 from gorak.export import application_metadata
+from gorak.importer import signature
 from gorak.native_styles import encode
 from gorak.parser import parse_application_xml
 from gorak.portable_source import restore_application, restore_component
@@ -35,6 +36,8 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         native = etree.fromstring(document([restore_component(path)])).find("COMPONENT")
         assert native is not None
         destination = projected / path.relative_to(source)
+        # Re-export must generate the sidecar, not reuse the fixture copy.
+        destination.with_suffix(".queries.json").unlink(missing_ok=True)
         write_component(destination, native)
         assert equivalent(native, restore_component(destination))
     panel = restore_component(source / "example/panel.w4gl")
@@ -55,3 +58,28 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         )
         == "entryfield"
     )
+    original = restore_component(source / "shared/counter.w4gl")
+    queries = original.find("queries")
+    assert queries is not None
+    query = queries.find("row")
+    assert query is not None
+    assert query.findtext("name") == "load_counter"
+    assert query.findtext("targetprefix") == "this."
+    assert query.findtext("tables/row/tablename") == "counters"
+    assert query.findtext("tables/row/corrname") == "c"
+    assert query.findtext("designtimewhere") == "c.value >= 0"
+    column = query.find("columns/row")
+    assert column is not None
+    assert column.findtext("columnname") == "value"
+    assert column.findtext("fromtable_idx") == "1"
+    assert column.findtext("datatypecode") == "30"
+    assert column.findtext("datatypelength") == "4"
+    assert column.findtext("datatypenullable") == "0"
+    assert column.findtext("targets/row/expression") == "value"
+    assert column.findtext("targets/row/isselecttarget") == "1"
+    assert column.findtext("targets/row/useprefix") == "1"
+    assert json.loads(
+        (projected / "shared/counter.queries.json").read_text()
+    ) == json.loads((source / "shared/counter.queries.json").read_text())
+    restored = restore_component(projected / "shared/counter.w4gl")
+    assert signature(queries) == signature(restored.find("queries"))

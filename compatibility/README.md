@@ -7,6 +7,8 @@ temporary directory before editing or reconstructing it.
 It exercises application includes, procedure and user-class metadata, methods,
 frame scripts, explicit geometry/field state, Unique Style (`fieldstyle=0`), a
 typed table-column prototype, and an invalid XML character processing instruction.
+The counter class has a saved query with a table, typed column and select target
+in an adjacent `.queries.json` file (source contract 2; sidecar schema version 1).
 The button's actual colour is `6`; the project/application/frame creation-style
 colours are `6`/`7`/`8`. Existing fields must never inherit the frame palette colour.
 
@@ -15,6 +17,8 @@ application or proof of full OpenROAD language/Workbench coverage. Consumers sho
 assert behaviour appropriate to their role: LSP bindings and locations, designer
 field state and source-preserving edits, extension schema acceptance. Reading the
 files without asserting their meaning is not a compatibility test.
+For query sidecars, readers should accept the format and source-editing tools
+should preserve it; query authoring or query-expression navigation is not implied.
 
 Consumers pin a gorak commit containing the manifest and fixtures. An update PR
 changes that pin and runs their local compatibility checks. Fixture fixes and
