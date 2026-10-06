@@ -60,15 +60,7 @@ constants, globals, include/shared scripts, and ghost frames.
 
 Unsupported source shapes are refused rather than silently discarded.
 
-Saved queries live in optional `<component>.queries.json` files with
-`{"version": 1, "queries": [...]}`. Each query contains named properties and
-ordered `tables`, `columns` and `targets` arrays. Column `datatype` groups the
-native code, length, nullability and precision; `table` is a 1-based table index.
-Flags are booleans and numeric properties are integers. Omitted properties stay
-absent; empty strings (or null numeric/boolean values) preserve empty XML values.
-An empty array preserves an empty collection; `"queries": null` explicitly
-removes it. Missing sidecars cannot erase cached queries: re-export older
-components to recover previously omitted definitions.
+Saved query metadata lives in optional `<component>.queries.json` files.
 
 ## Frame WML
 
