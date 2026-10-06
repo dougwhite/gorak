@@ -3,6 +3,20 @@
 from lxml import etree
 
 from .xml_shapes import derives, node_kind, shapes
+from .xml_text import is_text_node, text_value
+
+
+def is_implicit_default(node: etree._Element) -> bool:
+    """Identify exactly the field scalar omitted by the WML contract."""
+    if (
+        node.tag != "defaultvalue"
+        or node.attrib
+        or not is_text_node(node)
+        or text_value(node) != "1"
+    ):
+        return False
+    parent = node.getparent()
+    return parent is not None and supports_default_mode(native_kind(parent))
 
 
 def supports_default_mode(kind: str) -> bool:

@@ -35,3 +35,57 @@ def test_geometry_does_not_hide_opaque_content_changes(kind: str) -> None:
         etree.SubElement(opaque, "width").text = value
     assert geometry_signature(a) != geometry_signature(b)
     assert normalized_markup(a, b) is None
+
+
+@pytest.mark.parametrize("kind", ["framesource", "frametemplate"])
+@pytest.mark.parametrize("field_kind", ["entryfield", "menuitem"])
+def test_field_modes_compose_with_geometry(kind: str, field_kind: str) -> None:
+    from copy import deepcopy
+
+    from gorak.contract_source import equivalent
+
+    expected = frame(1000, kind)
+    field = expected.find(".//row")
+    field.set("{http://www.w3.org/2001/XMLSchema-instance}type", field_kind)
+    etree.SubElement(field, "defaultvalue").text = "1"
+    etree.SubElement(field, "defaultstring").text = "7"
+    actual = deepcopy(expected)
+    actual.find("topform/width").text = "1001"
+    mode = actual.find(".//defaultvalue")
+    mode.getparent().remove(mode)
+    expected_bytes, actual_bytes = etree.tostring(expected), etree.tostring(actual)
+    assert not equivalent(expected, actual)
+    assert signature(expected) != signature(actual)
+    assert normalized_markup(expected, actual) is not None
+    assert normalized_markup(actual, expected) is not None
+    assert etree.tostring(expected) == expected_bytes
+    assert etree.tostring(actual) == actual_bytes
+
+    for value in ["0", "2", "3", "", "99"]:
+        changed = deepcopy(actual)
+        etree.SubElement(changed.find(".//row"), "defaultvalue").text = value
+        assert normalized_markup(expected, changed) is None
+    for path, value in [("topform/width", "1020"), (".//defaultstring", "8")]:
+        changed = deepcopy(actual)
+        changed.find(path).text = value
+        assert normalized_markup(expected, changed) is None
+
+
+@pytest.mark.parametrize("location", ["component", "stylesheet", "opaque"])
+def test_mode_normalization_does_not_escape_layout_fields(location: str) -> None:
+    from copy import deepcopy
+
+    expected = frame(1000, "framesource")
+    if location == "component":
+        parent = expected
+    elif location == "stylesheet":
+        parent = etree.SubElement(etree.SubElement(expected, "fielddefaults"), "row")
+        parent.set("{http://www.w3.org/2001/XMLSchema-instance}type", "entryfield")
+    else:
+        parent = etree.SubElement(expected.find("topform"), "opaque")
+    etree.SubElement(parent, "defaultvalue").text = "1"
+    actual = deepcopy(expected)
+    actual.find("topform/width").text = "1001"
+    mode = actual.find(".//defaultvalue")
+    mode.getparent().remove(mode)
+    assert normalized_markup(expected, actual) is None
