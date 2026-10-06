@@ -98,6 +98,8 @@ OpenROAD characters that are invalid in XML are represented with
 <defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
 ```
 
+Duplicate field names are preserved; OpenROAD compilation diagnoses qualified-name collisions.
+
 ## Native stylesheets
 
 `field_defaults.json` represents the native OpenROAD Style Editor stylesheet,

@@ -79,7 +79,6 @@ def markup_node(
             node.remove(previous)
         set_text(etree.SubElement(node, key), value)
     seen: set[str] = set()
-    names: set[str] = set()
     for child in source:
         key = str(child.tag)
         if key in fields:
@@ -98,10 +97,8 @@ def markup_node(
             base = "formfield" if container_name == "childfields" else "menufield"
             if container_name is None or not derives(key, base):
                 raise ProjectError(f"Unsupported markup child: {kind}/{key}")
-            name = child.get("name", "").casefold()
-            if name and name in names:
-                raise ProjectError(f"Duplicate sibling field name: {name}")
-            names.add(name)
+            # Names need not be unique in stored source. Preserve every field;
+            # qualified-name collisions are diagnosed by native compilation.
             container = node.find(container_name)
             if container is None:
                 container = etree.SubElement(node, container_name)
