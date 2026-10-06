@@ -89,7 +89,6 @@ layout, field properties, and field event scripts:
 
 WML stores actual field state explicitly, including geometry and native
 `fieldstyle`. Stylesheets are not used to fill in missing field properties.
-An omitted `defaultvalue` means `DV_SYSTEM` (`1`); other default modes remain explicit.
 Nested `viewfield` and `protofield` elements preserve their native class with `type="…"`.
 
 OpenROAD characters that are invalid in XML are represented with
