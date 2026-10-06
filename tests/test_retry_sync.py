@@ -73,6 +73,14 @@ class World:
                 for n in self.database.findall("COMPONENT")
             ],
         )
+        monkeypatch.setattr(
+            export,
+            "read_components",
+            lambda c, a: [
+                ComponentInfo(a, str(n.get("name")), "proc4glsource", "")
+                for n in self.database.findall("COMPONENT")
+            ],
+        )
         monkeypatch.setattr(importer, "import_component_xml", self.import_xml)
         monkeypatch.setattr(push, "import_component_xml", self.import_xml)
         monkeypatch.setattr(compiler, "compile_source", self.compile)
@@ -585,3 +593,14 @@ def test_no_edit_executor_signals_queued_compile_failure_without_recovery(
         push.push_project(CONNECTION, world.root)
     assert not (world.root / ".openroad/push-pending.json").exists()
     assert world.imports == ["caller", "dependency"]
+
+
+def test_recovery_partial_export_retains_pending_marker(world: World) -> None:
+    broken = etree.SubElement(world.database, "COMPONENT", name="broken")
+    broken.set("{http://www.w3.org/2001/XMLSchema-instance}type", "unsupported_source")
+    (world.root / ".openroad/push-pending.json").write_text("broken marker")
+    with pytest.raises(ProjectError, match="Recovery remains incomplete"):
+        recovery.recover_push(CONNECTION, world.root, take="database")
+    assert (world.root / ".openroad/push-pending.json").exists()
+    assert not (world.folder / "broken.w4gl").exists()
+    assert not world.imports

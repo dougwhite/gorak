@@ -80,7 +80,10 @@ def test_deleted_database_app_removes_source_but_preserves_notes(
 def test_change_during_staging_aborts_without_overwrite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, database_drift: bool
 ) -> None:
+    from gorak import export
     from gorak.domain import ApplicationExport
+
+    monkeypatch.setattr(export, "read_components", lambda *a: [])
 
     (tmp_path / "gorak.json").write_text('{"name":"example"}')
     folder = tmp_path / "example"

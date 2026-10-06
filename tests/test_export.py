@@ -402,6 +402,7 @@ def test_export_application_to_paths_uses_local_backend(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(export_module, "read_components", lambda *args: [])
     calls: list[object] = []
     paths = application_export_paths(tmp_path, "sample_app")
 
@@ -545,6 +546,7 @@ def test_export_application_to_paths_uses_remote_backend(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(export_module, "read_components", lambda *args: [])
     calls: list[object] = []
     remote = RemoteHost("test", "windows-pc", r"C:\Development\gorak")
     paths = application_export_paths(tmp_path, "sample_app")

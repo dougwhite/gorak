@@ -4,8 +4,12 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from shutil import rmtree
+from shutil import copy2, rmtree
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from .image_assets import AssetWriter
 
 from lxml import etree
 
@@ -25,6 +29,12 @@ from .domain import (
     ComponentInfo,
     IncludedApplication,
 )
+from .export_failures import (
+    ComponentProjectionError,
+    ExportFailure,
+    cached_components,
+    finalize_baseline,
+)
 from .local import LocalCommandError
 from .odbc_runtime import odbc_error_types
 from .parser import (
@@ -32,6 +42,7 @@ from .parser import (
     FRAME_MARKUP_CHILDREN,
     encode_frame_markup,
     parse_application_xml,
+    parse_component_node,
     parse_xml,
 )
 from .project import GorakContext, ProjectError, read_json, write_json
@@ -146,12 +157,14 @@ def export_application(
     application = read_application(connection, app)
     normalize_application_paths(root, application.name, progress)
     paths = application_export_paths(root, application.name)
+    previous = cached_components(paths.xml_path.parent)
     exported = export_application_to_paths(
         connection=connection,
         app=application.name,
         paths=paths,
         progress=progress,
     )
+    finalize_baseline(paths.xml_path, exported.failures, previous)
     merged_application = merge_application_metadata(application, exported.application)
     write_app_metadata(
         root,
@@ -160,16 +173,18 @@ def export_application(
     )
     if bind_after_export:
         save_binding(connection, root)
-    record_component_sync_metadata_best_effort(
-        connection,
-        root,
-        application.name,
-        progress,
-    )
+    if not exported.failures:
+        record_component_sync_metadata_best_effort(
+            connection,
+            root,
+            application.name,
+            progress,
+        )
     return ApplicationExport(
         application=merged_application,
         components=exported.components,
         included_applications=exported.included_applications,
+        failures=exported.failures,
     )
 
 
@@ -261,43 +276,129 @@ def export_application_to_paths(
         raise ProjectError("Unsupported export document structure")
     from .image_assets import AssetWriter, externalize
 
+    catalog = read_components(connection, app)
+    nodes = tree.findall("COMPONENT")
+    names = [node.get("name") for node in nodes]
+    if any(not name for name in names) or len(
+        {str(n).casefold() for n in names}
+    ) != len(names):
+        raise ProjectError("Missing or duplicate exported component names")
     writer = AssetWriter(paths.source_dir, origins_from=asset_origins)
-    tree = externalize(tree, paths.source_dir, app, writer=writer)
-    exported = parse_application_xml(tree)
     application_node = tree.find("APPLICATION")
     if application_node is None or len(tree.findall("APPLICATION")) != 1:
         raise ProjectError("Expected one exported application")
-    application_source = application_metadata(
-        exported.application, included_applications=exported.included_applications
+    application_tree = etree.Element("OPENROAD")
+    application_tree.append(
+        externalize(application_node, paths.source_dir, app, writer=writer)
     )
-    components = exported.components
-    apply_field_default_inheritance(
-        paths.source_dir.parent,
-        paths.source_dir.name,
-        components,
-        source_nodes=tree.findall("COMPONENT"),
-    )
-    encoded = [(c.name, (encode_source_w4gl(c), c.markup)) for c in components]
-    if len({name.casefold() for name, _ in encoded}) != len(encoded):
-        raise ProjectError("Duplicate exported component names")
-    for component, native, (name, (text, markup)) in zip(
-        components, tree.findall("COMPONENT"), encoded, strict=True
-    ):
-        progress_message(progress, f"Encoding component {app}::{name}")
-        from .class_icons import extract_icons
+    exported = parse_application_xml(application_tree)
+    failures: list[ExportFailure] = []
 
-        extract_icons(native)
-        write_queries(paths.source_dir / f"{name}.w4gl", component.queries)
-        write_component_w4gl(paths.source_dir, name, text, progress)
-        (paths.source_dir / f"{name}.icons.json").unlink(missing_ok=True)
-        write_component_wml(paths.source_dir, name, markup, progress)
-        write_component_defaults(
-            paths.source_dir / f"{name}.w4gl",
-            component.props.get("fielddefaults", {}),
-            writer=writer,
-        )
-    write_json(paths.source_dir / "app.json", application_source)
-    return exported
+    def failed(name: str, reason: str) -> None:
+        failure = ExportFailure(app, name, reason)
+        failures.append(failure)
+        progress_message(progress, failure.message())
+
+    present = {str(name).casefold() for name in names}
+    for item in catalog:
+        if item.name.casefold() not in present:
+            failed(
+                item.name,
+                "Component is present in the catalog but missing from the native XML export",
+            )
+    components: list[Component] = []
+    for native in nodes:
+        name = str(native.get("name"))
+        progress_message(progress, f"Encoding component {app}!{name}")
+        try:
+            components.append(
+                project_component_files(native, paths.source_dir, writer, progress)
+            )
+        except ComponentProjectionError as ex:
+            failed(name, str(ex))
+    write_json(
+        paths.source_dir / "app.json",
+        application_metadata(
+            exported.application, included_applications=exported.included_applications
+        ),
+    )
+    return ApplicationExport(
+        exported.application, components, exported.included_applications, failures
+    )
+
+
+def project_component_files(
+    native: etree._Element,
+    source_dir: Path,
+    writer: "AssetWriter",
+    progress: Callable[[str], None] | None,
+) -> Component:
+    from .image_assets import externalize
+
+    name = str(native.get("name"))
+    # Prepare all component files before replacing any existing source. A
+    # malformed query, stylesheet or bitmap must not leave a half-written frame.
+    with tempfile.TemporaryDirectory(prefix="gorak-component-") as temporary:
+        stage = Path(temporary) / source_dir.name
+        stage.mkdir()
+        for parent, target in (
+            (source_dir.parent, stage.parent),
+            (source_dir, stage),
+        ):
+            defaults = parent / "field_defaults.json"
+            if defaults.exists():
+                copy2(defaults, target / defaults.name)
+        from .component_edits import SUPPORTED_TYPES
+        from .importer import validate_name
+        from .parser import NS
+
+        try:
+            validate_name(name)
+            kind = native.get(f"{{{NS['xsi']}}}type")
+            if kind not in SUPPORTED_TYPES:
+                raise ProjectError(f"Unsupported component type: {kind}")
+            node = externalize(native, source_dir, name, writer=writer)
+            component = parse_component_node(node)
+            apply_field_default_inheritance(
+                stage.parent, stage.name, [component], source_nodes=[node]
+            )
+            from .class_icons import extract_icons
+
+            extract_icons(node)
+            write_queries(stage / f"{name}.w4gl", component.queries)
+            write_component_w4gl(stage, name, encode_source_w4gl(component))
+            write_component_wml(stage, name, component.markup)
+            write_component_defaults(
+                stage / f"{name}.w4gl",
+                component.props.get("fielddefaults", {}),
+                writer=writer,
+            )
+        except (
+            ProjectError,
+            ValueError,
+            TypeError,
+            KeyError,
+            etree.XMLSyntaxError,
+        ) as ex:
+            raise ComponentProjectionError(str(ex)) from ex
+        for suffix in (
+            ".w4gl",
+            ".wml",
+            ".fielddefaults.json",
+            ".queries.json",
+            ".icons.json",
+        ):
+            target = source_dir / f"{name}{suffix}"
+            source = stage / target.name
+            if source.exists():
+                normalize_case_path(target, progress=progress, label="component")
+                copy2(source, target)
+            else:
+                target.unlink(missing_ok=True)
+        defaults = stage.parent / "field_defaults.json"
+        if defaults.exists() and not (source_dir.parent / defaults.name).exists():
+            copy2(defaults, source_dir.parent / defaults.name)
+        return component
 
 
 def export_component_to_paths(
@@ -309,6 +410,28 @@ def export_component_to_paths(
 ) -> Path:
     """Export one component XML and encode the component named inside that XML."""
 
+    previous = paths.xml_path.read_bytes() if paths.xml_path.exists() else None
+    try:
+        return _export_component_to_paths(connection, app, component, paths, progress)
+    except Exception:
+        if paths.xml_path.exists() and paths.xml_path.read_bytes() != previous:
+            archive = paths.xml_path.parent / "export-errors" / uuid4().hex
+            archive.mkdir(parents=True)
+            copy2(paths.xml_path, archive / paths.xml_path.name)
+        if previous is None:
+            paths.xml_path.unlink(missing_ok=True)
+        else:
+            paths.xml_path.write_bytes(previous)
+        raise
+
+
+def _export_component_to_paths(
+    connection: OpenRoadConnection,
+    app: str,
+    component: str,
+    paths: ComponentExportPaths,
+    progress: Callable[[str], None] | None,
+) -> Path:
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.w4gl_path.parent.mkdir(parents=True, exist_ok=True)
     backup_component_xml(connection, app, component, paths.xml_path)
@@ -318,32 +441,14 @@ def export_component_to_paths(
     tree = read_document(paths.xml_path)
     if tree.tag != "OPENROAD" or len(tree) != 1 or tree[0].tag != "COMPONENT":
         raise ProjectError("Expected a single exported component")
-    from .image_assets import AssetWriter, externalize
+    from .image_assets import AssetWriter
 
     writer = AssetWriter(paths.w4gl_path.parent)
-    tree = externalize(tree, paths.w4gl_path.parent, component, writer=writer)
-    parsed_component = parse_xml(tree)
+    parsed_component = project_component_files(
+        tree[0], paths.w4gl_path.parent, writer, progress
+    )
     normalize_component_xml_path(paths.xml_path, parsed_component.name)
-    apply_field_default_inheritance(
-        paths.w4gl_path.parent.parent,
-        paths.w4gl_path.parent.name,
-        [parsed_component],
-        source_nodes=[tree[0]],
-    )
-    text, markup = encode_source_w4gl(parsed_component), parsed_component.markup
-    w4gl_path = write_component_w4gl(
-        paths.w4gl_path.parent, parsed_component.name, text, progress
-    )
-    write_component_wml(paths.w4gl_path.parent, parsed_component.name, markup, progress)
-    write_component_defaults(
-        w4gl_path, parsed_component.props.get("fielddefaults", {}), writer=writer
-    )
-    write_queries(w4gl_path, parsed_component.queries)
-    from .class_icons import extract_icons
-
-    extract_icons(tree[0])
-    w4gl_path.with_suffix(".icons.json").unlink(missing_ok=True)
-    return w4gl_path
+    return paths.w4gl_path.parent / f"{parsed_component.name}.w4gl"
 
 
 def apply_field_default_inheritance(
