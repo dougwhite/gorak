@@ -151,7 +151,7 @@ def externalize_changes(
     from shutil import copy2
     from tempfile import TemporaryDirectory
 
-    from .image_assets import source_files, stylesheet_assets
+    from .image_assets import AssetWriter, source_files, stylesheet_assets
 
     result = dict(changes)
     with TemporaryDirectory(prefix="gorak-style-assets-") as temporary:
@@ -163,11 +163,17 @@ def externalize_changes(
                 target = stage / asset.relative_to(root)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 copy2(asset, target)
+        writers: dict[Path, AssetWriter] = {}
         for path, content in changes.items():
             if content is None:
                 continue
             folder = stage / path.parent.relative_to(root)
-            projected = stylesheet_assets(json.loads(content), folder, exporting=True)
+            if folder not in writers:
+                writers[folder] = AssetWriter(folder, origins_from=path.parent)
+            writer = writers[folder]
+            projected = stylesheet_assets(
+                json.loads(content), folder, exporting=True, _writer=writer
+            )
             # Resolve the staged representation before installing any files.
             restored = stylesheet_assets(projected, folder, exporting=False)
             if canonical_bitmaps(restored) != canonical_bitmaps(json.loads(content)):

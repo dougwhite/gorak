@@ -98,7 +98,9 @@ def test_change_during_staging_aborts_without_overwrite(
     monkeypatch.setattr(safe_pull, "read_applications", lambda c: [app])
     xml = '<OPENROAD><APPLICATION name="example"/></OPENROAD>'
 
-    def exporting(c: Any, a: str, paths: Any, progress: Any) -> ApplicationExport:
+    def exporting(
+        c: Any, a: str, paths: Any, progress: Any, **kwargs: Any
+    ) -> ApplicationExport:
         paths.xml_path.parent.mkdir(parents=True)
         paths.source_dir.mkdir(parents=True)
         paths.xml_path.write_text(xml)

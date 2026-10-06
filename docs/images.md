@@ -3,32 +3,38 @@
 Use an application-relative PNG reference in WML:
 
 ```xml
-<bgbitmap src="images/background.png"/>
+<bgbitmap src="images/background.png" path="art/background.png"/>
 ```
 
-Frame window icons use `windowicon = "images/icon.png"` in `.w4gl` metadata;
-application icons use `"window_icon": "images/icon.png"` in `app.json`.
-Stylesheet references are relative to their stylesheet directory; shared project
-styles use the project’s `images/` directory. New PNGs need no sidecar. Import embeds their pixels in OpenROAD source; deployed
-applications do not depend on the source directory.
+`src` locates the PNG; optional `path` preserves the original OpenROAD filename
+and defaults to `src`. Import embeds the pixels; deployed applications do not
+read that path. The PNG and reference are sufficient: no `.bitmap.json`, mask
+file, or native XML cache is required.
 
-Exported PNGs have an adjacent `<name>.png.bitmap.json` containing version `1`,
-native header/footer fields, pixel mode, and any palette or padding details.
-Optional masks are separate monochrome PNGs referenced by that metadata. Keep
-these files together. Image edits affect every referencing component; missing
-assets block synchronization. Changing an exported pixel mode or resizing a masked
-image requires explicitly removing its native metadata to treat it as a new PNG.
+Frame window icons accept `windowicon = {src = "images/icon.png", path = "art/icon.ico"}`
+in `.w4gl`; application `window_icon` in `app.json` accepts the equivalent JSON
+object. A plain path string remains sufficient for a newly authored icon.
+Stylesheet bitmap objects and class-icon entries use the same reference fields.
+Stylesheet paths are relative to the stylesheet directory.
 
-Export reuses assets only when the original path/name signifier and bitmap content
-match, including retained metadata. Collisions receive `-01`, `-02`, etc.; different
-original signifiers stay independent. Unreferenced assets are not automatically
-removed. References must stay under `images/`; symlinks are unsupported.
+Export derives dimensions, pixel storage and ordinary defaults from the PNG.
+Nondefault native values remain as optional reference attributes. Preserve these
+when editing source; [encoding notes](bitmap-encoding.md) describe their meaning
+and limits. Resizing a masked image requires replacing or removing its `mask`
+attribute. Changing an indexed/monochrome image's mode may require removing its
+palette/padding attributes to treat it as a new image.
+
+Export reuses assets with the same original path/name and matching content.
+Collisions receive `-01`, `-02`, etc.; different original names stay independent.
+Image edits affect every reference. Missing assets block synchronization;
+unreferenced assets are not automatically removed. References must stay under
+`images/`; symlinks are unsupported. Re-export earlier sidecar-based checkouts.
 
 Class icons live in `<component>.icons.json`:
 
 ```json
 {"version": 1, "key": "(icons/example)", "entries": [
-  {"id": "1", "src": "images/icon.png"}
+  {"id": "1", "src": "images/icon.png", "path": "art/icon.ico"}
 ]}
 ```
 

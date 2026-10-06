@@ -37,7 +37,8 @@ def collection(data: dict[str, Any]) -> etree._Element:
     for entry in data["entries"]:
         if (
             not isinstance(entry, dict)
-            or set(entry) != {"id", "src"}
+            or "src" not in entry
+            or "id" not in entry
             or not isinstance(entry["id"], str)
             or not isinstance(entry["src"], str)
             or entry["id"] in seen
@@ -47,7 +48,11 @@ def collection(data: dict[str, Any]) -> etree._Element:
         row = etree.SubElement(items, "row")
         etree.SubElement(row, "enumvalue").text = entry["id"]
         bitmap = etree.SubElement(row, "enumbitmap")
-        etree.SubElement(bitmap, "src").text = entry["src"]
+        from .image_assets import validate_reference
+
+        bitmap.attrib.update(
+            validate_reference({k: v for k, v in entry.items() if k != "id"})
+        )
     etree.SubElement(items, "row_class").text = "choicedetail"
     etree.SubElement(extension, "row_class").text = "object"
     return extension
@@ -65,7 +70,7 @@ def write_icons(node: etree._Element, source: Path) -> None:
             "version": 1,
             "key": key,
             "entries": [
-                {"id": row.findtext("enumvalue"), "src": row.findtext("enumbitmap/src")}
+                {"id": row.findtext("enumvalue"), **dict(row.find("enumbitmap").attrib)}
                 for row in extension.findall("row")[1].findall("choiceitems/row")
             ],
         }
@@ -73,7 +78,7 @@ def write_icons(node: etree._Element, source: Path) -> None:
 
         if signature(collection(data)) != signature(extension):
             raise ProjectError("Unsupported class extension structure")
-    except (IndexError, TypeError) as ex:
+    except (AttributeError, IndexError, TypeError) as ex:
         raise ProjectError("Unsupported class extension structure") from ex
     path.write_text(json.dumps(data, indent=2) + "\n")
 

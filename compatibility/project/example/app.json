@@ -4,5 +4,8 @@
   "included_applications": [
     "shared"
   ],
-  "window_icon": "images/badge.png"
+  "window_icon": {
+    "src": "images/badge.png",
+    "path": "art/badge.png"
+  }
 }

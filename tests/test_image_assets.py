@@ -9,7 +9,13 @@ from PIL import Image
 
 from gorak.bitmap_codec import Bitmap, decode, decode_buffer, encode, encode_buffer
 from gorak.errors import ProjectError
-from gorak.image_assets import export_bitmap, externalize, read_bitmap, resolve
+from gorak.image_assets import (
+    AssetWriter,
+    export_bitmap,
+    externalize,
+    read_bitmap,
+    resolve,
+)
 from gorak.importer import signature
 
 
@@ -56,24 +62,25 @@ def test_native_zero_count_and_invalid_runs() -> None:
 def test_pixels_metadata_and_compression_roundtrip(tmp_path: Path, mode: str) -> None:
     original = bitmap(mode=mode)
     ref = export_bitmap(tmp_path, encode(original), "fallback")
-    assert ref == "images/logo.png"
+    assert ref["src"] == "images/logo.png"
     assert read_bitmap(tmp_path, ref) == original
-    image = Image.open(tmp_path / ref)
+    image = Image.open(tmp_path / ref["src"])
     assert image.mode == mode
     assert image.getpixel((0, 0)) == ((2, 1, 0, 3) if mode == "RGBA" else (2, 1, 0))
 
 
 def test_asset_reuse_and_stable_collisions(tmp_path: Path) -> None:
+    writer = AssetWriter(tmp_path)
     a = bitmap()
     b = replace(a, pixels=bytes(reversed(a.pixels)))
-    assert export_bitmap(tmp_path, encode(a), "x") == "images/logo.png"
-    assert export_bitmap(tmp_path, encode(a), "y") == "images/logo.png"
-    assert export_bitmap(tmp_path, encode(b), "x") == "images/logo-01.png"
-    assert export_bitmap(tmp_path, encode(b), "z") == "images/logo-01.png"
+    assert writer.export(encode(a), "x")["src"] == "images/logo.png"
+    assert writer.export(encode(a), "y")["src"] == "images/logo.png"
+    assert writer.export(encode(b), "x")["src"] == "images/logo-01.png"
+    assert writer.export(encode(b), "z")["src"] == "images/logo-01.png"
     c = bitmap("other/logo.png")
-    assert export_bitmap(tmp_path, encode(c), "x") == "images/logo-02.png"
+    assert writer.export(encode(c), "x")["src"] == "images/logo-02.png"
     d = bitmap("art/separate.png")
-    assert export_bitmap(tmp_path, encode(d), "x") == "images/separate.png"
+    assert writer.export(encode(d), "x")["src"] == "images/separate.png"
 
 
 def test_gorak_first_png_preserves_alpha_and_edits(tmp_path: Path) -> None:
@@ -123,7 +130,10 @@ def test_png_first_reexport_reuses_original_file(tmp_path: Path) -> None:
     Image.new("RGBA", (2, 2), (32, 64, 128, 80)).save(path)
     before = path.read_bytes()
     native = read_bitmap(tmp_path, "images/custom.png")
-    assert export_bitmap(tmp_path, encode(native), "component") == "images/custom.png"
+    assert (
+        export_bitmap(tmp_path, encode(native), "component")["src"]
+        == "images/custom.png"
+    )
     assert path.read_bytes() == before
     assert not list(tmp_path.rglob("*.bitmap.json"))
 
@@ -135,14 +145,14 @@ def test_indexed_palette_keeps_native_fourth_channel(tmp_path: Path) -> None:
     header += ["10", "20", "30", "1", "100", "150", "200", "1"]
     a = replace(a, header=tuple(header), pixels=b"\0\1\1\0")
     ref = export_bitmap(tmp_path, encode(a), "x")
-    assert Image.open(tmp_path / ref).mode == "P"
+    assert Image.open(tmp_path / ref["src"]).mode == "P"
     assert read_bitmap(tmp_path, ref) == a
-    im = Image.open(tmp_path / ref)
+    im = Image.open(tmp_path / ref["src"])
     palette = im.getpalette()
     assert palette is not None
     palette[:3] = [40, 50, 60]
     im.putpalette(palette)
-    im.save(tmp_path / ref)
+    im.save(tmp_path / ref["src"])
     restored = read_bitmap(tmp_path, ref)
     assert restored.header[14:18] == ("40", "50", "60", "1")
     assert restored.pixels == a.pixels
@@ -188,17 +198,15 @@ def test_empty_native_placeholder_remains_inline(tmp_path: Path) -> None:
 def test_missing_mask_fails_and_edited_image_is_not_overwritten(tmp_path: Path) -> None:
     a = bitmap()
     ref = export_bitmap(tmp_path, encode(a), "x")
-    Image.new("RGBA", (2, 2), (255, 255, 255, 255)).save(tmp_path / ref)
-    before = (tmp_path / ref).read_bytes()
-    assert export_bitmap(tmp_path, encode(a), "x") == "images/logo-01.png"
-    assert (tmp_path / ref).read_bytes() == before
+    Image.new("RGBA", (2, 2), (255, 255, 255, 255)).save(tmp_path / ref["src"])
+    before = (tmp_path / ref["src"]).read_bytes()
+    assert export_bitmap(tmp_path, encode(a), "x")["src"] == "images/logo-01.png"
+    assert (tmp_path / ref["src"]).read_bytes() == before
     masked = replace(a, mask=b"\0\xff")
     ref = export_bitmap(tmp_path, encode(masked), "x")
-    import json
-
-    meta = json.loads((tmp_path / (ref + ".bitmap.json")).read_text())
-    (tmp_path / meta["mask"]).unlink()
-    with pytest.raises(ProjectError, match="Cannot read image"):
+    assert read_bitmap(tmp_path, ref).mask == b"\0\xff"
+    ref["mask"] = "2x2:invalid"
+    with pytest.raises(ProjectError, match="Invalid compressed"):
         read_bitmap(tmp_path, ref)
 
 
@@ -228,7 +236,11 @@ def test_stylesheet_bitmap_override_externalizes_and_restores(tmp_path: Path) ->
     path = source.with_suffix(".fielddefaults.json")
     data = json.loads(path.read_text())
     value = data["groups"]["buttonfield"]["styles"]["style1"]["bgbitmap"]
-    assert value == {"src": "images/logo.png"}
+    assert value == {
+        "src": "images/logo.png",
+        "path": "art/logo.png",
+        "palette-count": "0",
+    }
     restored = native_styles.read(path)
     assert (
         decode(
@@ -403,3 +415,85 @@ def test_stylesheet_promotion_keeps_assets_and_dry_run_is_read_only(
             "buttonfield"
         ]["styles"]["style1"]["bgbitmap"]
     )
+
+
+def test_nondefault_fields_survive_without_sidecars(tmp_path: Path) -> None:
+    a = bitmap()
+    header, tail = list(a.header), list(a.tail)
+    for i in (1, 2, 3, 6, 7, 8, 9):
+        header[i] = str(10 + i)
+    for i in (0, 1, 2, 3, 4, 7, 8, 9):
+        tail[i] = str(20 + i)
+    header[5], header[12] = "-1:", "12"
+    tail[6] = "2"
+    a = replace(a, header=tuple(header), tail=tuple(tail))
+    ref = export_bitmap(tmp_path, encode(a), "anonymous")
+    assert read_bitmap(tmp_path, ref) == a
+    assert ref["native-h5"] == "-1"
+    assert ref["path"] == ""
+    assert {p.suffix for p in tmp_path.rglob("*") if p.is_file()} == {".png"}
+
+
+def test_plain_rgba_needs_only_src_and_path(tmp_path: Path) -> None:
+    (tmp_path / "images").mkdir()
+    Image.new("RGBA", (2, 2), (20, 40, 60, 80)).save(tmp_path / "images/new.png")
+    a = read_bitmap(tmp_path, {"src": "images/new.png", "path": r"art\new.png"})
+    ref = export_bitmap(tmp_path, encode(a), "new")
+    assert set(ref) == {"src", "path"}
+    assert read_bitmap(tmp_path, ref) == a
+
+
+def test_mask_is_self_contained_and_resize_is_rejected(tmp_path: Path) -> None:
+    a = decode(encode(replace(bitmap(), mask=b"\x80\x7f")))
+    ref = export_bitmap(tmp_path, encode(a), "mask")
+    assert read_bitmap(tmp_path, ref) == a
+    assert not list(tmp_path.rglob("*.mask.png"))
+    Image.new("RGBA", (3, 2)).save(tmp_path / ref["src"])
+    with pytest.raises(ProjectError, match="Resize"):
+        read_bitmap(tmp_path, ref)
+
+
+def test_staged_export_uses_reference_identity(tmp_path: Path) -> None:
+    import shutil
+
+    source, stage = tmp_path / "source", tmp_path / "stage"
+    source.mkdir()
+    stage.mkdir()
+    first = bitmap("one/logo.png")
+    second = bitmap("two/logo.png")
+    writer = AssetWriter(source)
+    refs = [writer.export(encode(first), "x"), writer.export(encode(second), "x")]
+    root = etree.Element("frame")
+    for ref in refs:
+        etree.SubElement(root, "bgbitmap", ref)
+    (source / "frame.wml").write_bytes(etree.tostring(root))
+    shutil.copytree(source / "images", stage / "images")
+    writer = AssetWriter(stage, origins_from=source)
+    assert writer.export(encode(second), "x") == refs[1]
+    assert writer.export(encode(first), "x") == refs[0]
+    assert len(list(stage.rglob("*.png"))) == 2
+
+
+def test_invalid_reference_attributes_fail(tmp_path: Path) -> None:
+    from gorak.image_assets import pack
+
+    ref = export_bitmap(tmp_path, encode(bitmap()), "x")
+    for extra in (
+        {"unknown": "1"},
+        {"padding": pack(b"\0")},
+        {"palette": pack(bytes(10000))},
+        {"native-h5": "-1"},
+        {"palette-count": "-1"},
+        {"mask": "2x2:not base64"},
+    ):
+        with pytest.raises(ProjectError):
+            read_bitmap(tmp_path, {**ref, **extra})
+
+
+def test_stylesheet_reference_preserves_order_annotations(tmp_path: Path) -> None:
+    from gorak.image_assets import stylesheet_assets
+
+    native = {"obj_encoded": encode(bitmap()), "$order": ["obj_encoded"]}
+    projected = stylesheet_assets(native, tmp_path, exporting=True)
+    assert projected["$order"] == ["src"]
+    assert stylesheet_assets(projected, tmp_path, exporting=False) == native

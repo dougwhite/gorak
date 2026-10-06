@@ -105,6 +105,10 @@ def test_image_contract_semantics(tmp_path: Path) -> None:
     )
     for location in ("windowicon/obj_encoded", "topform/bgbitmap/obj_encoded"):
         assert decode(panel.findtext(location)).pixels == expected
+    background = decode(panel.findtext("topform/bgbitmap/obj_encoded"))
+    assert background.origin == "art/badge.png"
+    assert background.tail[7:9] == ("1", "7")
+    assert not list(source.rglob("*.bitmap.json"))
     app = restore_application(source / "example")
     assert decode(app.findtext("windowicon/obj_encoded")).pixels == expected
     counter = restore_component(source / "shared/counter.w4gl")
@@ -114,4 +118,7 @@ def test_image_contract_semantics(tmp_path: Path) -> None:
     assert decode(rows[0].findtext("enumbitmap/obj_encoded")).pixels == pixels
     other = read_bitmap(source / "shared", "images/counter-active.png").pixels
     assert other != pixels
-    assert decode(rows[1].findtext("enumbitmap/obj_encoded")).pixels == other
+    restored = decode(rows[1].findtext("enumbitmap/obj_encoded"))
+    assert restored.pixels == other
+    assert restored.mask == b"\x80\x40"
+    assert restored.header[12] == "12"

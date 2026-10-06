@@ -13,7 +13,7 @@ class Application:
     description: str
     database_name: str = ""
     database_type: str = ""
-    window_icon: str = ""
+    window_icon: str | dict[str, str] = ""
 
 
 @dataclass(frozen=True)

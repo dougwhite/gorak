@@ -137,6 +137,8 @@ def parse_application_xml(
 
     from .bitmap_codec import normalized
 
+    icon = app_node.find("windowicon")
+
     return ApplicationExport(
         application=Application(
             name=name,
@@ -144,8 +146,10 @@ def parse_application_xml(
             description=first_text(app_node, "short_remark", "versshortremarks"),
             database_name=first_text(app_node, "databasename"),
             database_type=first_text(app_node, "database_type"),
-            window_icon=normalized(
-                first_text(app_node, "windowicon/src", "windowicon/obj_encoded")
+            window_icon=(
+                dict(icon.attrib)
+                if icon is not None and "src" in icon.attrib
+                else normalized(first_text(app_node, "windowicon/obj_encoded"))
             ),
         ),
         components=parse_components_xml(root),
@@ -573,12 +577,12 @@ def extract_props(
     """Extract flat child-node properties from a component node."""
 
     ignored = IGNORED_PROPERTIES if ignored is None else ignored
-    props: dict[str, str] = {}
+    props: dict[str, Any] = {}
 
     for child in node:
         if child.tag not in ignored:
-            if child.tag == "windowicon" and child.find("src") is not None:
-                props["windowicon"] = child.findtext("src") or ""
+            if child.tag == "windowicon" and "src" in child.attrib:
+                props["windowicon"] = dict(child.attrib)
                 continue
             value = (
                 text_value(child) if is_text_node(child) else child.text or ""

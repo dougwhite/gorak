@@ -4,11 +4,14 @@
   "entries": [
     {
       "id": "1",
-      "src": "images/counter.png"
+      "src": "images/counter.png",
+      "path": "art/counter.png",
+      "native-flags": "12"
     },
     {
       "id": "2",
-      "src": "images/counter-active.png"
+      "src": "images/counter-active.png",
+      "mask": "2x2:eNprcAAAAUIAwQ=="
     }
   ]
 }

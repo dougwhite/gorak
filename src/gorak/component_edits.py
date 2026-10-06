@@ -71,9 +71,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
         # OpenROAD removes empty containers on import; these spellings agree.
         if new == "" and old is None and shape(kind).get(key) in shapes():
             continue
-        if new is not None and not isinstance(new, (str, int, bool)):
-            raise ProjectError(f"Component property must be scalar: {key}")
-        if key == "windowicon" and isinstance(new, str) and new:
+        if key == "windowicon" and isinstance(new, (str, dict)) and new:
             from .bitmap_codec import encode
             from .image_assets import read_bitmap
 
@@ -83,6 +81,8 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
                 etree.SubElement(node, "windowicon"), "obj_encoded"
             ).text = encode(read_bitmap(path.parent, new))
             continue
+        if new is not None and not isinstance(new, (str, int, bool)):
+            raise ProjectError(f"Component property must be scalar: {key}")
         set_scalar(
             node,
             kind,

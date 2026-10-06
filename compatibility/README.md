@@ -9,12 +9,13 @@ frame scripts, explicit geometry/field state, Unique Style (`fieldstyle=0`), a
 typed table-column prototype, and an invalid XML character processing instruction.
 The counter class has a saved query with a table, typed column and select target
 in an adjacent `.queries.json` file (sidecar schema version 1).
-Source contract 3 adds a small RGBA PNG used by both application and frame icons
-and the frame background, plus an ordered class-icon collection in
-`counter.icons.json`. Consumers should resolve application-relative `images/`
-references, preserve alpha and sidecars, and retain shared references when editing.
-Native bitmap metadata, when exported, accompanies the PNG as `.png.bitmap.json`;
-PNG-first assets need no metadata.
+Source contract 4 uses PNGs and self-contained bitmap references: `src` locates
+pixels, `path` preserves the native filename, and optional native attributes
+retain nondefault data. There are no `.bitmap.json` or separate mask files.
+Application/frame icons accept reference objects; WML uses bitmap attributes;
+class icon entries and stylesheet bitmaps carry the same reference fields.
+Consumers must preserve unknown native attributes when editing references.
+The fixture exercises a shared RGBA image, native overrides, and class icons.
 The button's actual colour is `6`; the project/application/frame creation-style
 colours are `6`/`7`/`8`. Existing fields must never inherit the frame palette colour.
 

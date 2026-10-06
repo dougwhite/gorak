@@ -261,7 +261,7 @@ def _sync_project(
                     copy2(asset, target)
                 paths = application_export_paths(stage, name)
                 exported = export_application_to_paths(
-                    connection, name, paths, progress
+                    connection, name, paths, progress, asset_origins=root / name
                 )
                 staged_xml[app] = paths.xml_path
                 exported_count += len(exported.components)

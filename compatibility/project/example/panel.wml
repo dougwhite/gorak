@@ -1,6 +1,6 @@
 <frame>
   <topform width="6000" height="3000">
-    <bgbitmap src="images/badge.png"/>
+    <bgbitmap src="images/badge.png" path="art/badge.png" native-t7="1" native-t8="7"/>
     <entryfield name="quantity" xleft="200" ytop="200" width="1400" height="300" datatype="integer" fieldstyle="0">
       <defaultstring>before<?ingres_invalidxmlchar 7?>after</defaultstring>
     </entryfield>

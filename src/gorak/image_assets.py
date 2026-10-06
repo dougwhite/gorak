@@ -1,7 +1,11 @@
-"""Application-local PNG assets with lossless native bitmap metadata."""
+"""PNG assets and self-contained bitmap references; no per-image sidecars."""
 
+import base64
+import binascii
 import json
 import re
+import tomllib
+import zlib
 from copy import deepcopy
 from io import BytesIO
 from pathlib import Path, PureWindowsPath
@@ -33,30 +37,19 @@ def asset_path(folder: Path, name: str) -> Path:
     return path
 
 
-def metadata_path(path: Path) -> Path:
-    return path.with_suffix(path.suffix + ".bitmap.json")
-
-
 def png_bytes(image: Image.Image) -> bytes:
     output = BytesIO()
     image.save(output, format="PNG", compress_level=9)
     return output.getvalue()
 
 
-def project(bitmap: Bitmap) -> tuple[bytes, dict[str, Any]]:
+def project(bitmap: Bitmap) -> bytes:
     w, h = bitmap.width, bitmap.height
     size = w * h
     header = list(bitmap.header)
     palette = [list(map(int, header[i : i + 4])) for i in range(14, len(header), 4)]
-    padding: list[int] = []
     if int(header[12]) == 2 and len(bitmap.pixels) == ((w + 7) // 8) * h:
         image = Image.frombytes("1", (w, h), bytes(v ^ 255 for v in bitmap.pixels))
-        if w % 8:
-            stride = (w + 7) // 8
-            padding = [
-                bitmap.pixels[(y + 1) * stride - 1] & ((1 << (8 - w % 8)) - 1)
-                for y in range(h)
-            ]
     elif len(bitmap.pixels) == size and palette:
         image = Image.frombytes("P", (w, h), bitmap.pixels)
         image.putpalette([c for entry in palette for c in entry[:3]])
@@ -66,17 +59,7 @@ def project(bitmap: Bitmap) -> tuple[bytes, dict[str, Any]]:
         image = Image.frombytes("RGBA", (w, h), bitmap.pixels, "raw", "BGRA")
     else:
         raise ProjectError("Unsupported bitmap pixel layout")
-    meta: dict[str, Any] = {
-        "version": 1,
-        "mode": image.mode,
-        "header": header[:14],
-        "tail": list(bitmap.tail),
-    }
-    if any(any(entry) for entry in palette):
-        meta["palette"] = palette
-    if padding:
-        meta["padding_bits"] = padding
-    return png_bytes(image), meta
+    return png_bytes(image)
 
 
 def read_png(path: Path) -> Image.Image:
@@ -96,224 +79,350 @@ def read_png(path: Path) -> Image.Image:
         raise ProjectError(f"Cannot read image {path}: {ex}") from ex
 
 
-def read_bitmap(folder: Path, reference: str) -> Bitmap:
-    path = asset_path(folder, reference)
+# These are measured serialization defaults, not invented system attribute names.
+HEADER_DEFAULTS = {1: "0", 2: "1", 3: "9", 6: "0", 7: "1", 8: "2", 9: "0"}
+TAIL_DEFAULTS = {0: "0", 1: "0", 2: "0", 3: "0", 4: "0", 7: "0", 8: "0", 9: "0"}
+REFERENCE_KEYS = (
+    {
+        "src",
+        "path",
+        "native-flags",
+        "native-pixeltype",
+        "palette-count",
+        "palette",
+        "palette-flags",
+        "padding",
+        "mask",
+        "native-h5",
+    }
+    | {f"native-h{i}" for i in HEADER_DEFAULTS}
+    | {f"native-t{i}" for i in TAIL_DEFAULTS}
+)
+
+
+def pack(data: bytes) -> str:
+    return base64.b64encode(zlib.compress(data, 9)).decode("ascii")
+
+
+def unpack(value: str, limit: int) -> bytes:
+    try:
+        if len(value) > MAX_BYTES * 2:
+            raise ValueError("Encoded bitmap attribute exceeds bounds")
+        compressed = base64.b64decode(value, validate=True)
+        decoder = zlib.decompressobj()
+        result = decoder.decompress(compressed, limit + 1)
+        if len(result) > limit or not decoder.eof or decoder.unused_data:
+            raise ValueError("Invalid or oversized bitmap attribute")
+        return result
+    except (ValueError, zlib.error, binascii.Error) as ex:
+        raise ProjectError(f"Invalid compressed bitmap attribute: {ex}") from ex
+
+
+def reference_fields(bitmap: Bitmap, image: Image.Image) -> dict[str, str]:
+    """Keep only information that the PNG and measured defaults cannot supply."""
+    h, t = bitmap.header, bitmap.tail
+    result = {"path": bitmap.origin}
+    # Empty and null native filenames are distinct.
+    if h[5] == "-1:":
+        result["native-h5"] = "-1"
+    flags = "2" if image.mode == "1" else "12" if bitmap.mask is not None else "4"
+    if h[12] != flags:
+        result["native-flags"] = h[12]
+    pixeltype = {"1": "0", "P": "0", "RGB": "1", "RGBA": "3"}[image.mode]
+    if t[6] != pixeltype:
+        result["native-pixeltype"] = t[6]
+    for i, default in HEADER_DEFAULTS.items():
+        if h[i] != default:
+            result[f"native-h{i}"] = h[i]
+    for i, default in TAIL_DEFAULTS.items():
+        if t[i] != default:
+            result[f"native-t{i}"] = t[i]
+    count = int(h[13])
+    default_count = (
+        len(image.getpalette() or []) // 3
+        if image.mode == "P"
+        else 0
+        if image.mode == "1"
+        else 256
+    )
+    if count != default_count:
+        result["palette-count"] = str(count)
+    palette = bytes(map(int, h[14:]))
+    extra = palette[3::4] if image.mode == "P" else palette
+    if any(extra):
+        result["palette-flags" if image.mode == "P" else "palette"] = pack(extra)
+    if image.mode == "1" and bitmap.width % 8:
+        stride = (bitmap.width + 7) // 8
+        padding = bytes(
+            bitmap.pixels[(y + 1) * stride - 1] & ((1 << (8 - bitmap.width % 8)) - 1)
+            for y in range(bitmap.height)
+        )
+        if any(padding):
+            result["padding"] = pack(padding)
+    if bitmap.mask is not None:
+        result["mask"] = f"{bitmap.width}x{bitmap.height}:" + pack(bitmap.mask)
+    return result
+
+
+def validate_reference(value: Any) -> dict[str, str]:
+    if isinstance(value, str):
+        return {"src": value}
+    if (
+        not isinstance(value, dict)
+        or "src" not in value
+        or set(value) - REFERENCE_KEYS
+        or any(not isinstance(v, str) for v in value.values())
+    ):
+        raise ProjectError("Invalid bitmap reference attributes")
+    return dict(value)
+
+
+def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
+    ref = validate_reference(reference)
+    path = asset_path(folder, ref["src"])
+    if path.with_suffix(path.suffix + ".bitmap.json").exists():
+        raise ProjectError(
+            "Obsolete bitmap sidecar; re-export this application before using bitmap references"
+        )
     image = read_png(path)
-    meta_path = metadata_path(path)
-    if not meta_path.exists():
-        # PNG-first source: embed original pixels without a native file loader.
+    if image.mode not in {"1", "P", "RGB", "RGBA"} or "transparency" in image.info:
         image = image.convert("RGBA")
+    w, h = image.size
+    try:
+        count = int(
+            ref.get(
+                "palette-count",
+                str(
+                    len(image.getpalette() or []) // 3
+                    if image.mode == "P"
+                    else 0
+                    if image.mode == "1"
+                    else 256
+                ),
+            )
+        )
+        if not 0 <= count <= 256:
+            raise ValueError("Invalid bitmap palette count")
+        palette = bytearray(count * 4)
+        if image.mode == "P":
+            if "palette" in ref:
+                raise ValueError("Indexed PNG uses palette-flags, not palette")
+            colors = image.getpalette() or []
+            if len(colors) < count * 3 or max(image.tobytes(), default=0) >= count:
+                raise ValueError("PNG palette does not match bitmap reference")
+            fourth = (
+                unpack(ref["palette-flags"], count)
+                if "palette-flags" in ref
+                else bytes(count)
+            )
+            if len(fourth) != count:
+                raise ValueError("Palette flags length differs from palette")
+            for i in range(count):
+                palette[i * 4 : i * 4 + 4] = (
+                    bytes(colors[i * 3 : i * 3 + 3]) + fourth[i : i + 1]
+                )
+            pixels = image.tobytes()
+        else:
+            if "palette-flags" in ref:
+                raise ValueError("Palette flags require an indexed PNG")
+            if "palette" in ref:
+                palette = bytearray(unpack(ref["palette"], count * 4))
+                if len(palette) != count * 4:
+                    raise ValueError("Native palette length differs from palette count")
+            if image.mode == "1":
+                pixels_array = bytearray(v ^ 255 for v in image.tobytes())
+                if w % 8:
+                    padding = (
+                        unpack(ref["padding"], h) if "padding" in ref else bytes(h)
+                    )
+                    if len(padding) != h:
+                        raise ValueError("Padding height differs from PNG")
+                    stride, bits = (w + 7) // 8, (1 << (8 - w % 8)) - 1
+                    for y, value in enumerate(padding):
+                        if value & ~bits:
+                            raise ValueError("Invalid unused padding bits")
+                        i = (y + 1) * stride - 1
+                        pixels_array[i] = (pixels_array[i] & ~bits) | value
+                elif "padding" in ref:
+                    raise ValueError("Padding requires a partial monochrome byte")
+                pixels = bytes(pixels_array)
+            else:
+                if "padding" in ref:
+                    raise ValueError("Padding requires a monochrome PNG")
+                pixels = image.tobytes("raw", "BGR" if image.mode == "RGB" else "BGRA")
+        mask = None
+        if "mask" in ref:
+            size, data = ref["mask"].split(":", 1)
+            if size != f"{w}x{h}":
+                raise ValueError(
+                    "Resize requires removing or replacing the native mask"
+                )
+            mask = unpack(data, MAX_BYTES)
+            if not mask:
+                raise ValueError("Empty native mask")
+        origin = ref.get("path", ref["src"])
+        filename = f"{len(origin)}:{origin}"
+        if "native-h5" in ref:
+            if ref["native-h5"] != "-1" or origin:
+                raise ValueError("Null filename requires an empty path")
+            filename = "-1:"
         header = [
             "12:bitmapobject",
             "0",
             "1",
             "9",
-            str(image.width * image.height * 4),
-            f"{len(reference)}:{reference}",
+            str(len(pixels)),
+            filename,
             "0",
             "1",
             "2",
             "0",
-            str(image.width),
-            str(image.height),
-            "4",
-            "256",
-        ] + ["0"] * 1024
-        return Bitmap(
-            tuple(header),
-            image.tobytes("raw", "BGRA"),
-            ("0", "0", "0", "0", "0", "-1", "3", "0", "0", "0", "-1:", "-1:"),
-        )
-    if meta_path.is_symlink():
-        raise ProjectError("Symlinked bitmap metadata is unsupported")
-    try:
-        if meta_path.stat().st_size > 1024 * 1024:
-            raise ProjectError("Bitmap metadata exceeds supported bounds")
-        meta = json.loads(meta_path.read_text())
-        if (
-            not isinstance(meta, dict)
-            or type(meta.get("version")) is not int
-            or meta["version"] != 1
-            or set(meta)
-            - {
-                "version",
-                "mode",
-                "header",
-                "tail",
-                "palette",
-                "padding_bits",
-                "mask",
-            }
-        ):
-            raise ProjectError("Unsupported bitmap metadata")
-        header = list(meta["header"])
-        tail = tuple(meta["tail"])
-        if (
-            len(header) != 14
-            or not all(isinstance(v, str) for v in header)
-            or len(tail) != 12
-            or not all(isinstance(v, str) for v in tail)
-        ):
-            raise ProjectError("Invalid bitmap metadata fields")
-        if image.mode != meta["mode"]:
-            raise ProjectError(
-                "Image pixel mode changed; retain the exported PNG mode or explicitly remove native bitmap metadata"
-            )
-        w, h = image.size
-        if int(tail[5]) >= 0 and "mask" not in meta:
-            raise ProjectError("Missing native bitmap mask reference")
-        if "mask" in meta and (w, h) != (int(header[10]), int(header[11])):
-            raise ProjectError("Resize requires removing native bitmap mask metadata")
-        if image.mode == "P" and "transparency" in image.info:
-            raise ProjectError("Indexed transparency requires PNG-first conversion")
-        header[10:12] = [str(w), str(h)]
-        if not 0 <= int(header[13]) <= 256:
-            raise ProjectError("Invalid bitmap palette size")
-        palette = meta.get("palette", [[0, 0, 0, 0] for _ in range(int(header[13]))])
-        if (
-            not isinstance(palette, list)
-            or len(palette) != int(header[13])
-            or any(
-                not isinstance(row, list)
-                or len(row) != 4
-                or any(type(v) is not int or not 0 <= v <= 255 for v in row)
-                for row in palette
-            )
-        ):
-            raise ProjectError("Bitmap palette length changed")
-        if image.mode == "P":
-            colors = image.getpalette()
-            assert colors is not None
-            if max(image.tobytes(), default=0) >= len(palette):
-                raise ProjectError("PNG uses an index outside its native palette")
-            palette = [
-                colors[i * 3 : i * 3 + 3] + [entry[3]]
-                for i, entry in enumerate(palette)
-            ]
-            pixels = image.tobytes()
-        elif image.mode == "1":
-            pixels_array = bytearray(v ^ 255 for v in image.tobytes())
-            if w % 8:
-                padding = meta.get("padding_bits", [0] * h)
-                if len(padding) != h:
-                    raise ProjectError(
-                        "Monochrome height changed with retained padding"
+            str(w),
+            str(h),
+            ref.get(
+                "native-flags",
+                "2" if image.mode == "1" else "12" if mask is not None else "4",
+            ),
+            str(count),
+        ]
+        tail = ["0"] * 5 + [
+            str(len(mask)) if mask is not None else "-1",
+            ref.get(
+                "native-pixeltype",
+                {"1": "0", "P": "0", "RGB": "1", "RGBA": "3"}[image.mode],
+            ),
+            "0",
+            "0",
+            "0",
+            "-1:",
+            "-1:",
+        ]
+        for i in HEADER_DEFAULTS:
+            header[i] = ref.get(f"native-h{i}", header[i])
+            int(header[i])
+        for i in TAIL_DEFAULTS:
+            tail[i] = ref.get(f"native-t{i}", tail[i])
+        header.extend(map(str, palette))
+        return decode(encode(Bitmap(tuple(header), pixels, tuple(tail), mask)))
+    except (ValueError, TypeError, KeyError) as ex:
+        raise ProjectError(f"Invalid bitmap reference: {ex}") from ex
+
+
+class AssetWriter:
+    """Allocate names within one export, consulting existing source references."""
+
+    def __init__(self, folder: Path, *, origins_from: Path | None = None):
+        self.folder = folder
+        self.origins: dict[str, set[str]] = {}
+
+        def visit(value: Any) -> None:
+            if isinstance(value, dict):
+                if isinstance(value.get("src"), str):
+                    self.origins.setdefault(value["src"], set()).add(
+                        str(value.get("path", value["src"]))
                     )
-                stride = (w + 7) // 8
-                mask = (1 << (8 - w % 8)) - 1
-                for y, v in enumerate(padding):
-                    if type(v) is not int or not 0 <= v <= mask:
-                        raise ProjectError("Invalid monochrome padding")
-                    i = (y + 1) * stride - 1
-                    pixels_array[i] = (pixels_array[i] & ~mask) | v
-            pixels = bytes(pixels_array)
-        elif image.mode in {"RGB", "RGBA"}:
-            pixels = image.tobytes("raw", "BGR" if image.mode == "RGB" else "BGRA")
-        else:
-            raise ProjectError("Unsupported PNG mode")
-        header.extend(str(c) for entry in palette for c in entry)
-        header[4] = str(len(pixels))
-        mask_bytes = None
-        if "mask" in meta:
-            mask_image = read_png(asset_path(folder, meta["mask"]))
-            if mask_image.mode != "1":
-                raise ProjectError("Bitmap mask must be monochrome PNG")
-            mask_bytes = mask_image.tobytes()
-        bitmap = Bitmap(tuple(header), pixels, tail, mask_bytes)
-        # Validate retained fields and lengths through the same bounded reader.
-        return decode(encode(bitmap))
-    except (KeyError, TypeError, ValueError, IndexError, OSError) as ex:
-        raise ProjectError(f"Invalid bitmap metadata {meta_path}: {ex}") from ex
+                for v in value.values():
+                    visit(v)
+            elif isinstance(value, list):
+                for v in value:
+                    visit(v)
 
+        from .source_xml import from_bytes
 
-def export_bitmap(folder: Path, text: str, fallback: str) -> str:
-    bitmap = decode(text)
-    data, meta = project(bitmap)
-    origin = bitmap.origin
-    base = (
-        re.sub(
-            r"[^A-Za-z0-9_.-]",
-            "-",
-            PureWindowsPath(origin).stem if origin else fallback,
-        ).strip(".-")
-        or "image"
-    )
-    base = base[:100]
-    # Stable slot allocation: reuse matching named variants before choosing a
-    # free suffix. Different original names are intentionally independent.
-    directory = folder / "images"
-    if directory.is_symlink():
-        raise ProjectError("Symlinked image directory")
-    directory.mkdir(parents=True, exist_ok=True)
-    for candidate in sorted(directory.glob("*.png")):
-        if candidate.is_symlink():
-            raise ProjectError("Symlinked image asset")
-        side = metadata_path(candidate)
-        try:
-            if side.is_file():
-                old = json.loads(side.read_text())
-                old_origin = old["header"][5].split(":", 1)[1]
-            else:
-                old_origin = candidate.relative_to(folder).as_posix()
-            if old_origin != origin:
+        origin_folder = origins_from or folder
+        for path in origin_folder.iterdir() if origin_folder.exists() else []:
+            if not path.is_file() or path.is_symlink():
                 continue
+            try:
+                if path.suffix == ".json":
+                    visit(json.loads(path.read_text()))
+                elif path.suffix == ".w4gl":
+                    visit(tomllib.loads(path.read_text().split("===", 1)[0]))
+                elif path.suffix == ".wml":
+                    for node in from_bytes(path.read_bytes()).iter():
+                        visit(dict(node.attrib))
+            except (ValueError, etree.XMLSyntaxError):
+                continue  # Invalid source is never grounds to overwrite an asset.
+
+    def export(self, text: str, fallback: str) -> dict[str, str]:
+        bitmap = decode(text)
+        data = project(bitmap)
+        with Image.open(BytesIO(data)) as image:
+            fields = reference_fields(bitmap, image)
+        origin = bitmap.origin
+        base = (
+            re.sub(
+                r"[^A-Za-z0-9_.-]",
+                "-",
+                PureWindowsPath(origin).stem if origin else fallback,
+            ).strip(".-")[:100]
+            or "image"
+        )
+        directory = self.folder / "images"
+        if directory.is_symlink():
+            raise ProjectError("Symlinked image directory")
+        directory.mkdir(parents=True, exist_ok=True)
+        for candidate in sorted(directory.glob("*.png")):
+            if candidate.is_symlink():
+                raise ProjectError("Symlinked image asset")
+            name = candidate.relative_to(self.folder).as_posix()
+            known = self.origins.get(name, {name})
             if not origin and not re.fullmatch(
                 re.escape(base) + r"(?:-\d+)?", candidate.stem
             ):
                 continue
-            restored = read_bitmap(folder, candidate.relative_to(folder).as_posix())
-            # Original signifiers remain distinct, including their spelling.
-            left = list(restored.header)
-            right = list(bitmap.header)
-            if (
-                left == right
-                and restored.pixels == bitmap.pixels
-                and restored.tail == bitmap.tail
-                and restored.mask == bitmap.mask
-            ):
-                return candidate.relative_to(folder).as_posix()
-        except (OSError, ValueError, KeyError, TypeError, IndexError, ProjectError):
-            continue  # Never overwrite an edited or invalid existing asset.
-    index = 0
-    while True:
-        name = base + (f"-{index:02d}" if index else "") + ".png"
-        path = directory / name
+            if origin not in known:
+                continue
+            try:
+                # Reconstruct with this reference's native fields; pixel assets
+                # may be shared while the references retain distinct metadata.
+                ref = {"src": name, **fields}
+                restored = read_bitmap(self.folder, ref)
+                if restored == bitmap:
+                    self.origins.setdefault(name, set()).add(origin)
+                    return ref
+            except ProjectError:
+                continue
         occupied = {p.name.casefold() for p in directory.iterdir()}
-        if not any(
-            n.casefold() in occupied
-            for n in (name, name + ".bitmap.json", path.stem + ".mask.png")
-        ):
-            break
-        index += 1
-    if bitmap.mask is not None:
-        mask_path = path.with_name(path.stem + ".mask.png")
-        # Preserve every bit, including alignment/unused bits, in a one-row mask.
-        mask_image = Image.frombytes(
-            "1", (max(1, len(bitmap.mask) * 8), 1), bitmap.mask or b"\0"
-        )
-        if not bitmap.mask:
-            raise ProjectError("Empty native mask is unsupported")
-        if mask_image.width > MAX_PIXELS:
-            raise ProjectError("Native mask too large")
-        mask_path.write_bytes(png_bytes(mask_image))
-        meta["mask"] = mask_path.relative_to(folder).as_posix()
-    path.write_bytes(data)
-    metadata_path(path).write_text(json.dumps(meta, indent=2) + "\n")
-    return path.relative_to(folder).as_posix()
+        index = 0
+        while True:
+            name = base + (f"-{index:02d}" if index else "") + ".png"
+            if name.casefold() not in occupied:
+                break
+            index += 1
+        (directory / name).write_bytes(data)
+        name = "images/" + name
+        self.origins.setdefault(name, set()).add(origin)
+        return {"src": name, **fields}
 
 
-def externalize(node: etree._Element, folder: Path, owner: str) -> etree._Element:
+def export_bitmap(folder: Path, text: str, fallback: str) -> dict[str, str]:
+    return AssetWriter(folder).export(text, fallback)
+
+
+def externalize(
+    node: etree._Element,
+    folder: Path,
+    owner: str,
+    *,
+    origins_from: Path | None = None,
+    writer: AssetWriter | None = None,
+) -> etree._Element:
     result = deepcopy(node)
-    for encoded in result.iter("obj_encoded"):
+    writer = writer or AssetWriter(folder, origins_from=origins_from)
+    for encoded in list(result.iter("obj_encoded")):
         if any(parent.tag == "fielddefaults" for parent in encoded.iterancestors()):
-            continue  # Export only stylesheet overrides, after inheritance.
-        if not (encoded.text or "").startswith("12:bitmapobject"):
-            continue  # Other serialized objects retain the existing inline path.
-        if is_empty(encoded.text or ""):
             continue
-        ref = export_bitmap(folder, encoded.text or "", asset_label(encoded, owner))
-        encoded.tag = "src"
-        encoded.text = ref
+        if not (encoded.text or "").startswith("12:bitmapobject") or is_empty(
+            encoded.text or ""
+        ):
+            continue
+        ref = writer.export(encoded.text or "", asset_label(encoded, owner))
+        parent = encoded.getparent()
+        if parent is None or len(parent) != 1:
+            raise ProjectError("Bitmap reference cannot be combined with inline data")
+        parent.remove(encoded)
+        parent.attrib.update(ref)
     return result
 
 
@@ -336,26 +445,15 @@ def asset_label(encoded: etree._Element, owner: str) -> str:
 
 
 def resolve(node: etree._Element, folder: Path) -> None:
-    for source in list(node.iter("src")):
-        parent = source.getparent()
-        if parent is None or len(parent) != 1 or source.attrib:
-            raise ProjectError("Image reference cannot be combined with inline data")
-        source.tag = "obj_encoded"
-        source.text = encode(read_bitmap(folder, source.text or ""))
     for parent in node.iter():
         if "src" in parent.attrib:
-            if (
-                len(parent)
-                or (parent.text or "").strip()
-                or set(parent.attrib) != {"src"}
-            ):
+            if len(parent) or (parent.text or "").strip():
                 raise ProjectError(
                     "Image reference cannot be combined with inline data"
                 )
-            ref = parent.attrib.pop("src")
-            etree.SubElement(parent, "obj_encoded").text = encode(
-                read_bitmap(folder, ref)
-            )
+            bitmap = read_bitmap(folder, dict(parent.attrib))
+            parent.attrib.clear()
+            etree.SubElement(parent, "obj_encoded").text = encode(bitmap)
 
 
 def source_files(folder: Path) -> list[Path]:
@@ -365,45 +463,49 @@ def source_files(folder: Path) -> list[Path]:
 
 
 def stylesheet_assets(
-    value: Any, folder: Path, *, exporting: bool, owner: str = "style"
+    value: Any,
+    folder: Path,
+    *,
+    exporting: bool,
+    owner: str = "style",
+    _writer: AssetWriter | None = None,
 ) -> Any:
-    """Translate bitmap properties after computing stylesheet inheritance."""
+    writer = _writer or (AssetWriter(folder) if exporting else None)
     if isinstance(value, list):
         return [
-            stylesheet_assets(v, folder, exporting=exporting, owner=owner)
+            stylesheet_assets(
+                v, folder, exporting=exporting, owner=owner, _writer=writer
+            )
             for v in value
         ]
     if not isinstance(value, dict):
         return value
-    result: dict[str, Any] = {}
-    for key, item in value.items():
-        if (
-            exporting
-            and key == "obj_encoded"
-            and isinstance(item, str)
-            and item.startswith("12:bitmapobject")
-            and not is_empty(item)
-        ):
-            result["src"] = export_bitmap(folder, item, owner)
-        elif not exporting and key == "src":
-            if "obj_encoded" in value:
-                raise ProjectError(
-                    "Image reference cannot be combined with inline data"
-                )
-            result["obj_encoded"] = encode(read_bitmap(folder, item))
-        else:
-            result[key] = stylesheet_assets(
-                item, folder, exporting=exporting, owner=owner
-            )
-    for key in ("$order", "$before"):
-        if key in result:
-            # Native property-order annotations name the translated property.
-            old, new = ("obj_encoded", "src") if exporting else ("src", "obj_encoded")
-            if isinstance(result[key], list):
-                result[key] = [new if v == old else v for v in result[key]]
-            elif isinstance(result[key], dict):
-                result[key] = {
-                    new if k == old else k: new if v == old else v
-                    for k, v in result[key].items()
-                }
-    return result
+    order = {k: v for k, v in value.items() if k in {"$order", "$before"}}
+    fields = {k: v for k, v in value.items() if k not in order}
+    old, new = ("obj_encoded", "src") if exporting else ("src", "obj_encoded")
+    for key, annotation in order.items():
+        if isinstance(annotation, list):
+            order[key] = [new if v == old else v for v in annotation]
+        elif isinstance(annotation, dict):
+            order[key] = {
+                new if k == old else k: new if v == old else v
+                for k, v in annotation.items()
+            }
+    if (
+        exporting
+        and isinstance(fields.get("obj_encoded"), str)
+        and fields["obj_encoded"].startswith("12:bitmapobject")
+        and not is_empty(fields["obj_encoded"])
+    ):
+        if set(fields) != {"obj_encoded"}:
+            raise ProjectError("Image reference cannot be combined with inline data")
+        assert writer is not None
+        return {**writer.export(fields["obj_encoded"], owner), **order}
+    if not exporting and "src" in fields:
+        return {"obj_encoded": encode(read_bitmap(folder, fields)), **order}
+    return {
+        k: stylesheet_assets(
+            v, folder, exporting=exporting, owner=owner, _writer=writer
+        )
+        for k, v in value.items()
+    }
