@@ -423,8 +423,14 @@ class AssetWriter:
                     return dict(ref)
         bitmap = decode(text)
         image = project_image(bitmap)
-        fields = reference_fields(bitmap, image)
         data = png_bytes(image)
+        if image.mode == "P":
+            # PNG may pad a palette to the selected bit depth. Preserve its
+            # actual stored entry count when deriving native overrides.
+            with Image.open(BytesIO(data)) as stored:
+                fields = reference_fields(bitmap, stored)
+        else:
+            fields = reference_fields(bitmap, image)
         origin = bitmap.origin
         from . import builtin_images
 
@@ -447,7 +453,7 @@ class AssetWriter:
         if self._candidates is None:
             self._index()
         assert self._candidates is not None
-        for name in sorted(self._candidates.get(origin, ())):
+        for name in sorted(self._candidates.get(origin, ()), key=Path):
             candidate = asset_path(self.folder, name)
             if not origin and not re.fullmatch(
                 re.escape(base) + r"(?:-\d+)?", candidate.stem
