@@ -33,9 +33,6 @@ Readable gorak source can reconstruct supported OpenROAD source without the
 original `.openroad/` cache. External OpenROAD frameworks, images, and runtime
 dependencies must still exist in the destination environment.
 
-`app.json` accepts an optional `appflags` string, preserved verbatim. The `core`
-include is implicit and always restored first; other includes retain their order.
-
 ## W4GL source
 
 `.w4gl` files contain TOML metadata, an `===` separator, and readable

@@ -26,9 +26,6 @@ gorak:
 4. records the exact source accepted by OpenROAD as the synchronization baseline; and
 5. compiles the affected database source.
 
-Successful imports do not trigger a second export. Baseline receipts identify
-accepted submissions; fresh exports remain part of later comparison and recovery.
-
 Applications included in the same push are imported in dependency order. Missing
 external includes do not block source restoration; compilation reports unresolved
 dependencies. Cyclic includes among new applications remain a preflight error.
