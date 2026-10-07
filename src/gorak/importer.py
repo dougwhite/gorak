@@ -158,9 +158,9 @@ def import_component(
                     "Database component changed since export; reconcile it before importing"
                 )
             overlay_component(current, source)
-            from .frame_geometry import explicit_shape_dimensions
+            from .xml_writer import prepare_submission
 
-            explicit_shape_dimensions(current)
+            prepare_submission(current)
             submitted = operation / "submitted.xml"
             current.getroottree().write(
                 str(submitted), encoding="UTF-8", xml_declaration=True

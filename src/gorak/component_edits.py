@@ -174,3 +174,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
             "script",
             None if edited.script is None else leading + edited.script + trailing,
         )
+
+    from .macro_variables import ensure_script_owner
+
+    ensure_script_owner(node)

@@ -86,8 +86,23 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
             and not child.attrib
             and not len(child)
             and not text_value(child)
+            and not (
+                child.tag == "script" and parent.find("macro_vars/row") is not None
+            )
         ):
             parent.remove(child)
+    # Native versions can emit named properties in a different schema order.
+    # Stable sorting preserves every repeated row's relative position. Opaque
+    # metadata and mixed text retain their original ordering.
+    for field in node.iter():
+        if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
+            continue
+        if (
+            all(isinstance(child.tag, str) for child in field)
+            and not (field.text or "").strip()
+            and all(not (child.tail or "").strip() for child in field)
+        ):
+            field[:] = sorted(field, key=lambda child: str(child.tag))
     if pixel_geometry:
         from .frame_geometry import geometry_signature
 

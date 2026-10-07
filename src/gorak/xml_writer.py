@@ -116,3 +116,13 @@ def document(nodes: list[etree._Element]) -> bytes:
     root = etree.Element("OPENROAD", nsmap=NS)
     root.extend(nodes)
     return bytes(etree.tostring(root, encoding="UTF-8", xml_declaration=True))
+
+
+def prepare_submission(root: etree._Element) -> None:
+    """Make implicit readable defaults explicit where native import requires them."""
+    from .frame_geometry import explicit_shape_dimensions
+    from .macro_variables import ensure_script_owner
+
+    explicit_shape_dimensions(root)
+    for component in root.iter("COMPONENT"):
+        ensure_script_owner(component)

@@ -202,3 +202,38 @@ def test_tracking_keeps_opaque_literal_metadata_exact() -> None:
         "<COMPONENT><extension><script>literal</script></extension></COMPONENT>"
     )
     assert signature(original) != signature(changed)
+
+
+def test_macros_without_script_body_keep_native_script_owner(tmp_path: Path) -> None:
+    node = etree.fromstring(
+        f'<COMPONENT xmlns:xsi="{XSI}" name="panel" xsi:type="framesource"><script/><macro_vars><row><name>$LABEL</name><value>Sample</value><shortremark> </shortremark></row><row_class>macrovariable</row_class></macro_vars><topform/></COMPONENT>'
+    )
+    source = tmp_path / "panel.w4gl"
+    write_component(source, node)
+    assert "===" not in source.read_text()
+    restored = restore_component(source)
+    assert restored.find("script") is not None
+    assert restored.findtext("macro_vars/row/value") == "Sample"
+    remark = restored.find("macro_vars/row/shortremark")
+    assert remark is not None and text_value(remark) == " "
+    assert b"<![CDATA[ ]]>" in etree.tostring(remark)
+    without_owner = etree.fromstring(etree.tostring(restored))
+    without_owner.remove(without_owner.find("script"))
+    assert signature(restored) != signature(without_owner)
+
+
+def test_tracking_property_order_is_distinct_from_collection_order() -> None:
+    a = etree.fromstring(
+        "<COMPONENT><topform><exactwidth>1</exactwidth><maxcharacters>20</maxcharacters><items><row>A</row><row>B</row></items></topform><extension><a/><b/></extension></COMPONENT>"
+    )
+    b = etree.fromstring(
+        "<COMPONENT><topform><maxcharacters>20</maxcharacters><exactwidth>1</exactwidth><items><row>A</row><row>B</row></items></topform><extension><a/><b/></extension></COMPONENT>"
+    )
+    assert signature(a) == signature(b)
+    rows = b.find("topform/items")
+    rows[:] = list(reversed(rows))
+    assert signature(a) != signature(b)
+    rows[:] = list(reversed(rows))
+    opaque = b.find("extension")
+    opaque[:] = list(reversed(opaque))
+    assert signature(a) != signature(b)

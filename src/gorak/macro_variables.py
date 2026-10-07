@@ -70,7 +70,7 @@ def write_macros(component: etree._Element, value: object) -> None:
         row = etree.SubElement(container, "row")
         for key in FIELDS:
             if key in item:
-                set_text(etree.SubElement(row, key), item[key], cdata=key == "value")
+                set_text(etree.SubElement(row, key), item[key], cdata=True)
     if value:
         etree.SubElement(container, "row_class").text = "macrovariable"
     for previous in component.findall("macro_vars"):
@@ -78,3 +78,15 @@ def write_macros(component: etree._Element, value: object) -> None:
     # OpenROAD removes empty collections on import; export the same form.
     if value:
         component.append(container)
+
+
+def ensure_script_owner(component: etree._Element) -> None:
+    """Native import only attaches macros when the script owner is present."""
+    if (
+        component.find("macro_vars/row") is not None
+        and component.find("script") is None
+    ):
+        from .xml_shapes import node_kind, order_children
+
+        set_text(etree.SubElement(component, "script"), "", cdata=True)
+        order_children(component, node_kind(component, ""))

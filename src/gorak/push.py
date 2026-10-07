@@ -271,11 +271,11 @@ def _push_project(
             pending.pop(key)
             if "/" not in key:
                 available.add(key.casefold())
-    from .frame_geometry import explicit_shape_dimensions
+    from .xml_writer import prepare_submission
 
     for index, key in enumerate(ordered):
         payload = from_bytes(creations[key][1])
-        explicit_shape_dimensions(payload)
+        prepare_submission(payload)
         (operation / f"{index}-submitted.xml").write_bytes(
             etree.tostring(payload, encoding="UTF-8", xml_declaration=True)
         )
