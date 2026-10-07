@@ -61,7 +61,6 @@ constants, globals, include/shared scripts, ghost frames, external libraries and
 Unsupported source shapes are refused rather than silently discarded.
 
 Declarations support qualified types (`APP!CLASS`), `LONG BYTE`, and quoted attribute names containing `$`.
-Attribute declarations also support `PRIVATE`, `DEFAULT NULL` and `DEFAULT 'value'`:
 
 ```toml
 [attributes]
@@ -74,24 +73,7 @@ lookup = "PRIVATE METHOD RETURNING SHARED!ITEM"
 describe = { declaration = "METHOD RETURNING VARCHAR(80) NOT NULL", remark = "Describe this object" }
 ```
 
-A member accepts either a declaration string or an object containing `declaration`
-and additional metadata. Export uses a string unless extra metadata is present.
-Remarks preserve their text; member `taggedvalues` is an ordered list of name/value
-objects, retaining duplicate names. TOML comments are not source remarks.
-
-Native `DefaultValue` selects the initialization mode: absent/`DV_SYSTEM` uses the
-native zero, empty or blank value; `DV_NULL` produces `DEFAULT NULL`; `DV_STRING`
-produces a quoted default using `DefaultString`. Double apostrophes inside a default
-literal represent one apostrophe. Nullability is independent of the selected default.
-Arrays and object references are nullable and omit `NOT NULL`; they normally start
-as an empty array/object unless `DEFAULT NULL` is selected. Legacy `NOT NULL` on
-reference declarations is accepted but canonicalized to the native nullable form.
-
-A saved but inactive `DefaultString` is retained as a structured `defaultstring`
-field without activating it. Legacy `isnullable`/`isarray` flags on methods without
-return types are retained as boolean metadata, without inventing a return type.
-Unknown member metadata is refused rather than discarded. Re-export older readable
-sources to recover defaults, remarks, privacy and member tags that older exports lost.
+Declarations follow standard OpenROAD declaration syntax, including `PRIVATE`, `ARRAY OF`, `NOT NULL`, and `DEFAULT` clauses. Use a declaration string, or an object containing `declaration` when remarks or other metadata are present.
 
 Saved query metadata lives in optional `<component>.queries.json` files.
 
@@ -188,7 +170,7 @@ existing applications with the current Gorak version.
 
 Each application has an `app.json` file containing:
 
-- `starting_component` (preserved even when absent from the application; native import/compilation decides validity);
+- `starting_component`;
 - `description`;
 - optional `database_name` and `database_type`; and
 - `included_applications`.
