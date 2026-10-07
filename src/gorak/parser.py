@@ -91,7 +91,7 @@ def parse_w4gl(text: str, name: str) -> Component:
         name=name,
         type=component_type,
         props=props,
-        script=script.strip(" \t\r\n") if script is not None else None,
+        script=(script.strip(" \t\r\n") or None) if script is not None else None,
     )
 
 
@@ -151,6 +151,7 @@ def parse_application_xml(
             ),
             database_name=first_text(app_node, "databasename"),
             database_type=first_text(app_node, "database_type"),
+            appflags=first_text(app_node, "appflags", strip=False),
             window_icon=(
                 dict(icon.attrib)
                 if icon is not None and "src" in icon.attrib
@@ -206,7 +207,9 @@ def parse_component_node(
     validate_instructions(node)
     script_node = node.find("script")
     script = (
-        text_value(script_node).strip(" \t\r\n") if script_node is not None else None
+        (text_value(script_node).strip(" \t\r\n") or None)
+        if script_node is not None
+        else None
     )
 
     name = node.get("name")
@@ -407,6 +410,8 @@ def append_markup_content(
                 content if defaults_index.explicit else content.strip(" \t\r\n"),
                 cdata=True,
             )
+        elif child.tag == "row":
+            element.append(frame_markup_element(child, defaults_index, mapping))
         elif is_text_node(child) and not child.attrib:
             value = text_value(child)
             if is_implicit_default(child):
@@ -655,11 +660,11 @@ def extract_props(
                 )
                 continue
             value = (
-                text_value(child) if is_text_node(child) else child.text or ""
-            ).strip(" \t\r\n")
-            # Empty projections of structured designer data carry no readable
-            # information. They are not part of the supported source contract.
-            if not value and child.tag in {"extension", "queries"}:
+                text_value(child) if is_text_node(child) else (child.text or "").strip()
+            )
+            # Absence represents the native default. Literal scalar whitespace
+            # remains data; only element-only container formatting is ignored.
+            if not value:
                 continue
             props[child.tag] = value
 
@@ -790,7 +795,18 @@ def encode_w4gl(component: Component) -> str:
     """Encode a component to TOML front matter plus script body."""
 
     props = tomlkit.dumps(toml_props(component))
-    return join_segments([props, component.script], "===").rstrip("\n") + "\n"
+    return (
+        join_segments(
+            [
+                props,
+                component.script
+                if component.script and component.script.strip()
+                else None,
+            ],
+            "===",
+        ).rstrip("\n")
+        + "\n"
+    )
 
 
 def encode_wml(component: Component) -> str | None:

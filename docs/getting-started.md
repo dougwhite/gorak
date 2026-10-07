@@ -136,7 +136,7 @@ Push the disk change into the OpenROAD source database:
 gorak sync --push
 ```
 
-Gorak imports, verifies, and compiles the changed source. If the application has
+gorak imports and compiles the changed source. If the application has
 configured tests, run them after a successful push:
 
 ```sh

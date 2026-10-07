@@ -86,3 +86,21 @@ def normalized_markup(expected: etree._Element, actual: etree._Element) -> str |
         )
         + "\n"
     )
+
+
+ZERO_DIMENSIONS = {"rectangleshape": ("width", "height"), "segmentshape": ("width",)}
+
+
+def explicit_shape_dimensions(root: etree._Element) -> None:
+    """Preserve omitted native zeros against nonzero XML-import constructors."""
+    from .xml_shapes import order_children
+
+    for field in root.iter():
+        kind = field.get(f"{{{NS['xsi']}}}type", "")
+        changed = False
+        for dimension in ZERO_DIMENSIONS.get(kind, ()):
+            if field.find(dimension) is None:
+                etree.SubElement(field, dimension).text = "0"
+                changed = True
+        if changed:
+            order_children(field, kind)

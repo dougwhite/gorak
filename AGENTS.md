@@ -53,7 +53,7 @@ Keep CLI handlers separate from domain logic. Main areas:
 - `portable_source.py`, `component_edits.py`, `contract_source.py`, `wml_writer.py`:
   source reconstruction and native comparison. `xml_shapes.py` supplies observed
   schema ordering/types.
-- `importer.py`, `import_backend.py`, `push.py`: verified source imports; `compiler.py` provides separate database compilation.
+- `importer.py`, `import_backend.py`, `push.py`: native-accepted source imports; `compiler.py` provides separate database compilation.
 - `safe_pull.py`, `sync_plan.py`, `sync_guard.py`: pull planning and safety.
 - `runner.py`, `run_backend.py`: application and configured test execution.
 - `remote_scripts/`: packaged Windows helpers, currently version 9. Keep a single

@@ -26,7 +26,7 @@ def project(root: Path) -> Path:
 
 
 @pytest.mark.parametrize("advance_cache", [False, True])
-def test_import_preserves_opaque_xml_and_verifies(
+def test_import_preserves_opaque_xml_and_records_acceptance(
     tmp_path: Path, monkeypatch: MonkeyPatch, advance_cache: bool
 ) -> None:
     source = project(tmp_path)
@@ -54,7 +54,9 @@ def test_import_preserves_opaque_xml_and_verifies(
     assert (tmp_path / ".openroad/app/example.xml").read_bytes() == (
         uploaded[0] if advance_cache else XML
     )
-    assert (result / "after.xml").read_bytes() == uploaded[0]
+    assert not (result / "after.xml").exists()
+    assert (result / "accepted").exists()
+    assert (result / "submitted.xml").read_bytes() == uploaded[0]
     assert "RETURN 1" in source.read_text()
 
 
@@ -93,7 +95,7 @@ def test_rejects_unsafe_import_before_write(
     assert "RETURN 1" in source.read_text()
 
 
-def test_verification_failure_preserves_baseline(
+def test_native_import_failure_preserves_baseline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     project(tmp_path)
@@ -104,8 +106,12 @@ def test_verification_failure_preserves_baseline(
         path.write_bytes(XML)
 
     monkeypatch.setattr(importer, "backup_component_xml", export)
-    monkeypatch.setattr(importer, "import_component_xml", lambda *a: None)
-    with pytest.raises(ProjectError, match="verification"):
+
+    def fail(*args: object) -> None:
+        raise ProjectError("native import failed")
+
+    monkeypatch.setattr(importer, "import_component_xml", fail)
+    with pytest.raises(ProjectError, match="native import failed"):
         importer.import_component(CONNECTION, tmp_path, "app", "example")
     assert (tmp_path / ".openroad/app/example.xml").read_bytes() == XML
     assert list((tmp_path / ".openroad/imports").glob("*/submitted.xml"))
@@ -306,7 +312,7 @@ def test_import_frame_scripts_preserves_layout_and_defaults(
 
 @pytest.mark.parametrize("concurrent_edit", [False, True])
 @pytest.mark.parametrize("omit_default_mode", [False, True])
-def test_geometry_canonicalization_preserves_concurrent_wml_edits(
+def test_accepted_baseline_preserves_source_and_concurrent_wml_edits(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
     concurrent_edit: bool,
@@ -374,8 +380,8 @@ def test_geometry_canonicalization_preserves_concurrent_wml_edits(
         assert baseline.read_bytes() == xml
     else:
         result = importer.import_component(CONNECTION, tmp_path, "app", "panel")
-        assert 'xleft="323"' in markup.read_text()
-        assert baseline.read_bytes() == (result / "after.xml").read_bytes()
+        assert 'xleft="321"' in markup.read_text()
+        assert baseline.read_bytes() == (result / "submitted.xml").read_bytes()
 
 
 def test_compound_normalization_does_not_relax_database_conflict_check(

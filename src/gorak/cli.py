@@ -628,7 +628,8 @@ def application_to_dict(application: Application) -> dict[str, str]:
     return {
         key: value
         for key, value in data.items()
-        if key not in {"database_name", "database_type", "window_icon"} or value
+        if key not in {"database_name", "database_type", "window_icon", "appflags"}
+        or value
     }
 
 
@@ -770,7 +771,9 @@ def component_import_command(args: argparse.Namespace) -> str:
         args.dry_run,
     )
     outcome = (
-        "Import preview prepared" if args.dry_run else "Source imported and verified"
+        "Import preview prepared"
+        if args.dry_run
+        else "Source import accepted by OpenROAD"
     )
     return f"{outcome}. Artifacts: {operation}"
 

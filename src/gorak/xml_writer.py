@@ -12,7 +12,7 @@ from .xml_text import set_text
 
 
 def scalar(parent: etree._Element, name: str, value: str) -> None:
-    set_text(etree.SubElement(parent, name), value)
+    set_text(etree.SubElement(parent, name), value, cdata=True)
 
 
 def datatype(row: etree._Element, declaration: str) -> None:
@@ -51,6 +51,7 @@ def new_application(path: Path) -> etree._Element:
         "description": "versshortremarks",
         "database_name": "databasename",
         "database_type": "database_type",
+        "appflags": "appflags",
     }
     if set(metadata) - {*fields, "included_applications", "window_icon"}:
         raise ProjectError(f"Unsupported application metadata: {path}")
@@ -73,7 +74,7 @@ def new_application(path: Path) -> etree._Element:
     if not isinstance(includes, list):
         raise ProjectError("included_applications must be an array")
     container = etree.SubElement(node, "included_apps")
-    for index, entry in enumerate([{"name": "core", "image": "core.plb"}, *includes]):
+    for entry in [{"name": "core", "image": "core.plb"}, *includes]:
         if isinstance(entry, str):
             entry = {"name": entry}
         if (
@@ -83,6 +84,11 @@ def new_application(path: Path) -> etree._Element:
         ):
             raise ProjectError("Invalid included application")
         validate_name(entry["name"])
+        if "image" in entry and not isinstance(entry["image"], str):
+            raise ProjectError("Included image must be a string")
+        if len(container) and entry["name"].casefold() == "core":
+            continue
+        index = len(container)
         row = etree.SubElement(container, "row")
         if index:
             scalar(row, "sequence", str(index))
@@ -100,6 +106,7 @@ def new_application(path: Path) -> etree._Element:
         "databasename",
         "database_type",
         "windowicon",
+        "appflags",
     ]
     node[:] = sorted(node, key=lambda child: order.index(str(child.tag)))
     return node

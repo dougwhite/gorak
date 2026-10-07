@@ -29,9 +29,12 @@ Do not commit:
 Generated `.w4gl` and `.wml` files use LF line endings. `.w4gl` files end
 with exactly one newline.
 
-Readable Gorak source can reconstruct supported OpenROAD source without the
+Readable gorak source can reconstruct supported OpenROAD source without the
 original `.openroad/` cache. External OpenROAD frameworks, images, and runtime
 dependencies must still exist in the destination environment.
+
+`app.json` accepts an optional `appflags` string, preserved verbatim. The `core`
+include is implicit and always restored first; other includes retain their order.
 
 ## W4GL source
 
@@ -55,7 +58,7 @@ METHOD get_count() =
 }
 ```
 
-Gorak currently reconstructs frames and frame templates, 4GL and 3GL procedures, user classes,
+gorak currently reconstructs frames and frame templates, 4GL and 3GL procedures, user classes,
 constants, globals, include/shared scripts, ghost frames, external libraries and field templates.
 
 Unsupported source shapes are refused rather than silently discarded.

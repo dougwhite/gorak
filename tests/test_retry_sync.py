@@ -283,7 +283,7 @@ def test_recovery_take_disk_updates_source_and_clears_marker(world: World) -> No
     assert world.imports == ["caller", "dependency"]
 
 
-def test_failed_verification_requires_explicit_recovery(
+def test_accepted_import_does_not_hide_later_database_edits(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     world.edit("caller", "new")
@@ -295,15 +295,12 @@ def test_failed_verification_requires_explicit_recovery(
         world.node("caller").find("script").text = "unexpected database source"
 
     monkeypatch.setattr(importer, "import_component_xml", corrupt)
-    with pytest.raises(ProjectError, match="verification failed"):
+    world.push()
+    assert not (world.root / ".openroad/push-pending.json").exists()
+    world.edit("caller", "another local edit")
+    with pytest.raises(ProjectError):
         world.push()
-    marker = world.root / ".openroad/push-pending.json"
-    assert json.loads(marker.read_text())["state"] == "recovery_required"
-    with pytest.raises(ProjectError, match="requires recovery"):
-        world.push()
-    monkeypatch.setattr(importer, "import_component_xml", world.import_xml)
-    world.push(force=True)
-    assert not marker.exists()
+    assert world.node("caller").findtext("script") == "unexpected database source"
 
 
 def test_recovery_verification_uses_baseline_preserving_comparison(
@@ -549,7 +546,7 @@ def test_cli_compile_failure_exits_nonzero_with_completed_source_tracking(
     assert not (world.root / ".openroad/push-pending.json").exists()
     assert not (world.root / ".openroad/pull-pending.json").exists()
     assert not (world.root / ".openroad/mutation.lock").exists()
-    assert list((world.root / ".openroad/pushes").glob("*/verified"))
+    assert list((world.root / ".openroad/pushes").glob("*/accepted"))
     if command != ["sync", "--push"]:
         assert list((world.root / ".openroad/pushes").glob("force-*/resolved"))
     queue = world.root / ".openroad/compile-pending.json"

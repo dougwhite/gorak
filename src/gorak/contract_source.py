@@ -29,7 +29,7 @@ def markup_node(
                 "Text properties accept only text, CDATA, or character instructions"
             )
         result = etree.Element(tag)
-        set_text(result, text_value(source), cdata=tag == "script")
+        set_text(result, text_value(source), cdata=True)
         return result
     if (source.text or "").strip() or (source.tail or "").strip():
         raise ProjectError("Only scripts accept literal markup text")
@@ -77,7 +77,7 @@ def markup_node(
             )
         for previous in node.findall(key):
             node.remove(previous)
-        set_text(etree.SubElement(node, key), value)
+        set_text(etree.SubElement(node, key), value, cdata=True)
     seen: set[str] = set()
     for child in source:
         key = str(child.tag)
@@ -108,6 +108,13 @@ def markup_node(
 
     if supports_default_mode(kind) and node.find("defaultvalue") is None:
         etree.SubElement(node, "defaultvalue").text = "1"
+    # Native export omits zero dimensions, but these constructors supply nonzero
+    # sizes when XML omits them. Explicit zeros preserve the exported geometry.
+    from .frame_geometry import ZERO_DIMENSIONS
+
+    for dimension in ZERO_DIMENSIONS.get(kind, ()):
+        if node.find(dimension) is None:
+            etree.SubElement(node, dimension).text = "0"
     order_children(node, kind)
     return node
 
@@ -183,6 +190,7 @@ def equivalent(
 
     from .bitmap_codec import normalized
     from .importer import signature
+    from .native_normalization import explicit_row_types
     from .parser import (
         FRAME_MARKUP_CHILDREN,
         frame_markup_elements,
@@ -191,6 +199,19 @@ def equivalent(
 
     left, right = deepcopy(left), deepcopy(right)
     for root in (left, right):
+        for child in root:
+            if child.tag in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN | {
+                "fielddefaults"
+            }:
+                explicit_row_types(child)
+    for root in (left, right):
+        from .frame_geometry import ZERO_DIMENSIONS
+
+        for field in root.iter():
+            for dimension in ZERO_DIMENSIONS.get(field.get(XSI, ""), ()):
+                scalar = field.find(dimension)
+                if scalar is not None and text_value(scalar) == "0":
+                    field.remove(scalar)
         from .native_styles import is_absent
 
         stylesheet = root.find("fielddefaults")

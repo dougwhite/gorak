@@ -12,7 +12,7 @@ from lxml import etree
 from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
 from .export_pipeline import prefetched_exports
-from .importer import signature
+from .native_normalization import signature as native_signature
 from .portable_source import (
     cached_source_scope,
     comparison_application,
@@ -20,6 +20,11 @@ from .portable_source import (
     read_document,
 )
 from .project import ProjectError
+
+
+def signature(node: etree._Element) -> object:
+    return native_signature(node, pixel_geometry=True)
+
 
 Action = Literal["unchanged", "converged", "pull", "push", "conflict"]
 

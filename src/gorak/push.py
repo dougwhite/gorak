@@ -10,12 +10,12 @@ from .connection import OpenRoadConnection
 from .errors import SourceVerificationError
 from .export import (
     backup_application_xml,
-    backup_component_xml,
     read_applications,
     read_components,
 )
 from .import_backend import import_component_xml
 from .importer import component_tree, import_component, signature, validate_name
+from .native_normalization import signature as tracking_signature
 from .parser import (
     parse_application_xml,
     parse_component_node,
@@ -136,7 +136,8 @@ def _push_project(
                 if (
                     original_node is None
                     or current_node is None
-                    or signature(original_node) != signature(current_node)
+                    or tracking_signature(original_node)
+                    != tracking_signature(current_node)
                 ):
                     raise ProjectError(
                         f"Database application metadata changed since export: {app}"
@@ -149,6 +150,7 @@ def _push_project(
                     "databasename",
                     "database_type",
                     "windowicon",
+                    "appflags",
                 }
                 for child in list(current_node):
                     if child.tag in managed:
@@ -242,12 +244,6 @@ def _push_project(
                 _, xml, paths = creations.pop(key)
                 tree_root.extend(from_bytes(xml))
                 sources.extend(paths)
-        start = tree_root.findtext("APPLICATION/procstart")
-        if start and start.casefold() not in {
-            str(node.get("name", "")).casefold()
-            for node in tree_root.findall("COMPONENT")
-        }:
-            raise ProjectError(f"Starting component is missing: {app}/{start}")
         creations[app] = (
             "-",
             bytes(etree.tostring(tree_root, encoding="UTF-8", xml_declaration=True)),
@@ -275,8 +271,14 @@ def _push_project(
             pending.pop(key)
             if "/" not in key:
                 available.add(key.casefold())
+    from .frame_geometry import explicit_shape_dimensions
+
     for index, key in enumerate(ordered):
-        (operation / f"{index}-submitted.xml").write_bytes(creations[key][1])
+        payload = from_bytes(creations[key][1])
+        explicit_shape_dimensions(payload)
+        (operation / f"{index}-submitted.xml").write_bytes(
+            etree.tostring(payload, encoding="UTF-8", xml_declaration=True)
+        )
     check_source()
     if dry_run:
         return f"Push dry run: {len(creations) - len(app_updates)} creations, {len(app_updates)} application updates, {len(edits)} component updates. XML: {operation}"
@@ -319,6 +321,8 @@ def _push_project(
     from .push_retry import write_record
 
     write_record(pending_marker, {"operation": str(operation), "state": "retryable"})
+    from .import_receipt import accepted_baseline
+
     cache_updates: dict[Path, bytes] = {}
     installing = False
     try:
@@ -360,86 +364,28 @@ def _push_project(
                 operation / f"{index}-import.log",
                 create=app not in app_updates,
             )
-            after = operation / f"{index}-after.xml"
-            if component == "-":
-                backup_application_xml(connection, app, after)
-            else:
-                backup_component_xml(connection, app, component, after)
-            if component == "-":
-                actual_app = read_tree(str(after)).find("APPLICATION")
-                expected_app = read_tree(str(submitted)).find("APPLICATION")
-                if actual_app is None or expected_app is None:
-                    raise SourceVerificationError(
-                        f"Application source verification failed: {app}"
-                    )
-                exported = parse_application_xml(read_tree(str(after)))
-                requested = parse_application_xml(read_tree(str(submitted)))
-                if (
-                    exported.application != requested.application
-                    or exported.included_applications != requested.included_applications
-                ):
-                    raise SourceVerificationError(
-                        f"Created application metadata verification failed: {app}"
-                    )
-            if app in app_updates:
-                before_tree = read_tree(str(submitted))
-                for node in before_tree.findall("COMPONENT"):
-                    name = str(node.get("name"))
-                    actual_node = component_tree(after, name)
-                    normalized = None
-                    if (app, name) in prepared_edits:
-                        from .frame_geometry import normalized_markup
-
-                        normalized = normalized_markup(
-                            node,
-                            actual_node,
-                        )
-                    if normalized is not None:
-                        cache_updates[root / app / f"{name}.wml"] = normalized.encode()
-                    if signature(actual_node) != signature(node) and normalized is None:
-                        raise SourceVerificationError(
-                            f"Existing component changed during application update: {app}/{name}"
-                        )
-            for source in sources:
-                actual_node = component_tree(after, source.stem)
-                expected_node = component_tree(submitted, source.stem)
-                from .contract_source import equivalent
-
-                if not equivalent(actual_node, expected_node):
-                    raise SourceVerificationError(
-                        f"Readable source verification failed: {source.stem}"
-                    )
-                actual = parse_component_node(actual_node)
-                expected = parse_component_node(expected_node)
-                if (
-                    actual.script != expected.script
-                    or actual.type != expected.type
-                    or actual.props != expected.props
-                ):
-                    raise SourceVerificationError(
-                        f"Created component verification failed: {source.stem}"
-                    )
             cache = root / ".openroad" / app
             cache.mkdir(exist_ok=True)
             target = cache / f"{app if component == '-' else component}.xml"
-            cache_updates[target] = after.read_bytes()
+            cache_updates.update(accepted_baseline(target, submitted, operation))
         for app, name in edits:
             check_source()
             imported = import_component(
                 connection, root, app, name, advance_cache=False
             )
-            cache_updates[root / ".openroad" / app / f"{name}.xml"] = (
-                imported / "after.xml"
-            ).read_bytes()
-            normalized_path = imported / "normalized.wml"
-            if normalized_path.exists():
-                cache_updates[root / app / f"{name}.wml"] = normalized_path.read_bytes()
+            cache_updates.update(
+                accepted_baseline(
+                    root / ".openroad" / app / f"{name}.xml",
+                    imported / "submitted.xml",
+                    imported,
+                )
+            )
         check_source()
         installing = True
         apply_files(root, dict(cache_updates), operation, initial)
         installing = False
-        (operation / "verified").write_text(
-            "Push imports and source snapshot verified\n"
+        (operation / "accepted").write_text(
+            "OpenROAD accepted imports; submitted baselines retained\n"
         )
         pending_marker.unlink()
     except Exception as ex:

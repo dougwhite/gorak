@@ -16,6 +16,7 @@ class Application:
     database_name: str = ""
     database_type: str = ""
     window_icon: str | dict[str, str] = ""
+    appflags: str = ""
 
 
 @dataclass(frozen=True)

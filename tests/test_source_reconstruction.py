@@ -136,7 +136,7 @@ def test_legacy_frame_scalars_survive_without_cache(tmp_path: Path, kind: str) -
     source = tmp_path / "sample.w4gl"
     write_component(source, node)
     restored = restore_component(source)
-    assert restored.find("frmflow") is not None
+    assert restored.find("frmflow") is None  # Empty means the native default.
     assert restored.findtext(".//protofield/maxcharacters") == "22"
     assert restored.findtext(".//childfields/row/maxcharacters") == "17"
     assert equivalent(node, restored)

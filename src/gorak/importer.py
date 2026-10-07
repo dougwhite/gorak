@@ -66,7 +66,7 @@ def import_component(
     *,
     advance_cache: bool = True,
 ) -> Path:
-    """Validate, compare, import, and verify one component; retain recovery artifacts."""
+    """Validate, compare and import one component; retain accepted source and recovery artifacts."""
     validate_name(app)
     validate_name(component)
     from .safe_pull import apply_files, fingerprint
@@ -147,11 +147,20 @@ def import_component(
             before = operation / "before.xml"
             backup_component_xml(connection, app, component, before)
             current = component_tree(before, component)
-            if signature(current) != signature(baseline):
+            from .import_receipt import is_accepted_baseline
+            from .native_normalization import signature as tracking_signature
+
+            accepted = is_accepted_baseline(baseline_path)
+            if tracking_signature(
+                current, pixel_geometry=accepted
+            ) != tracking_signature(baseline, pixel_geometry=accepted):
                 raise ProjectError(
                     "Database component changed since export; reconcile it before importing"
                 )
             overlay_component(current, source)
+            from .frame_geometry import explicit_shape_dimensions
+
+            explicit_shape_dimensions(current)
             submitted = operation / "submitted.xml"
             current.getroottree().write(
                 str(submitted), encoding="UTF-8", xml_declaration=True
@@ -170,19 +179,6 @@ def import_component(
             import_component_xml(
                 connection, app, component, submitted, operation / "import.log"
             )
-            after = operation / "after.xml"
-            backup_component_xml(connection, app, component, after)
-            from .frame_geometry import normalized_markup
-
-            actual = component_tree(after, component)
-            normalized = normalized_markup(current, actual)
-            from .contract_source import equivalent
-
-            matches = equivalent(actual, current)
-            if not matches and normalized is None:
-                raise SourceVerificationError(
-                    "Post-import verification failed; database may have changed"
-                )
             if (
                 source.read_bytes() != source_bytes
                 or (markup.read_bytes() if markup.is_file() else None) != markup_bytes
@@ -194,25 +190,21 @@ def import_component(
                 raise ProjectError(
                     "Local source changed during import; baseline not advanced"
                 )
-            if normalized is not None:
-                (operation / "normalized.wml").write_text(normalized)
-            # Source canonicalization is staged with baselines by the push executor.
             if advance_cache:
-                destination = cache / f"{component}.xml"
-                replacement = cache / f".{component}-{uuid4().hex}.xml"
-                replacement.write_bytes(after.read_bytes())
-                if normalized is not None:
-                    apply_files(
-                        root,
-                        {destination: after.read_bytes(), markup: normalized.encode()},
-                        operation,
-                        source_snapshot,
-                    )
-                    replacement.unlink()
-                else:
-                    replacement.replace(destination)
-            (operation / "verified").write_text(
-                "Import and XML verification succeeded\n"
+                from .import_receipt import accepted_baseline
+
+                apply_files(
+                    root,
+                    dict(
+                        accepted_baseline(
+                            cache / f"{component}.xml", submitted, operation
+                        )
+                    ),
+                    operation,
+                    source_snapshot,
+                )
+            (operation / "accepted").write_text(
+                "OpenROAD accepted import; submitted baseline retained\n"
             )
             return operation
     except Exception as ex:

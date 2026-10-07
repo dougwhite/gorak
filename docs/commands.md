@@ -107,7 +107,7 @@ gorak component export salesapp main_frame
 
 ### `gorak component import APP COMPONENT [--dry-run]`
 
-Imports and verifies one existing component from the current project.
+Imports one existing component from the current project.
 `--dry-run` prepares the import without changing OpenROAD.
 
 ```sh
@@ -145,7 +145,7 @@ Gorak refuses to overwrite pending disk changes.
 
 ### `gorak sync --push [--dry-run]`
 
-Imports disk changes, verifies the result, updates the baseline, and compiles
+Imports disk changes, records OpenROAD acceptance, updates the baseline, and compiles
 the affected database source.
 
 ```sh

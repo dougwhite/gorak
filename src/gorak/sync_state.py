@@ -51,7 +51,9 @@ def update_component_entries(
     state = load_state(root)
     entries = component_entries(state)
     for item in metadata:
-        entries[component_key(item.application_name, item.component_name)] = asdict(item)
+        entries[component_key(item.application_name, item.component_name)] = asdict(
+            item
+        )
     state["components"] = entries
     save_state(root, state)
 
@@ -60,7 +62,7 @@ def component_changed(
     entry: dict[str, Any] | None,
     metadata: ComponentSyncMetadata,
 ) -> bool:
-    if entry is None:
+    if entry is None or metadata.version_entity_id <= 0:
         return True
 
     return any(
