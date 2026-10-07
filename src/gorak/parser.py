@@ -294,8 +294,28 @@ def encode_frame_markup(
     )
     frame = etree.Element("frame")
     for markup_node in markup_nodes:
-        frame.append(frame_markup_element(markup_node, index))
+        frame.extend(frame_markup_elements(markup_node, index))
     return serialize_wml(frame)
+
+
+def frame_markup_elements(
+    node: etree._Element,
+    defaults_index: "MarkupDefaultsIndex",
+    mapping: dict[etree._Element, etree._Element] | None = None,
+) -> list[etree._Element]:
+    """Keep each toolbar row as an ordered, repeated WML section."""
+    if node.tag not in MAINBAR_MARKUP_CHILDREN:
+        return [frame_markup_element(node, defaults_index, mapping)]
+    elements = []
+    for row in node.findall("row"):
+        element = etree.Element(node.tag)
+        if mapping is not None:
+            mapping[element] = row
+        copy_markup_attributes(node, element)
+        copy_markup_attributes(row, element)
+        append_markup_content(element, row, defaults_index, {}, mapping)
+        elements.append(element)
+    return elements
 
 
 def frame_markup_element(
@@ -352,14 +372,12 @@ def mainbar_markup_element(
     defaults_index: "MarkupDefaultsIndex",
     mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> etree._Element:
-    element = etree.Element(node.tag)
+    elements = frame_markup_elements(node, defaults_index, mapping)
+    if len(elements) != 1:
+        raise ValueError("Toolbar collections require frame_markup_elements")
+    element = elements[0]
     if mapping is not None:
         mapping[element] = node
-    copy_markup_attributes(node, element)
-    row = node.find("row")
-    if row is not None:
-        append_markup_content(element, row, defaults_index, {}, mapping)
-
     return element
 
 

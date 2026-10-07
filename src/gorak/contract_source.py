@@ -147,13 +147,19 @@ def decode_component(path: Path) -> etree._Element:
         seen: set[str] = set()
         for section in markup:
             tag = str(section.tag)
-            if tag not in FRAME_MARKUP_CHILDREN or tag in seen:
+            if tag not in FRAME_MARKUP_CHILDREN or (
+                tag in seen and tag not in MAINBAR_MARKUP_CHILDREN
+            ):
                 raise ProjectError(f"Unsupported or duplicate frame section: {tag}")
             seen.add(tag)
             if tag in MAINBAR_MARKUP_CHILDREN:
-                wrapper = etree.SubElement(node, tag)
-                wrapper.append(markup_node(section, "row", "mainbar", index))
-                etree.SubElement(wrapper, "row_class").text = "mainbar"
+                wrapper = node.find(tag)
+                if wrapper is None:
+                    wrapper = etree.SubElement(node, tag)
+                    etree.SubElement(wrapper, "row_class").text = "mainbar"
+                wrapper.insert(
+                    len(wrapper) - 1, markup_node(section, "row", "mainbar", index)
+                )
             else:
                 node.append(markup_node(section, tag, shape(kind)[tag], index))
         if "topform" not in seen:
@@ -179,7 +185,7 @@ def equivalent(
     from .importer import signature
     from .parser import (
         FRAME_MARKUP_CHILDREN,
-        frame_markup_element,
+        frame_markup_elements,
         parse_component_node,
     )
 
@@ -228,9 +234,10 @@ def equivalent(
 
     def effective_markup(node: etree._Element) -> list[object]:
         return [
-            signature(frame_markup_element(child, empty))
+            signature(element)
             for child in node
             if child.tag in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN
+            for element in frame_markup_elements(child, empty)
         ]
 
     return effective_markup(left) == effective_markup(right)

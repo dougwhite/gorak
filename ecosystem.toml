@@ -1,2 +1,2 @@
 gorak_cli = "0.1.0" # CLI input/output contract; change only when that contract changes
-source_version = 9 # Source format contract, including implicit DV_SYSTEM in WML
+source_version = 10 # Source format contract, including repeated toolbar sections

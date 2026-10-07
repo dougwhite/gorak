@@ -24,4 +24,28 @@
       <viewfield type="flexibleform" name="content" width="1400" height="500" ismovebounded="0"/>
     </viewportfield>
   </topform>
+  <mainbartop name="top_1">
+    <buttonfield name="top_action_1" textlabel="Top 1"/>
+  </mainbartop>
+  <mainbartop name="top_2">
+    <buttonfield name="top_action_2" textlabel="Top 2"/>
+  </mainbartop>
+  <mainbarbottom name="bottom_1">
+    <buttonfield name="bottom_action_1" textlabel="Bottom 1"/>
+  </mainbarbottom>
+  <mainbarbottom name="bottom_2">
+    <buttonfield name="bottom_action_2" textlabel="Bottom 2"/>
+  </mainbarbottom>
+  <mainbarleft name="left_1">
+    <buttonfield name="left_action_1" textlabel="Left 1"/>
+  </mainbarleft>
+  <mainbarleft name="left_2">
+    <buttonfield name="left_action_2" textlabel="Left 2"/>
+  </mainbarleft>
+  <mainbarright name="right_1">
+    <buttonfield name="right_action_1" textlabel="Right 1"/>
+  </mainbarright>
+  <mainbarright name="right_2">
+    <buttonfield name="right_action_2" textlabel="Right 2"/>
+  </mainbarright>
 </frame>
