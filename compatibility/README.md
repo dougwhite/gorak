@@ -13,6 +13,7 @@ colours are `6`/`7`/`8`. Existing fields must never inherit the frame palette co
 
 `duplicate_names` deliberately contains name collisions; consumers must preserve
 all fields even though native compilation rejects that frame.
+Repeated toolbar sections preserve multiple bars on each of the four sides.
 WML omits `DV_SYSTEM` (`defaultvalue=1`); the fixture also preserves explicit `DV_NULL` and `DV_STRING` modes.
 
 These cases are reconstruction and tooling inputs, not a runnable acceptance

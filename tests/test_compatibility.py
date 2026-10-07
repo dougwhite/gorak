@@ -84,6 +84,13 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
     assert template.findtext("framefield/textlabel") == "Run"
     assert template.findtext("reportfield/textlabel") == "Report"
     panel = restore_component(source / "example/panel.w4gl")
+    for side in ("top", "bottom", "left", "right"):
+        bars = panel.findall(f"mainbar{side}/row")
+        assert [bar.findtext("name") for bar in bars] == [f"{side}_1", f"{side}_2"]
+        assert [bar.findtext("childfields/row/textlabel") for bar in bars] == [
+            f"{side.title()} 1",
+            f"{side.title()} 2",
+        ]
     assert (
         panel.findtext("topform/childfields/row[name='quantity']/defaultvalue") == "1"
     )
