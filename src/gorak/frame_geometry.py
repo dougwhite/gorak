@@ -3,7 +3,8 @@
 Coordinates are exported in thousandths of an inch. Only the four geometry
 properties in frame markup have pixel equivalence. Field default modes also use
 the WML contract's implicit DV_SYSTEM rule; all other XML remains exact.
-Baseline/database conflict comparisons deliberately do not use this function.
+Observed native baselines retain exact pre-write conflict checks. Planning and
+accepted-submission baselines allow the observed native pixel equivalence.
 """
 
 from copy import deepcopy
