@@ -45,6 +45,10 @@ def png_bytes(image: Image.Image) -> bytes:
 
 
 def project(bitmap: Bitmap) -> bytes:
+    return png_bytes(project_image(bitmap))
+
+
+def project_image(bitmap: Bitmap) -> Image.Image:
     w, h = bitmap.width, bitmap.height
     size = w * h
     header = list(bitmap.header)
@@ -60,7 +64,7 @@ def project(bitmap: Bitmap) -> bytes:
         image = Image.frombytes("RGBA", (w, h), bitmap.pixels, "raw", "BGRA")
     else:
         raise ProjectError("Unsupported bitmap pixel layout")
-    return png_bytes(image)
+    return image
 
 
 def read_png(path: Path) -> Image.Image:
@@ -418,9 +422,9 @@ class AssetWriter:
                 if stamp == (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size):
                     return dict(ref)
         bitmap = decode(text)
-        data = project(bitmap)
-        with Image.open(BytesIO(data)) as image:
-            fields = reference_fields(bitmap, image)
+        image = project_image(bitmap)
+        fields = reference_fields(bitmap, image)
+        data = png_bytes(image)
         origin = bitmap.origin
         from . import builtin_images
 
