@@ -12,6 +12,7 @@ from copy import deepcopy
 from lxml import etree
 
 from .field_modes import is_implicit_default
+from .native_normalization import opaque_descendant
 from .parser import (
     FIELD_TEMPLATE_CHILDREN,
     FRAME_MARKUP_CHILDREN,
@@ -39,6 +40,8 @@ def geometry_signature(node: etree._Element) -> object:
         if section.tag not in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN:
             continue
         for child in list(section.iter()):
+            if child.tag in {"extension", "taggedvalues"} or opaque_descendant(child):
+                continue
             if is_implicit_default(child):
                 parent = child.getparent()
                 assert parent is not None
@@ -96,7 +99,11 @@ def explicit_shape_dimensions(root: etree._Element) -> None:
     """Preserve omitted native zeros against nonzero XML-import constructors."""
     from .xml_shapes import order_children
 
-    for field in root.iter():
+    # Opaque metadata may reuse native type names without being layout fields.
+    # Preserve it verbatim, as accepted-baseline tracking does.
+    for field in list(root.iter()):
+        if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
+            continue
         kind = field.get(f"{{{NS['xsi']}}}type", "")
         changed = False
         for dimension in ZERO_DIMENSIONS.get(kind, ()):

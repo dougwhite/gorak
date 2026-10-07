@@ -190,7 +190,7 @@ def equivalent(
 
     from .bitmap_codec import normalized
     from .importer import signature
-    from .native_normalization import explicit_row_types
+    from .native_normalization import explicit_row_types, opaque_descendant
     from .parser import (
         FRAME_MARKUP_CHILDREN,
         frame_markup_elements,
@@ -208,6 +208,8 @@ def equivalent(
         from .frame_geometry import ZERO_DIMENSIONS
 
         for field in root.iter():
+            if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
+                continue
             for dimension in ZERO_DIMENSIONS.get(field.get(XSI, ""), ()):
                 scalar = field.find(dimension)
                 if scalar is not None and text_value(scalar) == "0":

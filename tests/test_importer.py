@@ -416,3 +416,58 @@ def test_compound_normalization_does_not_relax_database_conflict_check(
     with pytest.raises(ProjectError, match="Database component changed since export"):
         importer.import_component(CONNECTION, tmp_path, "app", "panel")
     assert (cache / "panel.xml").read_bytes() == baseline
+
+
+@pytest.mark.parametrize("container", ["extension", "taggedvalues"])
+@pytest.mark.parametrize("shape", ["rectangleshape", "segmentshape"])
+def test_repeat_import_preserves_opaque_shapes_and_detects_external_edits(
+    tmp_path: Path, monkeypatch: MonkeyPatch, container: str, shape: str
+) -> None:
+    source = project(tmp_path)
+    xml = XML.replace(
+        b'<extension><opaque value="keep"/></extension>',
+        f'<{container}><row xsi:type="{shape}"><name>opaque_shape</name></row></{container}>'.encode(),
+    )
+    baseline = tmp_path / ".openroad/app/example.xml"
+    baseline.write_bytes(xml)
+    source.write_text(
+        encode_w4gl(parse_xml(etree.fromstring(xml))).replace("RETURN 0", "RETURN 1")
+    )
+    uploaded: list[bytes] = []
+    external_edit = False
+
+    def export(connection: OpenRoadConnection, app: str, name: str, path: Path) -> None:
+        tree = etree.fromstring(uploaded[-1] if uploaded else xml)
+        opaque = tree.find(f"COMPONENT/{container}/row")
+        assert opaque is not None
+        # Model native zero omission after acceptance, without an independent edit.
+        for dimension in list(opaque):
+            if dimension.tag in {"width", "height"} and dimension.text == "0":
+                opaque.remove(dimension)
+        if external_edit:
+            etree.SubElement(opaque, "width").text = "1"
+        path.write_bytes(etree.tostring(tree))
+
+    def push(
+        connection: OpenRoadConnection, app: str, name: str, path: Path, log: Path
+    ) -> None:
+        uploaded.append(path.read_bytes())
+
+    monkeypatch.setattr(importer, "backup_component_xml", export)
+    monkeypatch.setattr(importer, "import_component_xml", push)
+    importer.import_component(CONNECTION, tmp_path, "app", "example")
+    source.write_text(source.read_text().replace("RETURN 1", "RETURN 2"))
+    importer.import_component(CONNECTION, tmp_path, "app", "example")
+    assert len(uploaded) == 2
+    original = etree.fromstring(xml).find(f"COMPONENT/{container}")
+    for data in uploaded:
+        opaque = etree.fromstring(data).find(f"COMPONENT/{container}")
+        assert importer.signature(opaque) == importer.signature(original)
+    accepted = baseline.read_bytes()
+    external_edit = True
+    source.write_text(source.read_text().replace("RETURN 2", "RETURN 3"))
+    with pytest.raises(ProjectError, match="Database component changed since export"):
+        importer.import_component(CONNECTION, tmp_path, "app", "example")
+    assert len(uploaded) == 2
+    assert baseline.read_bytes() == accepted
+    assert "RETURN 3" in source.read_text()
