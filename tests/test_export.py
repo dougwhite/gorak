@@ -605,7 +605,7 @@ def test_export_application_warns_when_sync_metadata_recording_fails(
     monkeypatch.setattr(
         export_module,
         "export_application_to_paths",
-        lambda connection, app, paths, progress: ApplicationExport(
+        lambda connection, app, paths, progress, **kwargs: ApplicationExport(
             application=Application("sample_app", "", ""),
             components=[],
         ),

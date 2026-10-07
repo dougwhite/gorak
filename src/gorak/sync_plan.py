@@ -2,17 +2,16 @@
 
 import hashlib
 import json
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from shutil import copyfile
-from tempfile import TemporaryDirectory
 from typing import Literal
 
 from lxml import etree
 
 from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
+from .export_pipeline import prefetched_exports
 from .importer import signature
 from .portable_source import (
     cached_source_scope,
@@ -160,34 +159,29 @@ def plan_project(
             app.name.casefold(): app.name for app in read_applications(connection)
         }
         database = {}
-        with TemporaryDirectory(prefix="gorak-status-") as temporary:
-            names = sorted({app.casefold() for app in apps} & available.keys())
+        names = sorted({app.casefold() for app in apps} & available.keys())
 
-            def export_one(item: tuple[int, str]) -> dict[str, object]:
-                index, name = item
-                path = Path(temporary) / f"{index}.xml"
-                if reuse_xml is not None and name in reuse_xml:
-                    copyfile(reuse_xml[name], path)
-                else:
-                    backup_application_xml(connection, available[name], path)
-                inventory = xml_inventory(read_document(path), name)
+        def export_one(name: str, path: Path) -> None:
+            if reuse_xml is not None and name in reuse_xml:
+                copyfile(reuse_xml[name], path)
+            else:
+                backup_application_xml(connection, available[name], path)
+
+        with prefetched_exports(
+            names, connection.export_workers, export_one
+        ) as pending:
+            for index, (name, path) in enumerate(pending):
+                database.update(xml_inventory(read_document(path), name))
                 if capture_dir is not None:
                     copyfile(path, capture_dir / f"{index}.xml")
-                return inventory
-
-            # Independent applications have separate export paths. Consume in sorted
-            # order and wait for every worker before cleaning the temporary directory.
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                for inventory in executor.map(export_one, enumerate(names)):
-                    database.update(inventory)
-            if capture_dir is not None:
-                (capture_dir / "applications.json").write_text(
-                    json.dumps(
-                        {name: f"{index}.xml" for index, name in enumerate(names)},
-                        indent=2,
-                    ),
-                    encoding="utf-8",
-                )
+        if capture_dir is not None:
+            (capture_dir / "applications.json").write_text(
+                json.dumps(
+                    {name: f"{index}.xml" for index, name in enumerate(names)},
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         if inventory_sink is not None:
             inventory_sink.update(semantic_hashes(database))
     changes = [
