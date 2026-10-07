@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy2, rmtree
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -14,8 +14,12 @@ if TYPE_CHECKING:
 from lxml import etree
 
 from . import database as database_module
-from . import local
-from .component_defaults import encode_source_w4gl, write_component_defaults
+from . import local, native_styles
+from .component_defaults import (
+    encode_source_w4gl,
+    write_component_defaults,
+    write_projected_defaults,
+)
 from .connection import (
     OpenRoadConnection,
     connection_sql_backend,
@@ -252,6 +256,7 @@ def export_component(
     return path
 
 
+@native_styles.validation_scope()
 def export_application_to_paths(
     connection: OpenRoadConnection,
     app: str,
@@ -306,16 +311,39 @@ def export_application_to_paths(
                 item.name,
                 "Component is present in the catalog but missing from the native XML export",
             )
+    from . import native_styles
+    from .parser import NS
+
+    # Resolve lazily inside the component error boundary: a broken stylesheet
+    # must not prevent unrelated procedures/classes from being exported.
+    parent: dict[str, Any] | None = None
+    from .export_progress import EncodingProgress
+
     components: list[Component] = []
-    for native in nodes:
+    encoding_progress = EncodingProgress(app, len(nodes), progress)
+    for index, native in enumerate(nodes, 1):
         name = str(native.get("name"))
-        progress_message(progress, f"Encoding component {app}!{name}")
+        encoding_progress.before(name)
         try:
+            if (
+                parent is None
+                and native.get(f"{{{NS['xsi']}}}type") in FRAME_COMPONENT_TYPES
+            ):
+                parent = native_styles.parent_styles(paths.source_dir)
             components.append(
-                project_component_files(native, paths.source_dir, writer, progress)
+                project_component_files(
+                    native, paths.source_dir, writer, progress, parent_styles=parent
+                )
             )
-        except ComponentProjectionError as ex:
+        except (
+            ProjectError,
+            ValueError,
+            TypeError,
+            KeyError,
+            etree.XMLSyntaxError,
+        ) as ex:
             failed(name, str(ex))
+        encoding_progress.completed(index)
     write_json(
         paths.source_dir / "app.json",
         application_metadata(
@@ -327,11 +355,14 @@ def export_application_to_paths(
     )
 
 
+@native_styles.validation_scope()
 def project_component_files(
     native: etree._Element,
     source_dir: Path,
     writer: "AssetWriter",
     progress: Callable[[str], None] | None,
+    *,
+    parent_styles: dict[str, Any] | None = None,
 ) -> Component:
     from .image_assets import externalize
 
@@ -358,9 +389,13 @@ def project_component_files(
             if kind not in SUPPORTED_TYPES:
                 raise ProjectError(f"Unsupported component type: {kind}")
             node = externalize(native, source_dir, name, writer=writer)
-            component = parse_component_node(node)
+            component = parse_component_node(node, project_frame=False)
             apply_field_default_inheritance(
-                stage.parent, stage.name, [component], source_nodes=[node]
+                stage.parent,
+                stage.name,
+                [component],
+                source_nodes=[node],
+                parent_styles=parent_styles,
             )
             from .class_icons import extract_icons
 
@@ -368,11 +403,13 @@ def project_component_files(
             write_queries(stage / f"{name}.w4gl", component.queries)
             write_component_w4gl(stage, name, encode_source_w4gl(component))
             write_component_wml(stage, name, component.markup)
-            write_component_defaults(
-                stage / f"{name}.w4gl",
-                component.props.get("fielddefaults", {}),
-                writer=writer,
+            overrides = component.props.get("fielddefaults", {})
+            write_defaults = (
+                write_projected_defaults
+                if component.type in FRAME_COMPONENT_TYPES or not overrides
+                else write_component_defaults
             )
+            write_defaults(stage / f"{name}.w4gl", overrides, writer=writer)
         except (
             ProjectError,
             ValueError,
@@ -457,6 +494,7 @@ def apply_field_default_inheritance(
     components: list[Component],
     *,
     source_nodes: list[etree._Element] | None = None,
+    parent_styles: dict[str, Any] | None = None,
 ) -> None:
     """Project native stylesheets independently from explicit field state."""
     from . import native_styles
@@ -465,7 +503,11 @@ def apply_field_default_inheritance(
     frames = [c for c in components if c.type in FRAME_COMPONENT_TYPES]
     if not frames:
         return
-    parent = native_styles.parent_styles(root / app)
+    parent = (
+        parent_styles
+        if parent_styles is not None
+        else native_styles.parent_styles(root / app)
+    )
     projected = []
     for component in frames:
         node = native.get(component.name)

@@ -1,5 +1,8 @@
 """Current readable reconstruction and native baselines for verified comparisons."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from pathlib import Path
 
@@ -14,27 +17,71 @@ def read_document(path: Path) -> etree._Element:
     return read_tree(path).getroot()
 
 
+class CachedSourceIndex:
+    """Index parsed native cache files for a read-only comparison operation."""
+
+    def __init__(self) -> None:
+        self.folder: Path | None = None
+        self.files: dict[
+            Path,
+            tuple[
+                tuple[int, int, int], dict[tuple[str, str], list[etree._Element]], bool
+            ],
+        ] = {}
+
+    def lookup(self, folder: Path, tag: str, name: str) -> etree._Element | None:
+        if folder != self.folder:
+            self.files.clear()  # Bound retained XML to one application.
+            self.folder = folder
+        cache = folder.parent / ".openroad" / folder.name
+        paths = sorted(
+            cache.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns, reverse=True
+        )
+        for path in paths:
+            stat = path.stat()
+            stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+            entry = self.files.get(path)
+            if entry is None or entry[0] != stamp:
+                root = read_document(path)
+                nodes: dict[tuple[str, str], list[etree._Element]] = {}
+                for node in root:
+                    if isinstance(node.tag, str):
+                        nodes.setdefault(
+                            (node.tag, node.get("name", "").casefold()), []
+                        ).append(node)
+                entry = (stamp, nodes, root.find("APPLICATION") is not None)
+                self.files[path] = entry
+            matches = entry[1].get((tag, name.casefold()), [])
+            if len(matches) > 1:
+                raise ProjectError(f"Ambiguous cached source: {path}")
+            if matches:
+                # Callers overlay metadata; the shared index must remain pristine.
+                return deepcopy(matches[0])
+            if tag == "COMPONENT" and entry[2]:
+                return None
+        return None
+
+
+_source_index: ContextVar[CachedSourceIndex | None] = ContextVar(
+    "source_index", default=None
+)
+
+
+@contextmanager
+def cached_source_scope() -> Iterator[None]:
+    if _source_index.get() is not None:
+        yield
+        return
+    token = _source_index.set(CachedSourceIndex())
+    try:
+        yield
+    finally:
+        _source_index.reset(token)
+
+
 def cached_node(folder: Path, tag: str, name: str) -> etree._Element | None:
-    """Read an older checkout baseline without mistaking exported source for new source."""
-    cache = folder.parent / ".openroad" / folder.name
-    files = sorted(
-        cache.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns, reverse=True
-    )
-    for path in files:
-        root = read_document(path)
-        matches = [
-            n
-            for n in root.findall(tag)
-            if n.get("name", "").casefold() == name.casefold()
-        ]
-        if len(matches) > 1:
-            raise ProjectError(f"Ambiguous cached source: {path}")
-        if matches:
-            return matches[0]
-        # A newer full export authoritatively records component absence.
-        if tag == "COMPONENT" and root.find("APPLICATION") is not None:
-            return None
-    return None
+    """Read an older checkout baseline, respecting newer full-export absence."""
+    return (_source_index.get() or CachedSourceIndex()).lookup(folder, tag, name)
 
 
 def overlay_component(node: etree._Element, path: Path) -> etree._Element:

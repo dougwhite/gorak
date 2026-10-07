@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import hashlib
 import json
 import re
 import tomllib
@@ -44,6 +45,10 @@ def png_bytes(image: Image.Image) -> bytes:
 
 
 def project(bitmap: Bitmap) -> bytes:
+    return png_bytes(project_image(bitmap))
+
+
+def project_image(bitmap: Bitmap) -> Image.Image:
     w, h = bitmap.width, bitmap.height
     size = w * h
     header = list(bitmap.header)
@@ -59,7 +64,7 @@ def project(bitmap: Bitmap) -> bytes:
         image = Image.frombytes("RGBA", (w, h), bitmap.pixels, "raw", "BGRA")
     else:
         raise ProjectError("Unsupported bitmap pixel layout")
-    return png_bytes(image)
+    return image
 
 
 def read_png(path: Path) -> Image.Image:
@@ -319,7 +324,18 @@ def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
         for i in TAIL_DEFAULTS:
             tail[i] = ref.get(f"native-t{i}", tail[i])
         header.extend(map(str, palette))
-        return decode(encode(Bitmap(tuple(header), pixels, tuple(tail), mask)))
+        # These fields are already constructed from bounded PNG pixels. Validate
+        # native overrides directly; serializing megabytes of pixels proves
+        # nothing more about them.
+        if any(v.splitlines() != [v] for v in [*header, *tail]):
+            raise ValueError("Native bitmap fields cannot contain line breaks")
+        if int(header[12]) not in {2, 4, 12}:
+            raise ValueError("Unsupported bitmap format or palette")
+        if w <= 0 or h <= 0 or w * h > MAX_PIXELS or len(pixels) > MAX_BYTES:
+            raise ValueError("Bitmap dimensions exceed supported bounds")
+        for native_value in tail[:10]:
+            int(native_value)
+        return Bitmap(tuple(header), pixels, tuple(tail), mask)
     except (ValueError, TypeError, KeyError) as ex:
         raise ProjectError(f"Invalid bitmap reference: {ex}") from ex
 
@@ -330,6 +346,11 @@ class AssetWriter:
     def __init__(self, folder: Path, *, origins_from: Path | None = None):
         self.folder = folder
         self.origins: dict[str, set[str]] = {}
+        self._candidates: dict[str, set[str]] | None = None
+        self._occupied: set[str] = set()
+        self._exported: dict[
+            tuple[bytes, str], tuple[dict[str, str], tuple[int, int, int] | None]
+        ] = {}
 
         def visit(value: Any) -> None:
             if isinstance(value, dict):
@@ -360,10 +381,55 @@ class AssetWriter:
             except (ValueError, etree.XMLSyntaxError):
                 continue  # Invalid source is never grounds to overwrite an asset.
 
+    def _index(self) -> None:
+        directory = self.folder / "images"
+        if directory.is_symlink():
+            raise ProjectError("Symlinked image directory")
+        directory.mkdir(parents=True, exist_ok=True)
+        self._candidates = {}
+        self._occupied = {p.name.casefold() for p in directory.iterdir()}
+        for candidate in sorted(directory.rglob("*.png")):
+            name = candidate.relative_to(self.folder).as_posix()
+            asset_path(self.folder, name)
+            for origin in self.origins.get(name, {name}):
+                self._candidates.setdefault(origin, set()).add(name)
+
+    def _remember(self, key: tuple[bytes, str], ref: dict[str, str]) -> dict[str, str]:
+        stamp = None
+        if not ref["src"].startswith("builtin:"):
+            stat = asset_path(self.folder, ref["src"]).stat()
+            stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+        self._exported[key] = (dict(ref), stamp)
+        return ref
+
     def export(self, text: str, fallback: str) -> dict[str, str]:
+        # Digest keys bound memory independently of the serialized image size.
+        # Anonymous images still use their owner when allocating a filename.
+        header_lines = text.split("\n", 6)
+        origin_line = header_lines[5].rstrip("\r") if len(header_lines) > 5 else ""
+        key = (
+            hashlib.sha256(text.encode()).digest(),
+            fallback if origin_line in {"0:", "-1:"} else "",
+        )
+        cached = self._exported.get(key)
+        if cached is not None:
+            ref, stamp = cached
+            if stamp is None:
+                return dict(ref)
+            path = asset_path(self.folder, ref["src"])
+            if path.exists():
+                stat = path.stat()
+                if stamp == (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size):
+                    return dict(ref)
         bitmap = decode(text)
-        data = project(bitmap)
-        with Image.open(BytesIO(data)) as image:
+        image = project_image(bitmap)
+        data = png_bytes(image)
+        if image.mode == "P":
+            # PNG may pad a palette to the selected bit depth. Preserve its
+            # actual stored entry count when deriving native overrides.
+            with Image.open(BytesIO(data)) as stored:
+                fields = reference_fields(bitmap, stored)
+        else:
             fields = reference_fields(bitmap, image)
         origin = bitmap.origin
         from . import builtin_images
@@ -372,7 +438,7 @@ class AssetWriter:
         if builtin:
             if fields.get("path") == builtin_images.entry(builtin)["path"]:
                 fields.pop("path")
-            return {"src": builtin, **fields}
+            return self._remember(key, {"src": builtin, **fields})
         base = (
             re.sub(
                 r"[^A-Za-z0-9_.-]",
@@ -384,18 +450,14 @@ class AssetWriter:
         directory = self.folder / "images"
         if directory.is_symlink():
             raise ProjectError("Symlinked image directory")
-        directory.mkdir(parents=True, exist_ok=True)
-        for candidate in sorted(directory.rglob("*.png")):
-            if candidate.is_symlink():
-                raise ProjectError("Symlinked image asset")
-            name = candidate.relative_to(self.folder).as_posix()
-            asset_path(self.folder, name)
-            known = self.origins.get(name, {name})
+        if self._candidates is None:
+            self._index()
+        assert self._candidates is not None
+        for name in sorted(self._candidates.get(origin, ()), key=Path):
+            candidate = asset_path(self.folder, name)
             if not origin and not re.fullmatch(
                 re.escape(base) + r"(?:-\d+)?", candidate.stem
             ):
-                continue
-            if origin not in known:
                 continue
             try:
                 # Reconstruct with this reference's native fields; pixel assets
@@ -404,20 +466,22 @@ class AssetWriter:
                 restored = read_bitmap(self.folder, ref)
                 if restored == bitmap:
                     self.origins.setdefault(name, set()).add(origin)
-                    return ref
+                    return self._remember(key, ref)
             except ProjectError:
                 continue
-        occupied = {p.name.casefold() for p in directory.iterdir()}
+        occupied = self._occupied
         index = 0
         while True:
             name = base + (f"-{index:02d}" if index else "") + ".png"
-            if name.casefold() not in occupied:
+            if name.casefold() not in occupied and not (directory / name).exists():
                 break
             index += 1
+        occupied.add(name.casefold())
         (directory / name).write_bytes(data)
         name = "images/" + name
         self.origins.setdefault(name, set()).add(origin)
-        return {"src": name, **fields}
+        self._candidates.setdefault(origin, set()).add(name)
+        return self._remember(key, {"src": name, **fields})
 
 
 def export_bitmap(folder: Path, text: str, fallback: str) -> dict[str, str]:

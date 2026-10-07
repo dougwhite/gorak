@@ -87,16 +87,16 @@ def test_late_conversion_failure_preserves_entire_existing_component(
     folder.mkdir()
     for suffix in (".w4gl", ".wml", ".queries.json", ".fielddefaults.json"):
         (folder / f"broken{suffix}").write_text("original" + suffix)
-    from gorak.component_defaults import write_component_defaults
+    from gorak.component_defaults import write_projected_defaults
 
-    original = write_component_defaults
+    original = write_projected_defaults
 
     def write_defaults(path: Path, *args: Any, **kwargs: Any) -> None:
         if path.stem == "broken":
             raise error_type("Invalid native stylesheet")
         original(path, *args, **kwargs)
 
-    monkeypatch.setattr(export, "write_component_defaults", write_defaults)
+    monkeypatch.setattr(export, "write_projected_defaults", write_defaults)
     result = export.export_application_to_paths(
         CONNECTION,
         "example",
@@ -323,3 +323,39 @@ def test_real_planner_retries_until_component_exports(
     output = capsys.readouterr()
     assert "exported 0 components" in output.out
     assert not output.err
+
+
+def test_unexpected_procedure_stylesheet_still_fails_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    broken = component("broken").replace("</COMPONENT>", "<fielddefaults/></COMPONENT>")
+    setup_export(
+        monkeypatch, document("example", broken, component("last")), ["broken", "last"]
+    )
+    result = export.export_application_to_paths(
+        CONNECTION,
+        "example",
+        export.application_export_paths(tmp_path, "example"),
+        None,
+    )
+    assert [c.name for c in result.components] == ["last"]
+    assert [f.component for f in result.failures] == ["broken"]
+
+
+def test_broken_parent_styles_do_not_stop_procedures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup_export(
+        monkeypatch,
+        document("example", component("broken", "framesource"), component("last")),
+        ["broken", "last"],
+    )
+    (tmp_path / "field_defaults.json").write_text('{"standalone": false}')
+    result = export.export_application_to_paths(
+        CONNECTION,
+        "example",
+        export.application_export_paths(tmp_path, "example"),
+        None,
+    )
+    assert [c.name for c in result.components] == ["last"]
+    assert [f.component for f in result.failures] == ["broken"]

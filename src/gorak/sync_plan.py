@@ -14,7 +14,12 @@ from lxml import etree
 from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
 from .importer import signature
-from .portable_source import comparison_application, comparison_component, read_document
+from .portable_source import (
+    cached_source_scope,
+    comparison_application,
+    comparison_component,
+    read_document,
+)
 from .project import ProjectError
 
 Action = Literal["unchanged", "converged", "pull", "push", "conflict"]
@@ -108,6 +113,7 @@ def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
     return result, apps
 
 
+@cached_source_scope()
 def plan_project(
     connection: OpenRoadConnection,
     root: Path,

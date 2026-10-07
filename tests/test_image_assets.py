@@ -714,3 +714,81 @@ def test_nested_asset_reference_reused(tmp_path: Path, staged: bool) -> None:
     assert writer.export(encode(native), "unused") == ref
     assert read_bitmap(target, ref) == native
     assert list((target / "images").rglob("*.png")) == [target / ref["src"]]
+
+
+def test_writer_cache_observes_image_edits_and_symlinks(tmp_path: Path) -> None:
+    writer = AssetWriter(tmp_path)
+    native = encode(bitmap())
+    first = writer.export(native, "first")
+    path = tmp_path / first["src"]
+    Image.new("RGBA", (2, 2), "red").save(path)
+    second = writer.export(native, "second")
+    assert second["src"] != first["src"]
+    (tmp_path / second["src"]).unlink()
+    (tmp_path / second["src"]).symlink_to(path)
+    with pytest.raises(ProjectError, match="Symlink"):
+        writer.export(native, "second")
+
+
+def test_anonymous_writer_cache_keeps_owner_names(tmp_path: Path) -> None:
+    writer = AssetWriter(tmp_path)
+    native = encode(bitmap(""))
+    assert writer.export(native, "first")["src"] == "images/first.png"
+    assert writer.export(native, "second")["src"] == "images/second.png"
+    assert writer.export(native, "first")["src"] == "images/first.png"
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r", "\x85", "\u2028"])
+def test_reference_rejects_native_line_separators(
+    tmp_path: Path, separator: str
+) -> None:
+    (tmp_path / "images").mkdir()
+    Image.new("RGBA", (1, 1)).save(tmp_path / "images/test.png")
+    with pytest.raises(ProjectError, match="line breaks"):
+        read_bitmap(
+            tmp_path,
+            {"src": "images/test.png", "path": "art" + separator + "image.png"},
+        )
+
+
+@pytest.mark.parametrize("count", [3, 5, 17, 255])
+def test_indexed_export_accounts_for_png_palette_padding(
+    tmp_path: Path, count: int
+) -> None:
+    original = bitmap()
+    header = list(original.header)
+    header[4], header[13] = "4", str(count)
+    header.extend(str(i % 256) for i in range(count * 4))
+    tail = list(original.tail)
+    tail[6] = "0"
+    original = replace(
+        original, header=tuple(header), tail=tuple(tail), pixels=bytes([0, 1, 2, 0])
+    )
+    ref = export_bitmap(tmp_path, encode(original), "palette")
+    assert read_bitmap(tmp_path, ref) == original
+
+
+def test_indexed_candidates_keep_native_path_sort_order(tmp_path: Path) -> None:
+    import json
+
+    from gorak.image_assets import project
+
+    original = bitmap()
+    nested = tmp_path / "images" / "sub" / "logo.png"
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(project(original))
+    (tmp_path / "images" / "sub.png").write_bytes(project(original))
+    (tmp_path / "app.json").write_text(
+        json.dumps(
+            {
+                "assets": [
+                    {"src": "images/sub.png", "path": original.origin},
+                    {"src": "images/sub/logo.png", "path": original.origin},
+                ]
+            }
+        )
+    )
+    assert (
+        AssetWriter(tmp_path).export(encode(original), "x")["src"]
+        == "images/sub/logo.png"
+    )

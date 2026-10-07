@@ -32,6 +32,13 @@ def write_component_defaults(
 ) -> None:
     """Write only differences from the effective app; remove an empty file."""
     values = minimal_component_defaults(source, overrides)
+    write_projected_defaults(source, values, writer=writer)
+
+
+def write_projected_defaults(
+    source: Path, values: dict[str, Any], *, writer: "AssetWriter | None" = None
+) -> None:
+    """Write an already validated, minimal native stylesheet projection."""
     from .image_assets import stylesheet_assets
 
     values = stylesheet_assets(
