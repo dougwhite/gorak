@@ -43,8 +43,8 @@ def test_class_declarations_preserve_existing_row_metadata(tmp_path: Path) -> No
     source.write_text(
         encode_w4gl(parse_component_node(node))
         .replace(
-            'quantity = "INTEGER NOT NULL"',
-            'quantity = "FLOAT NOT NULL"\nlabel = "VARCHAR(32)"',
+            "quantity = \"INTEGER NOT NULL DEFAULT '7'\"",
+            'quantity = "FLOAT NOT NULL DEFAULT \'7\'"\nlabel = "VARCHAR(32)"',
         )
         .replace(
             'compute = "METHOD"',

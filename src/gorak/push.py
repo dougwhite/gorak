@@ -111,9 +111,6 @@ def _push_project(
                 )
             node = restore_application(folder)
             nodes = [restore_component(path) for path in paths]
-            start = node.findtext("procstart")
-            if start and start.casefold() not in {p.stem.casefold() for p in paths}:
-                raise ProjectError(f"Starting component is missing: {app}/{start}")
             dependencies[app.casefold()] = {
                 row.findtext("appname", "").casefold()
                 for row in node.findall("included_apps/row")

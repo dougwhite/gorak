@@ -62,6 +62,19 @@ Unsupported source shapes are refused rather than silently discarded.
 
 Declarations support qualified types (`APP!CLASS`), `LONG BYTE`, and quoted attribute names containing `$`.
 
+```toml
+[attributes]
+created = "DATE NOT NULL DEFAULT 'today'"
+items = "PRIVATE ARRAY OF SHARED!ITEM DEFAULT NULL"
+label = { declaration = "VARCHAR(80) NOT NULL", remark = "Display label", taggedvalues = [{ name = "column", value = "label" }] }
+
+[methods]
+lookup = "PRIVATE METHOD RETURNING SHARED!ITEM"
+describe = { declaration = "METHOD RETURNING VARCHAR(80) NOT NULL", remark = "Describe this object" }
+```
+
+Declarations follow standard OpenROAD declaration syntax, including `PRIVATE`, `ARRAY OF`, `NOT NULL`, and `DEFAULT` clauses. Use a declaration string, or an object containing `declaration` when remarks or other metadata are present.
+
 Saved query metadata lives in optional `<component>.queries.json` files.
 
 Macro definitions use ordered tables such as `[[framesource.macro_vars]]`, with `name`,

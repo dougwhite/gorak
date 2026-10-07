@@ -40,7 +40,7 @@ def validate_attribute_name(value: str) -> None:
 
 def overlay_metadata(node: etree._Element, path: Path) -> None:
     from .importer import validate_name
-    from .xml_writer import datatype
+    from .member_declarations import write_member
 
     if (
         node.get("{http://www.w3.org/2001/XMLSchema-instance}type")
@@ -137,7 +137,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
             rows[name.casefold()] = row
         seen: set[str] = set()
         for name, declaration in declarations.items():
-            if not isinstance(declaration, str):
+            if table == "taggedvalues" and not isinstance(declaration, str):
                 raise ProjectError(f"Invalid declaration for {name}")
             if name.casefold() in seen:
                 raise ProjectError(f"Duplicate declaration: {name}")
@@ -157,40 +157,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
             if table == "taggedvalues":
                 set_scalar(row, row_kind, "value", declaration)
                 continue
-            managed = ["datatype", "isarray", "isnullable"]
-            if table == "methods":
-                managed.append("isprivate")
-            for key in managed:
-                for child in row.findall(key):
-                    row.remove(child)
-            if table == "methods":
-                match = re.fullmatch(
-                    r"(PRIVATE )?METHOD(?: RETURNING (.+))?", declaration
-                )
-                if not match:
-                    raise ProjectError(f"Invalid method declaration: {declaration}")
-                if match[1]:
-                    etree.SubElement(row, "isprivate").text = "1"
-                declaration = match[2] or ""
-            if table == "attributes":
-                explicit_null = bool(
-                    re.search(r" DEFAULT NULL$", declaration, re.IGNORECASE)
-                )
-                if explicit_null:
-                    declaration = re.sub(
-                        r" DEFAULT NULL$", "", declaration, flags=re.IGNORECASE
-                    )
-                    if declaration.upper().endswith(" NOT NULL"):
-                        raise ProjectError("DEFAULT NULL requires a nullable attribute")
-                if explicit_null or row.findtext("defaultvalue") == "2":
-                    for key in ("defaultvalue", "defaultstring"):
-                        for child in row.findall(key):
-                            row.remove(child)
-                if explicit_null:
-                    etree.SubElement(row, "defaultvalue").text = "2"
-            if declaration:
-                datatype(row, declaration)
-            order_children(row, row_kind)
+            write_member(row, declaration, table)
         for key, row in rows.items():
             if key not in seen:
                 container.remove(row)
