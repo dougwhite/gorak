@@ -8,17 +8,31 @@ from copy import deepcopy
 
 from lxml import etree
 
-from .xml_text import set_text, text_value
+from .xml_text import is_text_node, set_text, text_value
 
 XSI = "{http://www.w3.org/2001/XMLSchema-instance}type"
+
+
+def opaque_descendant(node: etree._Element) -> bool:
+    return any(
+        parent.tag in {"extension", "taggedvalues"} for parent in node.iterancestors()
+    )
 
 
 def explicit_row_types(root: etree._Element) -> None:
     """Resolve native array default types without changing row order or contents."""
     for node in root.iter():
+        if opaque_descendant(node):
+            continue
         row_class = node.find("row_class")
         rows = node.findall("row")
-        if row_class is not None and rows and text_value(row_class):
+        if (
+            row_class is not None
+            and rows
+            and not row_class.attrib
+            and is_text_node(row_class)
+            and text_value(row_class)
+        ):
             for row in rows:
                 if XSI not in row.attrib:
                     row.set(XSI, text_value(row_class))
@@ -31,7 +45,7 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
     node = deepcopy(root)
     explicit_row_types(node)
     for child in list(node.iter()):
-        if not isinstance(child.tag, str):
+        if not isinstance(child.tag, str) or opaque_descendant(child):
             continue
         parent = child.getparent()
         if parent is None:
@@ -40,6 +54,8 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
             set_text(child, text_value(child).strip(" \t\r\n"), cdata=True)
         if (
             child.tag in {"width", "height"}
+            and not child.attrib
+            and is_text_node(child)
             and text_value(child) == "0"
             and (
                 parent.get(XSI) == "rectangleshape"
@@ -48,7 +64,12 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
         ):
             parent.remove(child)
             continue
-        if child.tag == "defaultvalue" and text_value(child) == "1":
+        if (
+            child.tag == "defaultvalue"
+            and not child.attrib
+            and is_text_node(child)
+            and text_value(child) == "1"
+        ):
             parent.remove(child)
         elif (
             child.tag

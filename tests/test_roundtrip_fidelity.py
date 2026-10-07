@@ -182,3 +182,23 @@ def test_accepted_receipt_is_bound_to_exact_cached_bytes(tmp_path: Path) -> None
     assert is_accepted_baseline(target)
     target.write_bytes(b"<OPENROAD><APPLICATION/></OPENROAD>")
     assert not is_accepted_baseline(target)
+
+
+def test_tracking_default_normalization_does_not_discard_unknown_metadata() -> None:
+    plain = etree.fromstring(
+        "<COMPONENT><defaultvalue>1</defaultvalue><values><row/><row_class>sample</row_class></values></COMPONENT>"
+    )
+    changed = etree.fromstring(etree.tostring(plain))
+    changed.find("defaultvalue").set("extra", "keep")
+    changed.find("values/row_class").set("extra", "keep")
+    assert signature(plain) != signature(changed)
+
+
+def test_tracking_keeps_opaque_literal_metadata_exact() -> None:
+    original = etree.fromstring(
+        "<COMPONENT><extension><script> literal </script><defaultvalue>1</defaultvalue></extension></COMPONENT>"
+    )
+    changed = etree.fromstring(
+        "<COMPONENT><extension><script>literal</script></extension></COMPONENT>"
+    )
+    assert signature(original) != signature(changed)
