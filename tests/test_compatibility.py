@@ -71,6 +71,28 @@ def test_compatibility_project_round_trip(tmp_path: Path) -> None:
         typed.findtext("attributes/row[displayname='payload']/datatype") == "long byte"
     )
     assert typed.findtext("methods/row/datatype") == "shared!counter"
+    assert typed.findtext("attributes/row[displayname='started']/defaultvalue") == "3"
+    assert (
+        typed.findtext("attributes/row[displayname='started']/defaultstring") == "today"
+    )
+    assert (
+        typed.findtext("attributes/row[displayname='optional_items']/isprivate") == "1"
+    )
+    assert (
+        typed.findtext("attributes/row[displayname='optional_items']/defaultvalue")
+        == "2"
+    )
+    assert (
+        typed.findtext("attributes/row[displayname='named']/remark") == "Display name"
+    )
+    assert [
+        r.findtext("value")
+        for r in typed.findall("attributes/row[displayname='named']/taggedvalues/row")
+    ] == ["label", "alias"]
+    assert (
+        typed.findtext("methods/row[displayname='describe']/remark")
+        == "Describe the value"
+    )
     library = restore_component(source / "example/automation.w4gl")
     assert library.findtext("uniqueid") == "{00020430-0000-0000-C000-000000000046}"
     assert library.findtext("minorversion") == "0"

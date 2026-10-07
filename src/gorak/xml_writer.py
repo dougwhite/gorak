@@ -31,7 +31,9 @@ def datatype(row: etree._Element, declaration: str) -> None:
     scalar(row, "datatype", match[2].lower())
     if match[1]:
         scalar(row, "isarray", "1")
-    if not match[3]:
+    from .member_declarations import reference_type
+
+    if not match[3] or reference_type(match[2], bool(match[1])):
         scalar(row, "isnullable", "1")
 
 

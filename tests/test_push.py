@@ -391,3 +391,29 @@ def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
         assert not (tmp_path / ".openroad/push-pending.json").exists()
         assert "no changes" in push.push_project(connection(), tmp_path)
     assert len(imports) == 1
+
+
+def test_missing_start_is_preserved_and_submitted_to_native_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = app(tmp_path, "example")
+    (folder / "app.json").write_text('{"starting_component":"missing"}')
+    monkeypatch.setattr(push, "read_applications", lambda _: [])
+    calls: list[str] = []
+
+    def importing(
+        conn: Any, name: str, component: str, xml: Path, log: Path, *, create: bool
+    ) -> None:
+        from gorak.source_xml import read_tree
+
+        assert read_tree(xml).findtext("APPLICATION/procstart") == "missing"
+        calls.append(name)
+
+    monkeypatch.setattr(push, "import_component_xml", importing)
+    monkeypatch.setattr(
+        push,
+        "backup_application_xml",
+        lambda c, a, p: p.write_bytes(document([new_application(folder)])),
+    )
+    push.push_project(connection(), tmp_path)
+    assert calls == ["example"]

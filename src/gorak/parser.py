@@ -666,35 +666,16 @@ def extract_props(
     return props
 
 
-def extract_attributes(node: etree._Element) -> dict[str, str]:
-    """Extract OpenROAD attribute rows as compact declaration strings."""
+def extract_attributes(node: etree._Element) -> dict[str, Any]:
+    from .member_declarations import read_members
 
-    attributes: dict[str, str] = {}
-    for row in node.findall("row"):
-        name = find_text(row, "displayname")
-        datatype = find_text(row, "datatype")
-        if name is not None and datatype is not None:
-            attributes[name] = type_declaration(
-                datatype,
-                nullable=is_nullable(row),
-                array=is_array(row),
-            )
-            if find_text(row, "defaultvalue") == "2":
-                attributes[name] += " DEFAULT NULL"
-
-    return attributes
+    return read_members(node, "attributes")
 
 
-def extract_methods(node: etree._Element) -> dict[str, str]:
-    """Extract OpenROAD method rows as compact declaration strings."""
+def extract_methods(node: etree._Element) -> dict[str, Any]:
+    from .member_declarations import read_members
 
-    methods: dict[str, str] = {}
-    for row in node.findall("row"):
-        name = find_text(row, "displayname")
-        if name is not None:
-            methods[name] = method_declaration(row)
-
-    return methods
+    return read_members(node, "methods")
 
 
 def extract_taggedvalues(node: etree._Element) -> dict[str, str]:
@@ -724,7 +705,9 @@ def type_declaration(datatype: str, nullable: bool, array: bool = False) -> str:
     declaration = datatype.upper()
     if array:
         declaration = f"ARRAY OF {declaration}"
-    if not nullable:
+    from .member_declarations import reference_type
+
+    if not nullable and not reference_type(datatype, array):
         declaration += " NOT NULL"
     return declaration
 
@@ -779,7 +762,17 @@ def toml_props(component: Component) -> tomlkit.TOMLDocument:
     doc.add(component.type, tomlkit.item(props))
 
     for key in ["attributes", "methods", "taggedvalues", "fielddefaults", "icons"]:
-        if key in component.props:
+        if key in {"attributes", "methods"} and key in component.props:
+            members = tomlkit.table()
+            for name, value in component.props[key].items():
+                if isinstance(value, dict):
+                    item = tomlkit.inline_table()
+                    item.update(value)
+                    members.add(name, item)
+                else:
+                    members.add(name, value)
+            doc.add(key, members)
+        elif key in component.props:
             doc.add(key, tomlkit.item(component.props[key]))
 
     return doc

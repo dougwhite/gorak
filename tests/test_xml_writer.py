@@ -22,7 +22,8 @@ METHOD Check() = { RETURN 1; }
 """)
     node = new_component(path)
     parsed = parse_component_node(etree.fromstring(document([node]))[0])
-    assert parsed.props["attributes"] == {"items": "ARRAY OF VARCHAR(32) NOT NULL"}
+    assert parsed.props["attributes"] == {"items": "ARRAY OF VARCHAR(32)"}
+    assert node.findtext("attributes/row/isnullable") == "1"
     assert parsed.props["methods"] == {
         "Check": "PRIVATE METHOD RETURNING INTEGER NOT NULL"
     }

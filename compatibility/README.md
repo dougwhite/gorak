@@ -27,3 +27,8 @@ should preserve it; query authoring or query-expression navigation is not implie
 Consumers pin a gorak commit containing the manifest and fixtures. An update PR
 changes that pin and runs their local compatibility checks. Fixture fixes and
 additions may occur without a contract bump when the represented rules are unchanged.
+
+Source contract 11 adds PRIVATE/default clauses on attribute declarations and structured
+attribute/method values with a declaration string, remarks and ordered member tagged
+values. Consumers must read declaration from either the string or structured form;
+source-editing tools must preserve the other fields and duplicate tag names.

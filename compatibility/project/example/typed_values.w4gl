@@ -6,5 +6,10 @@ superclass = "userobject"
 items = "ARRAY OF SHARED!COUNTER"
 payload = "LONG BYTE NOT NULL"
 
+started = "DATE NOT NULL DEFAULT 'today'"
+optional_items = "PRIVATE ARRAY OF SHARED!COUNTER DEFAULT NULL"
+named = { declaration = "VARCHAR(40) NOT NULL", remark = "Display name", taggedvalues = [{ name = "column", value = "label" }, { name = "column", value = "alias" }] }
+
 [methods]
 lookup = "METHOD RETURNING SHARED!COUNTER"
+describe = { declaration = "PRIVATE METHOD RETURNING VARCHAR(40) NOT NULL", remark = "Describe the value" }
