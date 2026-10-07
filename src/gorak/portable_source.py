@@ -159,6 +159,7 @@ def comparison_application(folder: Path) -> etree._Element:
         "databasename",
         "database_type",
         "windowicon",
+        "appflags",
     }
     for child in list(baseline):
         if child.tag in managed:

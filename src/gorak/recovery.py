@@ -80,13 +80,12 @@ def recover_push(
             backup_application_xml(connection, app, exported)
             changes[cache / f"{app}.xml"] = exported.read_bytes()
         # Verify staged XML against disk, then repeat the live comparison before install.
-        from .importer import signature
         from .portable_source import (
             comparison_application,
             comparison_component,
             read_document,
         )
-        from .sync_plan import xml_inventory
+        from .sync_plan import signature, xml_inventory
 
         for app in sorted(apps):
             folder = root / app

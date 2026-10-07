@@ -89,3 +89,46 @@ def test_mode_normalization_does_not_escape_layout_fields(location: str) -> None
     mode = actual.find(".//defaultvalue")
     mode.getparent().remove(mode)
     assert normalized_markup(expected, actual) is None
+
+
+@pytest.mark.parametrize("container", ["extension", "taggedvalues"])
+@pytest.mark.parametrize("shape", ["rectangleshape", "segmentshape"])
+def test_shape_preparation_preserves_opaque_metadata(
+    container: str, shape: str
+) -> None:
+    from gorak.xml_writer import prepare_submission
+
+    root = frame(1000, "framesource")
+    field = root.find("topform/childfields/row")
+    field.set("{http://www.w3.org/2001/XMLSchema-instance}type", shape)
+    opaque = etree.SubElement(root if container == "extension" else field, container)
+    nested = etree.SubElement(opaque, "row")
+    nested.set("{http://www.w3.org/2001/XMLSchema-instance}type", shape)
+    etree.SubElement(nested, "name").text = "opaque_shape"
+    original = etree.tostring(opaque)
+    prepare_submission(root)
+    assert field.findtext("width") == "0"
+    if shape == "rectangleshape":
+        assert field.findtext("height") == "0"
+    assert etree.tostring(opaque) == original
+
+
+@pytest.mark.parametrize("container", ["extension", "taggedvalues"])
+@pytest.mark.parametrize("shape", ["rectangleshape", "segmentshape"])
+def test_tracking_keeps_nested_opaque_shape_coordinates_exact(
+    container: str, shape: str
+) -> None:
+    from copy import deepcopy
+
+    from gorak.native_normalization import signature as tracking_signature
+
+    a = frame(1000, "framesource")
+    opaque = etree.SubElement(a.find("topform/childfields/row"), container)
+    nested = etree.SubElement(opaque, "row")
+    nested.set("{http://www.w3.org/2001/XMLSchema-instance}type", shape)
+    etree.SubElement(nested, "width").text = "321"
+    b = deepcopy(a)
+    b.find(f".//{container}/row/width").text = "323"
+    assert tracking_signature(a, pixel_geometry=True) != tracking_signature(
+        b, pixel_geometry=True
+    )

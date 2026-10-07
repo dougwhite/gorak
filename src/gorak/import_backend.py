@@ -13,7 +13,9 @@ from .writer_launch import local_writer_command, remote_writer_prefix
 
 def checked_log(text: str) -> None:
     if re.search(
-        r"(?:^|\n)\s*ERROR:|\bE_[A-Z0-9_]+|\b(?:failed|failure)\b", text, re.IGNORECASE
+        r"(?:^|\n)\s*(?:ERROR:|E_[A-Z]{2}[0-9A-F]{4}\b|(?:failed|failure)\b)|\.\s*(?:failed|failure)\b",
+        text,
+        re.IGNORECASE,
     ):
         raise ProjectError(
             "OpenROAD reported an import/compilation error; inspect import.log"

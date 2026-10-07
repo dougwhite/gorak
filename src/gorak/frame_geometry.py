@@ -3,7 +3,8 @@
 Coordinates are exported in thousandths of an inch. Only the four geometry
 properties in frame markup have pixel equivalence. Field default modes also use
 the WML contract's implicit DV_SYSTEM rule; all other XML remains exact.
-Baseline/database conflict comparisons deliberately do not use this function.
+Observed native baselines retain exact pre-write conflict checks. Planning and
+accepted-submission baselines allow the observed native pixel equivalence.
 """
 
 from copy import deepcopy
@@ -11,6 +12,7 @@ from copy import deepcopy
 from lxml import etree
 
 from .field_modes import is_implicit_default
+from .native_normalization import opaque_descendant
 from .parser import (
     FIELD_TEMPLATE_CHILDREN,
     FRAME_MARKUP_CHILDREN,
@@ -38,6 +40,8 @@ def geometry_signature(node: etree._Element) -> object:
         if section.tag not in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN:
             continue
         for child in list(section.iter()):
+            if child.tag in {"extension", "taggedvalues"} or opaque_descendant(child):
+                continue
             if is_implicit_default(child):
                 parent = child.getparent()
                 assert parent is not None
@@ -86,3 +90,25 @@ def normalized_markup(expected: etree._Element, actual: etree._Element) -> str |
         )
         + "\n"
     )
+
+
+ZERO_DIMENSIONS = {"rectangleshape": ("width", "height"), "segmentshape": ("width",)}
+
+
+def explicit_shape_dimensions(root: etree._Element) -> None:
+    """Preserve omitted native zeros against nonzero XML-import constructors."""
+    from .xml_shapes import order_children
+
+    # Opaque metadata may reuse native type names without being layout fields.
+    # Preserve it verbatim, as accepted-baseline tracking does.
+    for field in list(root.iter()):
+        if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
+            continue
+        kind = field.get(f"{{{NS['xsi']}}}type", "")
+        changed = False
+        for dimension in ZERO_DIMENSIONS.get(kind, ()):
+            if field.find(dimension) is None:
+                etree.SubElement(field, dimension).text = "0"
+                changed = True
+        if changed:
+            order_children(field, kind)

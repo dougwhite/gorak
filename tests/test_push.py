@@ -311,14 +311,15 @@ def test_late_disk_edit_keeps_cache_unadvanced_and_blocks_retry(
     marker = tmp_path / ".openroad/push-pending.json"
     operation = Path(json.loads(marker.read_text())["operation"])
     assert (operation / "plan.json").exists()
-    assert (operation / "0-after.xml").exists()
+    assert (operation / "0-submitted.xml").exists()
+    assert not (operation / "0-after.xml").exists()
     with pytest.raises(ProjectError, match="interrupted push"):
         push.push_project(connection(), tmp_path)
     assert (folder / "notes.txt").read_text() == "concurrent edit"
 
 
 @pytest.mark.parametrize("unexpected_change", [False, True])
-def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
+def test_app_update_accepts_native_import_and_detects_later_database_edits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     unexpected_change: bool,
@@ -378,17 +379,18 @@ def test_app_metadata_and_frame_geometry_share_verified_canonicalization(
             )
 
     monkeypatch.setattr(push, "import_component_xml", importing)
+    assert "1 application updates" in push.push_project(connection(), tmp_path)
+    assert cache.read_bytes() == imports[0]
+    assert 'xleft="321"' in markup.read_text()
+    assert not (tmp_path / ".openroad/push-pending.json").exists()
     if unexpected_change:
-        with pytest.raises(ProjectError, match="Existing component changed"):
-            push.push_project(connection(), tmp_path)
-        assert cache.read_bytes() == baseline
-        assert 'xleft="321"' in markup.read_text()
-        assert (tmp_path / ".openroad/push-pending.json").exists()
+        # The next comparison detects a database edit; acceptance is not verification.
+        from gorak.native_normalization import signature
+
+        assert signature(etree.fromstring(cache.read_bytes())) != signature(
+            etree.fromstring(database[0])
+        )
     else:
-        assert "1 application updates" in push.push_project(connection(), tmp_path)
-        assert cache.read_bytes() == database[0]
-        assert 'xleft="323"' in markup.read_text()
-        assert not (tmp_path / ".openroad/push-pending.json").exists()
         assert "no changes" in push.push_project(connection(), tmp_path)
     assert len(imports) == 1
 
@@ -417,3 +419,49 @@ def test_missing_start_is_preserved_and_submitted_to_native_import(
     )
     push.push_project(connection(), tmp_path)
     assert calls == ["example"]
+
+
+def test_existing_application_import_preserves_missing_shape_dimensions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lxml import etree
+
+    from tests.native_source import write_component
+
+    folder = app(tmp_path, "example")
+    node = etree.fromstring(
+        '<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="panel" xsi:type="framesource"><topform><childfields><row xsi:type="rectangleshape"><name>zero_shape</name></row><row_class>formfield</row_class></childfields></topform></COMPONENT>'
+    )
+    write_component(folder / "panel.w4gl", node)
+    baseline = document([new_application(folder), node])
+    cache = tmp_path / ".openroad/example/example.xml"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(baseline)
+    (folder / "app.json").write_text(
+        '{"description":"Updated","starting_component":"missing"}'
+    )
+    monkeypatch.setattr(
+        push, "read_applications", lambda _: [Application("example", "", "")]
+    )
+    monkeypatch.setattr(
+        push,
+        "read_components",
+        lambda *a: [ComponentInfo("example", "panel", "framesource", "")],
+    )
+    monkeypatch.setattr(
+        push, "backup_application_xml", lambda c, a, p: p.write_bytes(baseline)
+    )
+    submitted: list[bytes] = []
+    monkeypatch.setattr(
+        push,
+        "import_component_xml",
+        lambda c, a, n, p, log, **kw: submitted.append(p.read_bytes()),
+    )
+    push.push_project(connection(), tmp_path)
+    assert len(submitted) == 1
+    tree = etree.fromstring(submitted[0])
+    assert tree.findtext("APPLICATION/procstart") == "missing"
+    field = tree.find("COMPONENT/topform/childfields/row")
+    assert field is not None
+    assert field.findtext("width") == "0"
+    assert field.findtext("height") == "0"

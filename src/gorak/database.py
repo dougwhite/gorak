@@ -80,9 +80,8 @@ select case when app_current.entity_name is null
        c.last_altered_by,
        c.current_make
 from ii_entities base
-left join ii_entities app_folder on base.folder_id = app_folder.entity_id
+join ii_entities app_folder on base.folder_id = app_folder.entity_id
 left join ii_entities app_current on app_current.base_entity_id = app_folder.entity_id
-left join ii_applications a on a.entity_id = app_current.entity_id
 left join ii_entities ver on ver.base_entity_id = base.entity_id
                          and ver.version_number = -1
 left join ii_components c on c.entity_id = ver.entity_id
@@ -110,9 +109,8 @@ select case when app_current.entity_name is null
        c.last_altered_by,
        c.current_make
 from ii_entities base
-left join ii_entities app_folder on base.folder_id = app_folder.entity_id
+join ii_entities app_folder on base.folder_id = app_folder.entity_id
 left join ii_entities app_current on app_current.base_entity_id = app_folder.entity_id
-left join ii_applications a on a.entity_id = app_current.entity_id
 left join ii_entities ver on ver.base_entity_id = base.entity_id
                          and ver.version_number = -1
 left join ii_components c on c.entity_id = ver.entity_id

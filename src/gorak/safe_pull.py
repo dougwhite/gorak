@@ -43,7 +43,11 @@ def fingerprint(root: Path) -> dict[str, str]:
             )
         if path.is_file():
             result[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for path in (root / ".openroad").glob("*/*.xml"):
+    for path in (root / ".openroad").glob("*/*"):
+        if not path.is_file() or not (
+            path.suffix == ".xml" or path.name.endswith(".receipt.json")
+        ):
+            continue
         if path.parent.name not in {"pulls", "pushes", "imports", "runs"}:
             result[path.relative_to(root).as_posix()] = hashlib.sha256(
                 path.read_bytes()
@@ -64,6 +68,8 @@ def apply_files(
     expected: dict[str, str] | None = None,
 ) -> None:
     """Keep before-images and roll back only files still matching our own writes."""
+    if expected is not None and fingerprint(root) != expected:
+        raise ProjectError("File changed before pull installation; retry")
     originals = {path: path.read_bytes() if path.exists() else None for path in changes}
     if expected is not None:
         for path, content in originals.items():

@@ -64,7 +64,7 @@ def decode_value(tag: str, value: Any) -> etree._Element:
     try:
         node = etree.Element(tag)
         if isinstance(value, str):
-            set_text(node, value)
+            set_text(node, value, cdata=True)
             return node
         if not isinstance(value, dict):
             raise ProjectError(f"Stylesheet property must be text or an object: {tag}")
@@ -84,7 +84,7 @@ def decode_value(tag: str, value: Any) -> etree._Element:
                 value["_text"], str
             ):
                 raise ProjectError("Stylesheet text cannot contain nested properties")
-            set_text(node, value["_text"])
+            set_text(node, value["_text"], cdata=True)
         for key, item in value.items():
             if key in {"_type", "_attributes", "_text"}:
                 continue

@@ -26,7 +26,7 @@ def project(root: Path) -> Path:
 
 
 @pytest.mark.parametrize("advance_cache", [False, True])
-def test_import_preserves_opaque_xml_and_verifies(
+def test_import_preserves_opaque_xml_and_records_acceptance(
     tmp_path: Path, monkeypatch: MonkeyPatch, advance_cache: bool
 ) -> None:
     source = project(tmp_path)
@@ -54,7 +54,9 @@ def test_import_preserves_opaque_xml_and_verifies(
     assert (tmp_path / ".openroad/app/example.xml").read_bytes() == (
         uploaded[0] if advance_cache else XML
     )
-    assert (result / "after.xml").read_bytes() == uploaded[0]
+    assert not (result / "after.xml").exists()
+    assert (result / "accepted").exists()
+    assert (result / "submitted.xml").read_bytes() == uploaded[0]
     assert "RETURN 1" in source.read_text()
 
 
@@ -93,7 +95,7 @@ def test_rejects_unsafe_import_before_write(
     assert "RETURN 1" in source.read_text()
 
 
-def test_verification_failure_preserves_baseline(
+def test_native_import_failure_preserves_baseline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     project(tmp_path)
@@ -104,8 +106,12 @@ def test_verification_failure_preserves_baseline(
         path.write_bytes(XML)
 
     monkeypatch.setattr(importer, "backup_component_xml", export)
-    monkeypatch.setattr(importer, "import_component_xml", lambda *a: None)
-    with pytest.raises(ProjectError, match="verification"):
+
+    def fail(*args: object) -> None:
+        raise ProjectError("native import failed")
+
+    monkeypatch.setattr(importer, "import_component_xml", fail)
+    with pytest.raises(ProjectError, match="native import failed"):
         importer.import_component(CONNECTION, tmp_path, "app", "example")
     assert (tmp_path / ".openroad/app/example.xml").read_bytes() == XML
     assert list((tmp_path / ".openroad/imports").glob("*/submitted.xml"))
@@ -306,7 +312,7 @@ def test_import_frame_scripts_preserves_layout_and_defaults(
 
 @pytest.mark.parametrize("concurrent_edit", [False, True])
 @pytest.mark.parametrize("omit_default_mode", [False, True])
-def test_geometry_canonicalization_preserves_concurrent_wml_edits(
+def test_accepted_baseline_preserves_source_and_concurrent_wml_edits(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
     concurrent_edit: bool,
@@ -374,8 +380,8 @@ def test_geometry_canonicalization_preserves_concurrent_wml_edits(
         assert baseline.read_bytes() == xml
     else:
         result = importer.import_component(CONNECTION, tmp_path, "app", "panel")
-        assert 'xleft="323"' in markup.read_text()
-        assert baseline.read_bytes() == (result / "after.xml").read_bytes()
+        assert 'xleft="321"' in markup.read_text()
+        assert baseline.read_bytes() == (result / "submitted.xml").read_bytes()
 
 
 def test_compound_normalization_does_not_relax_database_conflict_check(
@@ -410,3 +416,58 @@ def test_compound_normalization_does_not_relax_database_conflict_check(
     with pytest.raises(ProjectError, match="Database component changed since export"):
         importer.import_component(CONNECTION, tmp_path, "app", "panel")
     assert (cache / "panel.xml").read_bytes() == baseline
+
+
+@pytest.mark.parametrize("container", ["extension", "taggedvalues"])
+@pytest.mark.parametrize("shape", ["rectangleshape", "segmentshape"])
+def test_repeat_import_preserves_opaque_shapes_and_detects_external_edits(
+    tmp_path: Path, monkeypatch: MonkeyPatch, container: str, shape: str
+) -> None:
+    source = project(tmp_path)
+    xml = XML.replace(
+        b'<extension><opaque value="keep"/></extension>',
+        f'<{container}><row xsi:type="{shape}"><name>opaque_shape</name></row></{container}>'.encode(),
+    )
+    baseline = tmp_path / ".openroad/app/example.xml"
+    baseline.write_bytes(xml)
+    source.write_text(
+        encode_w4gl(parse_xml(etree.fromstring(xml))).replace("RETURN 0", "RETURN 1")
+    )
+    uploaded: list[bytes] = []
+    external_edit = False
+
+    def export(connection: OpenRoadConnection, app: str, name: str, path: Path) -> None:
+        tree = etree.fromstring(uploaded[-1] if uploaded else xml)
+        opaque = tree.find(f"COMPONENT/{container}/row")
+        assert opaque is not None
+        # Model native zero omission after acceptance, without an independent edit.
+        for dimension in list(opaque):
+            if dimension.tag in {"width", "height"} and dimension.text == "0":
+                opaque.remove(dimension)
+        if external_edit:
+            etree.SubElement(opaque, "width").text = "1"
+        path.write_bytes(etree.tostring(tree))
+
+    def push(
+        connection: OpenRoadConnection, app: str, name: str, path: Path, log: Path
+    ) -> None:
+        uploaded.append(path.read_bytes())
+
+    monkeypatch.setattr(importer, "backup_component_xml", export)
+    monkeypatch.setattr(importer, "import_component_xml", push)
+    importer.import_component(CONNECTION, tmp_path, "app", "example")
+    source.write_text(source.read_text().replace("RETURN 1", "RETURN 2"))
+    importer.import_component(CONNECTION, tmp_path, "app", "example")
+    assert len(uploaded) == 2
+    original = etree.fromstring(xml).find(f"COMPONENT/{container}")
+    for data in uploaded:
+        opaque = etree.fromstring(data).find(f"COMPONENT/{container}")
+        assert importer.signature(opaque) == importer.signature(original)
+    accepted = baseline.read_bytes()
+    external_edit = True
+    source.write_text(source.read_text().replace("RETURN 2", "RETURN 3"))
+    with pytest.raises(ProjectError, match="Database component changed since export"):
+        importer.import_component(CONNECTION, tmp_path, "app", "example")
+    assert len(uploaded) == 2
+    assert baseline.read_bytes() == accepted
+    assert "RETURN 3" in source.read_text()

@@ -236,9 +236,9 @@ def prepare_tracking(
             if actual[key] == baseline.get(key):
                 accepted.add(key)
             elif key in submitted:
-                from .frame_geometry import geometry_signature
+                from .sync_plan import signature as tracking_signature
 
-                if geometry_signature(node) == geometry_signature(submitted[key]):
+                if tracking_signature(node) == tracking_signature(submitted[key]):
                     accepted.add(key)
                     if node.tag == "COMPONENT":
                         changes[cache / f"{node.get('name')}.xml"] = document([node])

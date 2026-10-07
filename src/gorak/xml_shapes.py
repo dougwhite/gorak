@@ -47,7 +47,7 @@ def set_scalar(node: etree._Element, kind: str, key: str, value: str | None) -> 
             node.remove(c)
         return
     child = matches[0] if matches else etree.SubElement(node, key)
-    set_text(child, value, cdata=key == "script")
+    set_text(child, value, cdata=True)
     if not matches:
         order_children(node, kind)
 

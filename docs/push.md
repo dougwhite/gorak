@@ -7,32 +7,31 @@ gorak status
 gorak sync --push
 ```
 
-Use a dry run when you want Gorak to prepare and validate the import without
+Use a dry run when you want gorak to prepare and validate the import without
 changing OpenROAD:
 
 ```sh
 gorak sync --push --dry-run
 ```
 
-Keep Workbench source editors closed while Gorak imports source.
+Keep Workbench source editors closed while gorak imports source.
 
 ## What a push does
 
-Gorak:
+gorak:
 
 1. compares disk, baseline, and current OpenROAD source;
 2. refuses conflicts or unexpected database changes;
 3. reconstructs and imports the planned source;
-4. re-exports it to verify the readable source contract;
-5. installs the verified synchronization baseline; and
-6. compiles the affected database source.
+4. records the exact source accepted by OpenROAD as the synchronization baseline; and
+5. compiles the affected database source.
 
 Applications included in the same push are imported in dependency order. Missing
 external includes do not block source restoration; compilation reports unresolved
 dependencies. Cyclic includes among new applications remain a preflight error.
 
 A compiler error makes `gorak sync --push` exit nonzero, but it does not undo a
-successfully verified source import. Use the printed command to see full compiler
+source import accepted by OpenROAD. Use the printed command to see full compiler
 diagnostics:
 
 ```sh
@@ -42,7 +41,7 @@ gorak compile example_app
 
 These commands compile source already stored in OpenROAD, not unpushed disk files.
 
-Gorak does not currently perform ordinary database-side component deletion.
+gorak does not currently perform ordinary database-side component deletion.
 Removing a tracked component on disk, or finding a tracked component missing from
 OpenROAD, is treated as a conflict unless you deliberately choose an authoritative
 side during recovery.
@@ -55,12 +54,12 @@ An interrupted command can normally be retried:
 gorak sync --push
 ```
 
-Gorak keeps the submitted source and before-images under `.openroad/`. On retry
+gorak keeps the submitted source and before-images under `.openroad/`. On retry
 it compares that evidence with a fresh OpenROAD export, recognizes source that
 OpenROAD already accepted, and continues safely.
 
 Do not delete `.openroad/`, baselines, locks, or pending-operation files to make
-an error disappear. They are the evidence Gorak uses to avoid overwriting work.
+an error disappear. They are the evidence gorak uses to avoid overwriting work.
 
 ## Resolve a recovery state
 
@@ -82,7 +81,7 @@ gorak recover push --take database
 ```
 
 The choice applies to the entire tracked project, not only the first component
-named in the error. Before replacing anything, Gorak retains displaced readable
+named in the error. Before replacing anything, gorak retains displaced readable
 source, baselines, and database exports under `.openroad/pushes/`.
 
 `--take disk` imports local source but does not delete database-only components.
@@ -95,7 +94,7 @@ gorak sync --push --force
 
 This uses the same disk-authority policy and can rebuild damaged baselines. It
 still requires the project to be bound to the configured source target and does
-not bypass validation or post-import verification.
+not bypass source validation, conflict checks, or OpenROAD import errors.
 
 If you cannot establish which side is authoritative, stop and preserve both. Do
 not guess merely to clear the recovery state.

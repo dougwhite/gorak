@@ -7,9 +7,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
+from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any, TypeGuard, cast
 from urllib.parse import quote
 
 from lxml import etree
@@ -54,6 +55,10 @@ def encode(node: etree._Element) -> Json:
     """Preserve group metadata and samples without suppressing native properties."""
     if node.tag != "fielddefaults":
         raise ProjectError("Native stylesheet root must be fielddefaults")
+    from .native_normalization import explicit_row_types
+
+    node = deepcopy(node)
+    explicit_row_types(node)
     groups: Json = {}
     counts: dict[str, int] = {}
     for row in node.findall("row"):
@@ -217,7 +222,14 @@ def resolve(parent: Json | None, layer: Json) -> Json:
         validate(parent)
         result = merge_properties(parent, values)
     validate(result)
-    return result
+    return cast(Json, pickle.loads(_canonical_styles(pickle.dumps(result, protocol=5))))
+
+
+@lru_cache(maxsize=32)
+def _canonical_styles(value: bytes) -> bytes:
+    # Stylesheets are repeatedly resolved for components in the same application.
+    # Cache immutable serialized values, never mutable dictionaries shared by callers.
+    return pickle.dumps(encode(decode(pickle.loads(value))), protocol=5)
 
 
 def baseline() -> Json:

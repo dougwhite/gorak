@@ -122,6 +122,9 @@ def application_metadata(
     if application.database_type:
         metadata["database_type"] = application.database_type
 
+    if application.appflags:
+        metadata["appflags"] = application.appflags
+
     if application.window_icon:
         metadata["window_icon"] = application.window_icon
     return metadata
@@ -252,6 +255,7 @@ def merge_application_metadata(
         database_name=exported_application.database_name,
         database_type=exported_application.database_type,
         window_icon=exported_application.window_icon,
+        appflags=exported_application.appflags,
     )
 
 
