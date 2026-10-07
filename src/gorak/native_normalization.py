@@ -94,7 +94,9 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
     # Native versions can emit named properties in a different schema order.
     # Stable sorting preserves every repeated row's relative position. Opaque
     # metadata and mixed text retain their original ordering.
-    for field in node.iter():
+    # Snapshot traversal before reordering ancestors, which can otherwise skip
+    # nested fields in lxml's live iterator.
+    for field in list(node.iter()):
         if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
             continue
         if (

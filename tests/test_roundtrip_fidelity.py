@@ -237,3 +237,19 @@ def test_tracking_property_order_is_distinct_from_collection_order() -> None:
     opaque = b.find("extension")
     opaque[:] = list(reversed(opaque))
     assert signature(a) != signature(b)
+
+
+def test_tracking_canonicalizes_every_nested_field_after_parent_reordering() -> None:
+    from copy import deepcopy
+
+    a = etree.fromstring(
+        "<COMPONENT><topform><childfields><row><name>outer</name>"
+        "<childfields><row><name>inner</name><maxcharacters>12</maxcharacters>"
+        "<exactwidth>750</exactwidth></row></childfields></row></childfields>"
+        "<name>form</name></topform><name>example</name></COMPONENT>"
+    )
+    b = deepcopy(a)
+    field = b.find("topform/childfields/row/childfields/row")
+    assert field is not None
+    field[:] = list(reversed(field))
+    assert signature(a) == signature(b)
