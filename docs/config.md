@@ -12,6 +12,9 @@ connection options override `.env` values for one invocation.
 
 For normal local or SSH operation, ODBC is optional.
 
+`GORAK_EXPORT_WORKERS=4` limits concurrent native application exports (default 4;
+minimum 1). Local conversion overlaps automatically and remains sequential.
+
 ## Local OpenROAD
 
 Use this when Gorak runs in a shell that can already execute your OpenROAD and

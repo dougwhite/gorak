@@ -1,7 +1,7 @@
 """Coordinate OpenROAD XML export and .w4gl source file writing."""
 
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy2, rmtree
@@ -150,6 +150,8 @@ def export_application(
     app: str,
     output_path: str | None,
     progress: Callable[[str], None] | None,
+    *,
+    native_xml: Path | None = None,
 ) -> ApplicationExport:
     """Export one OpenROAD application into a Gorak project or output directory."""
 
@@ -161,14 +163,26 @@ def export_application(
     application = read_application(connection, app)
     normalize_application_paths(root, application.name, progress)
     paths = application_export_paths(root, application.name)
-    previous = cached_components(paths.xml_path.parent)
-    exported = export_application_to_paths(
-        connection=connection,
-        app=application.name,
-        paths=paths,
-        progress=progress,
-    )
-    finalize_baseline(paths.xml_path, exported.failures, previous)
+    # Keep the previous baseline on disk; load only failed components if needed.
+    with tempfile.TemporaryDirectory(prefix="gorak-baseline-") as temporary:
+        previous_dir = Path(temporary)
+        for cached in paths.xml_path.parent.glob("*.xml"):
+            copy2(cached, previous_dir / cached.name)
+        exported = export_application_to_paths(
+            connection=connection,
+            app=application.name,
+            paths=paths,
+            progress=progress,
+            native_xml=native_xml,
+        )
+        previous = (
+            cached_components(
+                previous_dir, {f.component.casefold() for f in exported.failures}
+            )
+            if exported.failures
+            else {}
+        )
+        finalize_baseline(paths.xml_path, exported.failures, previous)
     merged_application = merge_application_metadata(application, exported.application)
     write_app_metadata(
         root,
@@ -190,6 +204,37 @@ def export_application(
         included_applications=exported.included_applications,
         failures=exported.failures,
     )
+
+
+def export_applications(
+    connection: OpenRoadConnection,
+    context: GorakContext,
+    apps: Sequence[str],
+    output_path: str | None,
+    progress: Callable[[str], None] | None,
+) -> Iterator[ApplicationExport]:
+    """Export an ordered batch, prefetching native XML into a bounded disk queue."""
+    from .export_pipeline import prefetched_exports
+
+    export_root(context, output_path)
+    available = {app.name.casefold(): app.name for app in read_applications(connection)}
+    names = []
+    for app in apps:
+        if app.casefold() not in available:
+            raise ProjectError(f"Application not found: {app}")
+        names.append(available[app.casefold()])
+    with prefetched_exports(
+        names,
+        connection.export_workers,
+        lambda app, path: backup_application_xml(connection, app, path),
+    ) as pending:
+        for index, (app, xml) in enumerate(pending, 1):
+            progress_message(
+                progress, f"Exporting application {index}/{len(apps)}: {app}"
+            )
+            yield export_application(
+                connection, context, app, output_path, progress, native_xml=xml
+            )
 
 
 def merge_application_metadata(
@@ -264,34 +309,41 @@ def export_application_to_paths(
     progress: Callable[[str], None] | None,
     *,
     asset_origins: Path | None = None,
+    native_xml: Path | None = None,
 ) -> ApplicationExport:
     """Export one full application XML and encode all top-level components."""
 
     paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
     paths.source_dir.mkdir(parents=True, exist_ok=True)
     progress_message(progress, "Exporting full application XML")
-    backup_application_xml(connection, app, paths.xml_path)
+    if native_xml is None:
+        backup_application_xml(connection, app, paths.xml_path)
+    else:
+        copy2(native_xml, paths.xml_path)
 
-    from .portable_source import read_document
-
-    tree = read_document(paths.xml_path)
-    if tree.tag != "OPENROAD" or any(
-        n.tag not in {"APPLICATION", "COMPONENT"} for n in tree
-    ):
-        raise ProjectError("Unsupported export document structure")
     from .image_assets import AssetWriter, externalize
+    from .source_xml import application_children
 
-    catalog = read_components(connection, app)
-    nodes = tree.findall("COMPONENT")
-    names = [node.get("name") for node in nodes]
-    if any(not name for name in names) or len(
-        {str(n).casefold() for n in names}
-    ) != len(names):
+    # Validate the entire document and catalog before writing any readable source.
+    # Retain only one component tree at a time.
+    names: list[str] = []
+    application_node = None
+    for node in application_children(paths.xml_path):
+        if node.tag == "APPLICATION":
+            if application_node is not None:
+                raise ProjectError("Expected one exported application")
+            application_node = node
+        else:
+            name = node.get("name")
+            if not name:
+                raise ProjectError("Missing or duplicate exported component names")
+            names.append(name)
+    if len({name.casefold() for name in names}) != len(names):
         raise ProjectError("Missing or duplicate exported component names")
-    writer = AssetWriter(paths.source_dir, origins_from=asset_origins)
-    application_node = tree.find("APPLICATION")
-    if application_node is None or len(tree.findall("APPLICATION")) != 1:
+    if application_node is None:
         raise ProjectError("Expected one exported application")
+    catalog = read_components(connection, app)
+    writer = AssetWriter(paths.source_dir, origins_from=asset_origins)
     application_tree = etree.Element("OPENROAD")
     application_tree.append(
         externalize(application_node, paths.source_dir, app, writer=writer)
@@ -320,7 +372,8 @@ def export_application_to_paths(
     from .export_progress import EncodingProgress
 
     components: list[Component] = []
-    encoding_progress = EncodingProgress(app, len(nodes), progress)
+    encoding_progress = EncodingProgress(app, len(names), progress)
+    nodes = (n for n in application_children(paths.xml_path) if n.tag == "COMPONENT")
     for index, native in enumerate(nodes, 1):
         name = str(native.get("name"))
         encoding_progress.before(name)

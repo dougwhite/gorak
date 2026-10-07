@@ -359,3 +359,15 @@ def test_broken_parent_styles_do_not_stop_procedures(
     )
     assert [c.name for c in result.components] == ["last"]
     assert [f.component for f in result.failures] == ["broken"]
+
+
+def test_previous_baseline_streams_only_failed_components(tmp_path: Path) -> None:
+    from gorak.export_failures import cached_components
+
+    p = tmp_path / "app.xml"
+    p.write_text(
+        '<OPENROAD><APPLICATION name="example"/><COMPONENT name="first"/><COMPONENT name="second"/></OPENROAD>'
+    )
+    nodes = cached_components(tmp_path, {"second"})
+    assert set(nodes) == {"second"}
+    assert nodes["second"].getparent() is None

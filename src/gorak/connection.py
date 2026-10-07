@@ -35,12 +35,19 @@ class OpenRoadConnection:
     revision_generation: str | None = None
     writer_encoding: str = "cp1252"
     source_decoding: bool = False
+    export_workers: int = 4
 
 
 def resolve_openroad_connection(
     args: argparse.Namespace, context: GorakContext
 ) -> OpenRoadConnection:
     env = context.env
+    try:
+        export_workers = int(env.get("GORAK_EXPORT_WORKERS", "4"))
+        if export_workers < 1:
+            raise ValueError
+    except ValueError:
+        raise ProjectError("GORAK_EXPORT_WORKERS must be a positive integer") from None
     generation = env.get("GORAK_REVISION_GENERATION") or None
     encoding = env.get("GORAK_WRITER_ENCODING", "cp1252")
     if generation:
@@ -108,6 +115,7 @@ def resolve_openroad_connection(
         odbc_settings=odbc_settings,
         revision_generation=generation,
         source_decoding=decoding == "procedures_v1",
+        export_workers=export_workers,
         writer_encoding=encoding,
     )
 

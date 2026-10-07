@@ -21,6 +21,7 @@ from .export_failures import (
     failed_source,
     finalize_baseline,
 )
+from .export_pipeline import prefetched_exports
 from .importer import signature
 from .portable_source import read_document
 from .project import GorakContext, ProjectError
@@ -205,91 +206,103 @@ def _sync_project(
             exported_count = 0
             failures: list[ExportFailure] = []
             app_failures: dict[str, list[ExportFailure]] = {}
-            for app in sorted(apps):
-                name = names.get(app, available.get(app, app))
-                if app in available and name != available[app]:
-                    raise ProjectError(
-                        f"Application casing changed; reconcile explicitly: {name}"
-                    )
-                known = [
-                    key.split("/", 1)[1]
-                    for key in baseline
-                    if key.startswith(app + "/")
-                ]
-                old_files = {
-                    root / name / "app.json",
-                    root / name / "field_defaults.json",
-                    root / name / ".gorak-source/application.xml",
-                    root / name / ".gorak-source/format",
-                }
-                for component in known:
-                    for path in (root / name).glob("*"):
-                        if path.stem.casefold() == component and path.suffix in {
-                            ".w4gl",
-                            ".wml",
-                        }:
-                            old_files.add(path)
-                    old_files.update(
-                        path
-                        for path in (root / name).glob("*.fielddefaults.json")
-                        if path.name.removesuffix(".fielddefaults.json").casefold()
-                        == component
-                    )
-                    old_files.update(
-                        path
-                        for path in (root / name).glob("*.queries.json")
-                        if path.name.removesuffix(".queries.json").casefold()
-                        == component
-                    )
-                    old_files.update(
-                        path
-                        for path in (root / name).glob("*.icons.json")
-                        if path.name.removesuffix(".icons.json").casefold() == component
-                    )
-                    for path in (root / name / ".gorak-source/components").glob(
-                        "*.xml"
-                    ):
-                        if path.stem.casefold() == component:
-                            old_files.add(path)
-                if take_database:
-                    old_files.update((root / name).glob("*.w4gl"))
-                    old_files.update((root / name).glob("*.wml"))
-                    old_files.update((root / name).glob("*.fielddefaults.json"))
-                    old_files.update((root / name).glob("*.queries.json"))
-                    old_files.update((root / name).glob("*.icons.json"))
-                old_files.update((root / ".openroad" / name).glob("*.xml"))
-                for path in old_files:
-                    if path.is_file():
-                        changes[path] = None
-                if app not in available:
-                    continue
-                app_defaults = root / name / "field_defaults.json"
-                if app_defaults.exists():
-                    (stage / name).mkdir(parents=True, exist_ok=True)
-                    copy2(app_defaults, stage / name / "field_defaults.json")
-                # Seed assets for stable name allocation; never prune shared files.
-                from .image_assets import source_files
-
-                for asset in source_files(root / name):
-                    if "images" not in asset.relative_to(root / name).parts:
+            with prefetched_exports(
+                [available[app] for app in sorted(apps) if app in available],
+                connection.export_workers,
+                lambda app, path: backup_application_xml(connection, app, path),
+            ) as prefetched:
+                for app in sorted(apps):
+                    name = names.get(app, available.get(app, app))
+                    if app in available and name != available[app]:
+                        raise ProjectError(
+                            f"Application casing changed; reconcile explicitly: {name}"
+                        )
+                    known = [
+                        key.split("/", 1)[1]
+                        for key in baseline
+                        if key.startswith(app + "/")
+                    ]
+                    old_files = {
+                        root / name / "app.json",
+                        root / name / "field_defaults.json",
+                        root / name / ".gorak-source/application.xml",
+                        root / name / ".gorak-source/format",
+                    }
+                    for component in known:
+                        for path in (root / name).glob("*"):
+                            if path.stem.casefold() == component and path.suffix in {
+                                ".w4gl",
+                                ".wml",
+                            }:
+                                old_files.add(path)
+                        old_files.update(
+                            path
+                            for path in (root / name).glob("*.fielddefaults.json")
+                            if path.name.removesuffix(".fielddefaults.json").casefold()
+                            == component
+                        )
+                        old_files.update(
+                            path
+                            for path in (root / name).glob("*.queries.json")
+                            if path.name.removesuffix(".queries.json").casefold()
+                            == component
+                        )
+                        old_files.update(
+                            path
+                            for path in (root / name).glob("*.icons.json")
+                            if path.name.removesuffix(".icons.json").casefold()
+                            == component
+                        )
+                        for path in (root / name / ".gorak-source/components").glob(
+                            "*.xml"
+                        ):
+                            if path.stem.casefold() == component:
+                                old_files.add(path)
+                    if take_database:
+                        old_files.update((root / name).glob("*.w4gl"))
+                        old_files.update((root / name).glob("*.wml"))
+                        old_files.update((root / name).glob("*.fielddefaults.json"))
+                        old_files.update((root / name).glob("*.queries.json"))
+                        old_files.update((root / name).glob("*.icons.json"))
+                    old_files.update((root / ".openroad" / name).glob("*.xml"))
+                    for path in old_files:
+                        if path.is_file():
+                            changes[path] = None
+                    if app not in available:
                         continue
-                    target = stage / name / asset.relative_to(root / name)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    copy2(asset, target)
-                paths = application_export_paths(stage, name)
-                exported = export_application_to_paths(
-                    connection, name, paths, progress, asset_origins=root / name
-                )
-                failures.extend(exported.failures)
-                app_failures[app] = exported.failures
-                for path in old_files:
-                    if (
-                        path != root / ".openroad" / name / f"{name}.xml"
-                        and failed_source(path, exported.failures)
-                    ):
-                        changes.pop(path, None)
-                staged_xml[app] = paths.xml_path
-                exported_count += len(exported.components)
+                    app_defaults = root / name / "field_defaults.json"
+                    if app_defaults.exists():
+                        (stage / name).mkdir(parents=True, exist_ok=True)
+                        copy2(app_defaults, stage / name / "field_defaults.json")
+                    # Seed assets for stable name allocation; never prune shared files.
+                    from .image_assets import source_files
+
+                    for asset in source_files(root / name):
+                        if "images" not in asset.relative_to(root / name).parts:
+                            continue
+                        target = stage / name / asset.relative_to(root / name)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        copy2(asset, target)
+                    paths = application_export_paths(stage, name)
+                    _, native_xml = next(prefetched)
+                    exported = export_application_to_paths(
+                        connection,
+                        name,
+                        paths,
+                        progress,
+                        asset_origins=root / name,
+                        native_xml=native_xml,
+                    )
+                    failures.extend(exported.failures)
+                    app_failures[app] = exported.failures
+                    for path in old_files:
+                        if (
+                            path != root / ".openroad" / name / f"{name}.xml"
+                            and failed_source(path, exported.failures)
+                        ):
+                            changes.pop(path, None)
+                    staged_xml[app] = paths.xml_path
+                    exported_count += len(exported.components)
             # Re-scan database inventory and compare the exact XML staged for installation.
             latest = {a.name.casefold(): a.name for a in read_applications(connection)}
             for app in apps:
@@ -297,9 +310,14 @@ def _sync_project(
                     raise ProjectError(
                         f"Database application changed during pull: {app}"
                     )
-                if app in staged_xml:
+            with prefetched_exports(
+                sorted(staged_xml),
+                connection.export_workers,
+                lambda app, path: backup_application_xml(connection, latest[app], path),
+            ) as verification:
+                for app, native_xml in verification:
                     check = operation / f"{app}-verify.xml"
-                    backup_application_xml(connection, latest[app], check)
+                    copy2(native_xml, check)
                     if signature(read_document(check)) != signature(
                         read_document(staged_xml[app])
                     ):
@@ -310,7 +328,10 @@ def _sync_project(
                 finalize_baseline(
                     xml_path,
                     app_failures[app],
-                    cached_components(root / ".openroad" / xml_path.parent.name)
+                    cached_components(
+                        root / ".openroad" / xml_path.parent.name,
+                        {f.component.casefold() for f in app_failures[app]},
+                    )
                     if app_failures[app]
                     else {},
                 )

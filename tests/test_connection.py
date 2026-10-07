@@ -354,3 +354,19 @@ def test_source_decoding_is_explicit_opt_in() -> None:
         ),
     )
     assert connection.source_decoding
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "many", "1.5", ""])
+def test_export_workers_rejects_invalid_settings(value: str) -> None:
+    with pytest.raises(ProjectError, match="GORAK_EXPORT_WORKERS"):
+        resolve_openroad_connection(
+            args(vnode="node", database="db"), context({"GORAK_EXPORT_WORKERS": value})
+        )
+
+
+@pytest.mark.parametrize("value", ["1", "2", "4"])
+def test_export_workers_from_env(value: str) -> None:
+    connection = resolve_openroad_connection(
+        args(vnode="node", database="db"), context({"GORAK_EXPORT_WORKERS": value})
+    )
+    assert connection.export_workers == int(value)

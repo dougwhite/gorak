@@ -79,9 +79,9 @@ gorak config remote \
 Lists applications in the configured OpenROAD source database. JSON is the
 default output format.
 
-### `gorak app export APP [--output DIRECTORY]`
+### `gorak app export APP [APP ...] [--output DIRECTORY]`
 
-Exports an application into readable gorak source.
+Exports one or more applications into readable gorak source.
 
 ```sh
 gorak app export salesapp

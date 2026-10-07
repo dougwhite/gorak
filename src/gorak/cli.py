@@ -30,6 +30,7 @@ from .export import (
     application_export_paths,
     encode_xml_file,
     export_application,
+    export_applications,
     export_component,
     export_root,
     read_applications,
@@ -199,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     app_export = app_subparsers.add_parser("export")
     add_openroad_connection_args(app_export)
-    app_export.add_argument("app")
+    app_export.add_argument("app", nargs="+")
     app_export.add_argument("--output")
 
     component_parser = subparsers.add_parser("component")
@@ -529,7 +530,7 @@ def export_component_command(args: argparse.Namespace) -> str:
 
 @locked_command
 def app_export_command(args: argparse.Namespace) -> str:
-    """Exports all components in one OpenROAD application."""
+    """Export all components in one or more OpenROAD applications."""
 
     context = load_context(Path.cwd())
     connection = resolve_openroad_connection(args, context)
@@ -537,19 +538,31 @@ def app_export_command(args: argparse.Namespace) -> str:
 
     if context.project is not None:
         binding_status(connection, context.project.root)
-    app = cast(str, args.app)
+    apps = [args.app] if isinstance(args.app, str) else args.app
     root = export_root(context, cast(str | None, args.output))
-    print(f"Exporting application {app} from {connection_source(connection)}")
-    exported = export_application(
-        connection=connection,
-        context=context,
-        app=app,
-        output_path=cast(str | None, args.output),
-        progress=print,
-    )
+    if len(apps) == 1:
+        app = apps[0]
+        print(f"Exporting application {app} from {connection_source(connection)}")
+        exported = export_application(
+            connection=connection,
+            context=context,
+            app=app,
+            output_path=cast(str | None, args.output),
+            progress=print,
+        )
+        summary = application_export_summary(root, exported)
+        if exported.failures:
+            raise ProjectError(summary)
+        return summary
+    from .export_failures import failure_summary
 
-    summary = application_export_summary(root, exported)
-    if exported.failures:
+    count = 0
+    failures = []
+    for exported in export_applications(connection, context, apps, args.output, print):
+        count += len(exported.components)
+        failures.extend(exported.failures)
+    summary = failure_summary(count, failures)
+    if failures:
         raise ProjectError(summary)
     return summary
 

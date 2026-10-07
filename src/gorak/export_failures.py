@@ -36,16 +36,31 @@ def failure_summary(exported: int, failures: list[ExportFailure]) -> str:
     return "\n".join(lines)
 
 
-def cached_components(directory: Path) -> dict[str, etree._Element]:
+def cached_components(
+    directory: Path, names: set[str] | None = None
+) -> dict[str, etree._Element]:
     from .portable_source import read_document
+    from .source_xml import application_children
 
     nodes: dict[str, etree._Element] = {}
     for path in sorted(directory.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns):
-        tree = read_document(path)
-        if tree.find("APPLICATION") is not None:
-            nodes.clear()
-        for node in tree.findall("COMPONENT"):
-            nodes[(node.get("name") or "").casefold()] = deepcopy(node)
+        if names is None:
+            tree = read_document(path)
+            if tree.find("APPLICATION") is not None:
+                nodes.clear()
+            for node in tree.findall("COMPONENT"):
+                nodes[(node.get("name") or "").casefold()] = deepcopy(node)
+        else:
+            selected = {}
+            full_application = False
+            for node in application_children(path):
+                if node.tag == "APPLICATION":
+                    full_application = True
+                elif (name := (node.get("name") or "").casefold()) in names:
+                    selected[name] = node
+            if full_application:
+                nodes.clear()
+            nodes.update(selected)
     return nodes
 
 

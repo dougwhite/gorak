@@ -995,3 +995,42 @@ class TestIncludesList:
                 "description": "Example application",
             }
         ]
+
+
+def test_batch_export_uses_env_workers_and_keeps_component_failures_isolated(
+    monkeypatch: MonkeyPatch, tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    from threading import Barrier
+
+    root = tmp_path / "project"
+    write_local_project(root)
+    with (root / ".env").open("a") as stream:
+        stream.write("GORAK_EXPORT_WORKERS=2\n")
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(
+        export_module,
+        "read_applications",
+        lambda c: [Application(n, "", "") for n in ["First", "Second"]],
+    )
+    barrier = Barrier(2, timeout=5)
+    calls: list[str] = []
+
+    def backup(connection: object, app: str, path: Path) -> None:
+        calls.append(app)
+        barrier.wait()
+        component = (
+            '<COMPONENT name="unsupported" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="unknownsource"/>'
+            if app == "First"
+            else ""
+        )
+        path.write_text(f'<OPENROAD><APPLICATION name="{app}"/>{component}</OPENROAD>')
+
+    monkeypatch.setattr(export_module, "backup_application_xml", backup)
+    with pytest.raises(SystemExit) as error:
+        cli.main(["app", "export", "first", "second"])
+    assert error.value.code == 1
+    assert sorted(calls) == ["First", "Second"]
+    assert (root / "First/app.json").is_file()
+    assert (root / "Second/app.json").is_file()
+    output = capsys.readouterr()
+    assert "First!unsupported" in output.out + output.err

@@ -23,6 +23,7 @@ RunCommand = Callable[[list[str], Path], None]
 ENV_EXAMPLE = """GORAK_BACKEND=local
 GORAK_VNODE=myvnode
 GORAK_DATABASE=exampledb
+GORAK_EXPORT_WORKERS=4
 
 # Optional: use direct ODBC for Ingres metadata access.
 # Requires a configured Actian Ingres ODBC client/driver on this machine.
