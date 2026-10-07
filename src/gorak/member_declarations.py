@@ -232,6 +232,7 @@ def write_member(row: etree._Element, value: object, table: str) -> None:
                 set_text(
                     etree.SubElement(replacement, "defaultstring"),
                     match[2][1:-1].replace("''", "'"),
+                    cdata=True,
                 )
     if table == "attributes" and not decl:
         raise ProjectError("Attribute requires a type declaration")
@@ -246,7 +247,7 @@ def write_member(row: etree._Element, value: object, table: str) -> None:
         if key in extra:
             if not isinstance(extra[key], str) or (key == "defaultstring" and literal):
                 raise ProjectError(f"Invalid member {key}")
-            set_text(etree.SubElement(replacement, key), extra[key])
+            set_text(etree.SubElement(replacement, key), extra[key], cdata=True)
     for key in ("isnullable", "isarray"):
         if key in extra:
             if decl or not isinstance(extra[key], bool):
@@ -271,7 +272,7 @@ def write_member(row: etree._Element, value: object, table: str) -> None:
                 entry = etree.SubElement(container, "row")
                 for key in ("name", "value"):
                     if key in item:
-                        set_text(etree.SubElement(entry, key), item[key])
+                        set_text(etree.SubElement(entry, key), item[key], cdata=True)
             etree.SubElement(container, "row_class").text = "taggedvalue"
     order_children(
         replacement, "attributeobject" if table == "attributes" else "methodobject"

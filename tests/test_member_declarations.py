@@ -237,3 +237,29 @@ def test_canonical_export_accepts_both_toml_object_spellings(tmp_path: Path) -> 
         "declaration": "PRIVATE INTEGER DEFAULT NULL",
         "remark": "note",
     }
+
+
+@pytest.mark.parametrize("table", ["attributes", "methods"])
+def test_whitespace_member_metadata_uses_native_cdata(
+    tmp_path: Path, table: str
+) -> None:
+    # OpenROAD discards plain XML whitespace here but retains CDATA text.
+    node = component()
+    row = member(node, table, datatype="varchar(20)", remark="\t\n")
+    tags = etree.SubElement(row, "taggedvalues")
+    tag = etree.SubElement(tags, "row")
+    etree.SubElement(tag, "name").text = "note"
+    etree.SubElement(tag, "value").text = " \n"
+    etree.SubElement(tags, "row_class").text = "taggedvalue"
+    _, restored = roundtrip(tmp_path, node)
+    xml = etree.tostring(restored)
+    assert b"<remark><![CDATA[\t\n]]></remark>" in xml
+    assert b"<value><![CDATA[ \n]]></value>" in xml
+
+
+@pytest.mark.parametrize("mode", ["1", "3"])
+def test_whitespace_default_uses_native_cdata(tmp_path: Path, mode: str) -> None:
+    node = component()
+    member(node, datatype="varchar(20)", defaultvalue=mode, defaultstring=" ")
+    _, restored = roundtrip(tmp_path, node)
+    assert b"<defaultstring><![CDATA[ ]]></defaultstring>" in etree.tostring(restored)
