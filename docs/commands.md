@@ -81,7 +81,8 @@ default output format.
 
 ### `gorak app export APP [--output DIRECTORY]`
 
-Exports an application into readable Gorak source.
+Exports an application into readable gorak source. Large exports show periodic
+component counts and an estimated remaining conversion time.
 
 ```sh
 gorak app export salesapp

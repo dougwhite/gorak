@@ -198,7 +198,9 @@ def xml_root(tree: etree._ElementTree | etree._Element) -> etree._Element:
     return tree
 
 
-def parse_component_node(node: etree._Element) -> Component:
+def parse_component_node(
+    node: etree._Element, *, project_frame: bool = True
+) -> Component:
     """Parse a single OpenROAD component node."""
 
     validate_instructions(node)
@@ -258,14 +260,16 @@ def parse_component_node(node: etree._Element) -> Component:
 
     field_defaults_node = node.find("fielddefaults")
     field_defaults: dict[str, Any] = {}
-    if field_defaults_node is not None:
+    if field_defaults_node is not None and (
+        project_frame or component_type not in FRAME_COMPONENT_TYPES
+    ):
         field_defaults = parse_field_defaults_node(field_defaults_node)
         props["fielddefaults"] = field_defaults
 
     markup_nodes = [child for child in node if child.tag in FRAME_MARKUP_CHILDREN]
     markup = (
         encode_frame_markup(markup_nodes, field_defaults)
-        if component_type in FRAME_COMPONENT_TYPES and markup_nodes
+        if project_frame and component_type in FRAME_COMPONENT_TYPES and markup_nodes
         else None
     )
 

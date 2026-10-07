@@ -29,72 +29,107 @@ class Bitmap:
         return self.header[5].split(":", 1)[1]
 
 
+_HEX_SPAN = re.compile(r"[0-9a-fA-F]+")
+_RUN = re.compile(rb"(.)\1\1", re.DOTALL)
+_REPEATS = tuple(re.compile(re.escape(bytes([v])) + b"+") for v in range(256))
+_SHORT_RUNS = {
+    f"r{count - 3:x}{value:02x}": bytes([value]) * count
+    for count in range(3, 19)
+    for value in range(256)
+}
+
+
 def decode_buffer(text: str, offset: int, size: int) -> tuple[bytes, int]:
     if not 0 <= size <= MAX_BYTES:
         raise ProjectError("Bitmap buffer exceeds supported bounds")
+    if not size:
+        return b"", offset
+    # Line wrapping is transport-only. Strip once, then process whole literal
+    # spans and precomputed short runs rather than visiting every hex digit.
+    wrapped = text[offset:]
+    compact = wrapped.replace("\r", "").replace("\n", "")
     result = bytearray()
+    position = 0
+    length = len(compact)
 
     def take(count: int) -> str:
-        nonlocal offset
-        value = ""
-        while len(value) < count:
-            if offset >= len(text):
-                raise ProjectError("Truncated bitmap buffer")
-            c = text[offset]
-            offset += 1
-            if c in "\r\n":
-                continue
-            if c not in "0123456789abcdefABCDEF":
-                raise ProjectError("Invalid bitmap buffer token")
-            value += c
+        nonlocal position
+        end = position + count
+        if end > length:
+            raise ProjectError("Truncated bitmap buffer")
+        value = compact[position:end]
+        if not _HEX_SPAN.fullmatch(value):
+            raise ProjectError("Invalid bitmap buffer token")
+        position = end
         return value
 
     while len(result) < size:
-        while offset < len(text) and text[offset] in "\r\n":
-            offset += 1
-        if offset >= len(text):
+        if position >= length:
             raise ProjectError("Truncated bitmap buffer")
-        token = text[offset]
-        count = 1
-        if token in "rR":
-            offset += 1
-            number = int(take(1), 16)
-            if token == "r":
-                count = number + 3
-            else:
-                if not 1 <= number <= 4:
-                    raise ProjectError("Unsupported bitmap run width")
-                count = int.from_bytes(bytes.fromhex(take(number * 2)), "little")
-                # Native single-byte 00 denotes 256, observed in real exports.
-                if count == 0:
-                    if number != 1:
-                        raise ProjectError("Unsupported zero bitmap run")
-                    count = 256
-        value = int(take(2), 16)
-        if len(result) + count > size:
+        token = compact[position]
+        if token == "r":
+            run = _SHORT_RUNS.get(compact[position : position + 4].lower())
+            if run is None:
+                raise ProjectError("Invalid bitmap buffer token")
+            position += 4
+        elif token == "R":
+            position += 1
+            width = int(take(1), 16)
+            if not 1 <= width <= 4:
+                raise ProjectError("Unsupported bitmap run width")
+            count = int.from_bytes(bytes.fromhex(take(width * 2)), "little")
+            if count == 0:
+                if width != 1:
+                    raise ProjectError("Unsupported zero bitmap run")
+                count = 256
+            value = int(take(2), 16)
+            if count > size - len(result):
+                raise ProjectError("Bitmap run exceeds declared buffer length")
+            run = bytes([value]) * count
+        else:
+            match = _HEX_SPAN.match(
+                compact, position, position + (size - len(result)) * 2
+            )
+            if match is None or len(match.group()) % 2:
+                raise ProjectError("Invalid bitmap buffer token")
+            run = bytes.fromhex(match.group())
+            position = match.end()
+        if len(run) > size - len(result):
             raise ProjectError("Bitmap run exceeds declared buffer length")
-        result.extend(bytes([value]) * count)
+        result.extend(run)
+    # Return an offset into the original wrapped text, stopping immediately
+    # after the final digit so following native metadata is untouched.
+    remaining = position
+    for line in wrapped.splitlines(keepends=True):
+        digits = len(line.rstrip("\r\n"))
+        if remaining <= digits:
+            offset += remaining
+            break
+        remaining -= digits
+        offset += len(line)
     return bytes(result), offset
 
 
 def encode_buffer(data: bytes) -> str:
     tokens = []
-    i = 0
-    while i < len(data):
-        end = i + 1
-        while end < len(data) and data[end] == data[i]:
-            end += 1
-        count = end - i
-        if count < 3:
-            tokens.append(data[i:end].hex())
-        elif count <= 18:
-            tokens.append(f"r{count - 3:x}{data[i]:02x}")
+    position = 0
+    while (run := _RUN.search(data, position)) is not None:
+        start = run.start()
+        repeated = _REPEATS[data[start]].match(data, start)
+        assert repeated is not None
+        end = repeated.end()
+        if start > position:
+            tokens.append(data[position:start].hex())
+        count = end - start
+        if count <= 18:
+            tokens.append(f"r{count - 3:x}{data[start]:02x}")
         else:
-            size = max(1, (count.bit_length() + 7) // 8)
+            size = (count.bit_length() + 7) // 8
             tokens.append(
-                f"R{size:x}{count.to_bytes(size, 'little').hex()}{data[i]:02x}"
+                f"R{size:x}{count.to_bytes(size, 'little').hex()}{data[start]:02x}"
             )
-        i = end
+        position = end
+    tokens.append(data[position:].hex())
     text = "".join(tokens)
     return "\n".join(text[i : i + 64] for i in range(0, len(text), 64))
 

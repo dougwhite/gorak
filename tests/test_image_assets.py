@@ -714,3 +714,38 @@ def test_nested_asset_reference_reused(tmp_path: Path, staged: bool) -> None:
     assert writer.export(encode(native), "unused") == ref
     assert read_bitmap(target, ref) == native
     assert list((target / "images").rglob("*.png")) == [target / ref["src"]]
+
+
+def test_writer_cache_observes_image_edits_and_symlinks(tmp_path: Path) -> None:
+    writer = AssetWriter(tmp_path)
+    native = encode(bitmap())
+    first = writer.export(native, "first")
+    path = tmp_path / first["src"]
+    Image.new("RGBA", (2, 2), "red").save(path)
+    second = writer.export(native, "second")
+    assert second["src"] != first["src"]
+    (tmp_path / second["src"]).unlink()
+    (tmp_path / second["src"]).symlink_to(path)
+    with pytest.raises(ProjectError, match="Symlink"):
+        writer.export(native, "second")
+
+
+def test_anonymous_writer_cache_keeps_owner_names(tmp_path: Path) -> None:
+    writer = AssetWriter(tmp_path)
+    native = encode(bitmap(""))
+    assert writer.export(native, "first")["src"] == "images/first.png"
+    assert writer.export(native, "second")["src"] == "images/second.png"
+    assert writer.export(native, "first")["src"] == "images/first.png"
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r", "\x85", "\u2028"])
+def test_reference_rejects_native_line_separators(
+    tmp_path: Path, separator: str
+) -> None:
+    (tmp_path / "images").mkdir()
+    Image.new("RGBA", (1, 1)).save(tmp_path / "images/test.png")
+    with pytest.raises(ProjectError, match="line breaks"):
+        read_bitmap(
+            tmp_path,
+            {"src": "images/test.png", "path": "art" + separator + "image.png"},
+        )

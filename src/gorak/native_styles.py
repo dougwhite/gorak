@@ -1,6 +1,11 @@
 """Native stylesheet inheritance by group name and fixed, numbered style slots."""
 
+import hashlib
 import json
+import pickle
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from importlib.resources import files
 from pathlib import Path
@@ -127,8 +132,37 @@ def decode(value: Json) -> etree._Element:
     return result
 
 
+_validated: ContextVar[set[bytes] | None] = ContextVar("validated_styles", default=None)
+
+
+@contextmanager
+def validation_scope() -> Iterator[None]:
+    """Reuse successful validation only within one operation, keyed by content."""
+    if _validated.get() is not None:
+        yield
+        return
+    token = _validated.set(set())
+    try:
+        yield
+    finally:
+        _validated.reset(token)
+
+
 def validate(stylesheet: Json) -> None:
+    cache = _validated.get()
+    key = None
+    if cache is not None:
+        try:
+            key = hashlib.sha256(pickle.dumps(stylesheet, protocol=5)).digest()
+        except (TypeError, ValueError):
+            pass  # The native validator supplies the authoritative diagnostic.
+        if key in cache:
+            return
     decode(stylesheet)
+    if cache is not None and key is not None:
+        if len(cache) >= 128:
+            cache.clear()
+        cache.add(key)
 
 
 def complete(stylesheet: Json) -> Json:
