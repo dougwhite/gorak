@@ -1196,7 +1196,16 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                     json.dumps(describe(root, parsed.app, parsed.component), indent=2)
                 )
                 return
-            print(maintain(root, parsed.styles_command, dry_run=parsed.dry_run))
+            print(
+                maintain(
+                    root,
+                    parsed.styles_command,
+                    dry_run=parsed.dry_run,
+                    progress=lambda message: print(
+                        message, file=sys.stderr, flush=True
+                    ),
+                )
+            )
             return
         if parsed.command == "status":
             from lxml import etree
