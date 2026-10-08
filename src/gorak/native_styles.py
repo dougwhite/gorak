@@ -153,19 +153,41 @@ def validation_scope() -> Iterator[None]:
         _validated.reset(token)
 
 
+def _validation_key(stylesheet: Json) -> bytes:
+    # JSON would conflate non-string mapping keys and tuple/list containers.
+    # Never let malformed programmatic inputs share a valid sheet's cache key.
+    def check(value: Any) -> None:
+        if isinstance(value, dict):
+            for name, child in value.items():
+                if not isinstance(name, str):
+                    raise TypeError("Stylesheet cache requires string keys")
+                check(child)
+        elif isinstance(value, list):
+            for child in value:
+                check(child)
+        elif value is not None and not isinstance(value, (str, int, float, bool)):
+            raise TypeError("Stylesheet cache requires JSON containers")
+
+    check(stylesheet)
+    # Ignore Python object sharing while retaining meaningful property order.
+    return hashlib.sha256(
+        json.dumps(stylesheet, ensure_ascii=False, separators=(",", ":")).encode()
+    ).digest()
+
+
 def validate(stylesheet: Json) -> None:
     cache = _validated.get()
     key = None
     if cache is not None:
         try:
-            key = hashlib.sha256(pickle.dumps(stylesheet, protocol=5)).digest()
+            key = _validation_key(stylesheet)
         except (TypeError, ValueError):
             pass  # The native validator supplies the authoritative diagnostic.
         if key in cache:
             return
     decode(stylesheet)
     if cache is not None and key is not None:
-        if len(cache) >= 128:
+        if len(cache) >= 8192:
             cache.clear()
         cache.add(key)
 
@@ -221,8 +243,17 @@ def resolve(parent: Json | None, layer: Json) -> Json:
             raise ProjectError("An inherited stylesheet requires its parent")
         validate(parent)
         result = merge_properties(parent, values)
-    validate(result)
-    return cast(Json, pickle.loads(_canonical_styles(pickle.dumps(result, protocol=5))))
+    # Canonicalization itself decodes and validates the complete native sheet.
+    # Avoid decoding the same tree separately just before that operation.
+    canonical = cast(
+        Json, pickle.loads(_canonical_styles(pickle.dumps(result, protocol=5)))
+    )
+    cache = _validated.get()
+    if cache is not None:
+        if len(cache) >= 8192:
+            cache.clear()
+        cache.add(_validation_key(canonical))
+    return canonical
 
 
 @lru_cache(maxsize=32)
