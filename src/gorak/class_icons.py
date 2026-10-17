@@ -86,7 +86,7 @@ def overlay_icons(node: etree._Element, source: Path) -> None:
 
     if source.with_suffix(".icons.json").exists():
         raise ProjectError("Obsolete class icon sidecar; re-export this component")
-    metadata = tomllib.loads(split_w4gl(source.read_text())[0])
+    metadata = tomllib.loads(split_w4gl(source.read_text(encoding="utf-8"))[0])
     old = node.find("extension")
     if "icons" not in metadata:
         if (

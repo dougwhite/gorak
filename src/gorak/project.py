@@ -185,11 +185,15 @@ def write_project_skeleton(root: Path, name: str) -> None:
 def default_field_defaults_json() -> str:
     """Read the packaged standard OpenROAD field defaults."""
 
-    return files(TEMPLATE_PACKAGE).joinpath("field_defaults.json").read_text()
+    return (
+        files(TEMPLATE_PACKAGE)
+        .joinpath("field_defaults.json")
+        .read_text(encoding="utf-8")
+    )
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    return cast(dict[str, Any], json.loads(path.read_text()))
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:

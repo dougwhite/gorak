@@ -372,9 +372,13 @@ class AssetWriter:
                 continue
             try:
                 if path.suffix == ".json":
-                    visit(json.loads(path.read_text()))
+                    visit(json.loads(path.read_text(encoding="utf-8")))
                 elif path.suffix == ".w4gl":
-                    visit(tomllib.loads(path.read_text().split("===", 1)[0]))
+                    visit(
+                        tomllib.loads(
+                            path.read_text(encoding="utf-8").split("===", 1)[0]
+                        )
+                    )
                 elif path.suffix == ".wml":
                     for node in from_bytes(path.read_bytes()).iter():
                         visit(dict(node.attrib))

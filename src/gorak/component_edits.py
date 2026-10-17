@@ -49,7 +49,7 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     ):
         raise ProjectError("Only frames support editable component field-default files")
     original = parse_component_node(node)
-    source = path.read_text()
+    source = path.read_text(encoding="utf-8")
     edited = parse_w4gl(source, path.stem)
     before = tomllib.loads(split_w4gl(encode_w4gl(original))[0])
     after = tomllib.loads(split_w4gl(source)[0])

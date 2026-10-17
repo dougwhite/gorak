@@ -124,7 +124,7 @@ def decode_component(path: Path) -> etree._Element:
     from .importer import validate_name
 
     validate_name(path.stem)
-    source = parse_w4gl(path.read_text(), path.stem)
+    source = parse_w4gl(path.read_text(encoding="utf-8"), path.stem)
     kind = source.type
     if kind not in SUPPORTED_TYPES:
         raise ProjectError(f"Unsupported component type: {kind}")
@@ -144,7 +144,7 @@ def decode_component(path: Path) -> etree._Element:
         if stylesheet.get("absent") is not True:
             node.append(native_styles.decode(stylesheet))
         index = MarkupDefaultsIndex({}, {}, explicit=True)
-        markup = parse_markup(path.with_suffix(".wml").read_text())
+        markup = parse_markup(path.with_suffix(".wml").read_text(encoding="utf-8"))
         from .image_assets import resolve
 
         resolve(markup, path.parent)

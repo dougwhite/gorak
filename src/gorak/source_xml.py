@@ -43,6 +43,32 @@ def parse_stream(stream: object) -> etree._ElementTree:
     return tree
 
 
+def _normalize_streamed_text(root: etree._Element) -> etree._Element:
+    # Some libxml2 versions retain literal CR in streamed CDATA, unlike the
+    # full parser. Reparse affected elements while CDATA boundaries still
+    # distinguish those line endings from intentional character references.
+    # Small script nodes need not duplicate an entire component's bitmap data.
+    pending = [root]
+    while pending:
+        node = pending.pop()
+        if "\r" in (node.text or "") or any(
+            "\r" in (child.tail or "") for child in node
+        ):
+            normalized = from_bytes(
+                etree.tostring(node, encoding="utf-8", with_tail=False)
+            )
+            normalized.tail = node.tail
+            parent = node.getparent()
+            if parent is None:
+                root = normalized
+            else:
+                parent.replace(node, normalized)
+            # The full parser has normalized this entire subtree.
+        else:
+            pending.extend(child for child in node if isinstance(child.tag, str))
+    return root
+
+
 def application_children(path: Path) -> Iterator[etree._Element]:
     """Read a native application a component at a time, retaining XML text/PI.
 
@@ -82,7 +108,7 @@ def application_children(path: Path) -> Iterator[etree._Element]:
                     parent = node.getparent()
                     assert parent is not None
                     parent.remove(node)
-                    yield node
+                    yield _normalize_streamed_text(node)
                 elif depth == 1 and len(node):
                     # Comments, PIs and entity nodes are not valid top-level items.
                     raise ProjectError("Unsupported export document structure")
