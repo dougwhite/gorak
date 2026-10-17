@@ -20,8 +20,10 @@ def write_component(path: Path, node: etree._Element) -> None:
     apply_field_default_inheritance(
         path.parent.parent, path.parent.name, [component], source_nodes=[node]
     )
-    path.write_text(encode_source_w4gl(component))
+    path.write_text(encode_source_w4gl(component), encoding="utf-8", newline="\n")
     write_queries(path, component.queries)
     if component.markup is not None:
-        path.with_suffix(".wml").write_text(component.markup)
+        path.with_suffix(".wml").write_text(
+            component.markup, encoding="utf-8", newline="\n"
+        )
         write_component_defaults(path, component.props.get("fielddefaults", {}))

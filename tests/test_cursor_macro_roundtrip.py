@@ -78,16 +78,20 @@ def test_macro_definitions_preserve_order_values_and_duplicates(tmp_path: Path) 
     set_text(node.find("macro_vars/row/value"), "  café\n\x07  ")
     source = tmp_path / "sample.w4gl"
     write_component(source, node)
-    assert "[[proc4glsource.macro_vars]]" in source.read_text()
+    assert "[[proc4glsource.macro_vars]]" in source.read_text(encoding="utf-8")
     restored = restore_component(source)
     assert read_macros(restored) == read_macros(node)
     assert equivalent(node, restored)
     source.write_text(
-        source.read_text().replace('value = "second"', 'value = "changed"')
+        source.read_text(encoding="utf-8").replace(
+            'value = "second"', 'value = "changed"'
+        ),
+        encoding="utf-8",
     )
     overlay_metadata(restored, source)
+    assert read_macros(restored)[0] == read_macros(node)[0]
     assert read_macros(restored)[1]["value"] == "changed"
-    source.write_text("[proc4glsource]\n")
+    source.write_text("[proc4glsource]\n", encoding="utf-8")
     overlay_metadata(restored, source)
     assert restored.find("macro_vars") is None
 
