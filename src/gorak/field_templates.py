@@ -86,7 +86,7 @@ def decode_layout(path: Path) -> list[etree._Element]:
     wml = path.with_suffix(".wml")
     if not wml.is_file():
         raise ProjectError("Field template requires a WML source file")
-    root = parse_markup(wml.read_text())
+    root = parse_markup(wml.read_text(encoding="utf-8"))
     if root.tag != "fieldtemplate" or root.attrib or (root.text or "").strip():
         raise ProjectError(
             "Field template markup requires a plain <fieldtemplate> root"

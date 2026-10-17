@@ -36,7 +36,7 @@ def describe(root: Path, app: str | None, component: str | None) -> styles.Json:
             if not source.is_file():
                 raise ProjectError("Component source does not exist")
             if (
-                parse_w4gl(source.read_text(), source.stem).type
+                parse_w4gl(source.read_text(encoding="utf-8"), source.stem).type
                 not in FRAME_COMPONENT_TYPES
             ):
                 raise ProjectError("Only frames have native stylesheets")
@@ -175,7 +175,7 @@ def maintain(
                 children: list[styles.Json] = []
                 for source in paths:
                     if (
-                        parse_w4gl(source.read_text(), source.stem).type
+                        parse_w4gl(source.read_text(encoding="utf-8"), source.stem).type
                         in FRAME_COMPONENT_TYPES
                     ):
                         layer = read(source.with_suffix(".fielddefaults.json"))

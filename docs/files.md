@@ -26,6 +26,10 @@ Do not commit:
 - `.openroad/`, which contains synchronization state, locks, recovery evidence,
   temporary XML, and run artifacts.
 
+Readable `.w4gl`, `.wml`, and JSON source files use UTF-8, including on
+Windows installations whose default code page is CP1252. Keep these files in
+UTF-8 when editing; import XML is also written as UTF-8.
+
 Generated `.w4gl` and `.wml` files use LF line endings. `.w4gl` files end
 with exactly one newline.
 
