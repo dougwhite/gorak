@@ -95,7 +95,6 @@ def _push_project(
             *folder.glob("*.wml"),
             *folder.glob("*.fielddefaults.json"),
             *folder.glob("*.queries.json"),
-            *folder.glob("*.frmflow.json"),
         ]
         auxiliary.extend(
             p

@@ -575,9 +575,6 @@ def component_export_summary(path: Path, root: Path | None) -> str:
     query_path = path.with_suffix(".queries.json")
     if query_path.is_file():
         lines.append(f"Wrote {display_path(query_path, root)}")
-    flow_path = path.with_suffix(".frmflow.json")
-    if flow_path.is_file():
-        lines.append(f"Wrote {display_path(flow_path, root)}")
     lines.append("Export complete")
     return "\n".join(lines)
 

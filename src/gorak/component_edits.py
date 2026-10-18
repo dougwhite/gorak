@@ -178,6 +178,3 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     from .macro_variables import ensure_script_owner
 
     ensure_script_owner(node)
-    from .frame_flow import overlay_flow
-
-    overlay_flow(node, path)

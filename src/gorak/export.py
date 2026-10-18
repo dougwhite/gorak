@@ -458,9 +458,6 @@ def project_component_files(
 
             extract_icons(node)
             write_queries(stage / f"{name}.w4gl", component.queries)
-            from .frame_flow import write_flow
-
-            write_flow(stage / f"{name}.w4gl", component.frmflow)
             write_component_w4gl(stage, name, encode_source_w4gl(component))
             write_component_wml(stage, name, component.markup)
             overrides = component.props.get("fielddefaults", {})
@@ -483,7 +480,6 @@ def project_component_files(
             ".wml",
             ".fielddefaults.json",
             ".queries.json",
-            ".frmflow.json",
             ".icons.json",
         ):
             target = source_dir / f"{name}{suffix}"

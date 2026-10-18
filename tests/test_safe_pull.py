@@ -36,9 +36,7 @@ def test_apply_failure_restores_written_files(
     assert (recovery / "before/first").read_bytes() == b"old first"
 
 
-@pytest.mark.parametrize(
-    "sidecar", ["proc.fielddefaults.json", "proc.queries.json", "proc.frmflow.json"]
-)
+@pytest.mark.parametrize("sidecar", ["proc.fielddefaults.json", "proc.queries.json"])
 def test_deleted_database_app_removes_source_but_preserves_notes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sidecar: str
 ) -> None:

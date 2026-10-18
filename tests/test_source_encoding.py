@@ -40,9 +40,11 @@ def test_utf8_source_under_cp1252_default(
     source = tmp_path / "sample.w4gl"
     source.write_text(encode_source_w4gl(component), encoding="utf-8")
     if kind == "framesource":
+        flow = etree.fromstring(component.markup).find("frmflow")
+        flow_xml = etree.tostring(flow, encoding="unicode", with_tail=False)
         source.with_suffix(".wml").write_text(
             f'<frame><topform><buttonfield name="action" '
-            f'textlabel="{label}"/></topform></frame>',
+            f'textlabel="{label}"/></topform>{flow_xml}</frame>',
             encoding="utf-8",
         )
     for restored in (restore_component(source), overlay_component(node, source)):

@@ -101,9 +101,9 @@ def overlay_component(node: etree._Element, path: Path) -> etree._Element:
 
     # Enforce missing-sidecar protection against the authoritative baseline.
     overlay_queries(deepcopy(node), path)
-    from .frame_flow import overlay_flow
+    from .frame_flow import require_flow
 
-    overlay_flow(deepcopy(node), path)
+    require_flow(node, path)
     from .class_icons import overlay_icons
 
     overlay_icons(deepcopy(node), path)

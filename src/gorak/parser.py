@@ -26,6 +26,7 @@ FIELD_TEMPLATE_CHILDREN = {"framefield", "reportfield"}
 TYPED_FIELD_PROPERTIES = {"protofield", "viewfield", *FIELD_TEMPLATE_CHILDREN}
 
 IGNORED_PROPERTIES = {
+    "frmflow",
     "queries",
     "extension",
     "script",
@@ -41,6 +42,7 @@ IGNORED_PROPERTIES = {
     "mainbartop",
 }
 FRAME_MARKUP_CHILDREN = {
+    "frmflow",
     "startmenu",
     "topform",
     "mainbarbottom",
@@ -281,18 +283,11 @@ def parse_component_node(
 
         markup = encode_layout(node)
 
-    from .frame_flow import encode_flow
+    from .frame_flow import validate_component_flow
     from .query_metadata import encode_queries
 
-    return Component(
-        name,
-        component_type,
-        props,
-        script,
-        markup,
-        encode_queries(node),
-        encode_flow(node),
-    )
+    validate_component_flow(node)
+    return Component(name, component_type, props, script, markup, encode_queries(node))
 
 
 def encode_frame_markup(
@@ -320,6 +315,10 @@ def frame_markup_elements(
     mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> list[etree._Element]:
     """Keep each toolbar row as an ordered, repeated WML section."""
+    if node.tag == "frmflow":
+        from .frame_flow import flow_markup
+
+        return [flow_markup(node)]
     if node.tag not in MAINBAR_MARKUP_CHILDREN:
         return [frame_markup_element(node, defaults_index, mapping)]
     elements = []
@@ -571,6 +570,10 @@ def matching_default_count(
 def serialize_wml(element: etree._Element, indent: int = 0) -> str:
     """Serialize generated markup with multiline attributes for dense elements."""
 
+    if element.tag == "frmflow":
+        from .frame_flow import serialize_flow
+
+        return serialize_flow(element, indent)
     if is_text_node(element) and len(element):
         text_value(element)
         return "  " * indent + str(
@@ -659,11 +662,6 @@ def extract_props(
 
     for child in node:
         if child.tag not in ignored:
-            if child.tag == "frmflow":
-                from .frame_flow import scalar_flow
-
-                if not scalar_flow(child):
-                    continue
             if child.tag == "windowicon":
                 from .bitmap_codec import normalized
 
