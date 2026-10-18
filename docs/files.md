@@ -11,6 +11,7 @@ project/
 │   ├── app.json
 │   ├── field_defaults.json            # optional application stylesheet delta
 │   ├── component.fielddefaults.json   # optional frame stylesheet delta
+│   ├── component.frmflow.json         # optional frame-generation metadata
 │   ├── component.w4gl
 │   └── frame_component.wml
 ├── .env
@@ -18,7 +19,7 @@ project/
 ```
 
 Commit the readable source, application metadata, `gorak.json`, `AGENTS.md`,
-and stylesheet JSON.
+and stylesheet/query/frame-generation JSON sidecars.
 
 Do not commit:
 
@@ -76,6 +77,40 @@ describe = { declaration = "METHOD RETURNING VARCHAR(80) NOT NULL", remark = "De
 Declarations follow standard OpenROAD declaration syntax, including `PRIVATE`, `ARRAY OF`, `NOT NULL`, and `DEFAULT` clauses. Use a declaration string, or an object containing `declaration` when remarks or other metadata are present.
 
 Saved query metadata lives in optional `<component>.queries.json` files.
+
+Structured and empty native `frmflow` properties live in version 1
+`<component>.frmflow.json` files. These preserve frame-generation/query metadata,
+including table definitions, expressions, collection type markers and shared
+object references. Commit the sidecar alongside the frame source; it is needed
+for reconstruction without `.openroad/`.
+
+The format is an ordered tree. Each node has a native `tag`, optional string
+`attributes`, and either scalar `text` or an ordered `children` array. For example,
+an empty typed collection is represented as:
+
+```json
+{
+  "version": 1,
+  "frmflow": {
+    "tag": "frmflow",
+    "children": [{"tag": "row_class", "text": "menufield"}]
+  }
+}
+```
+
+Text retains whitespace, Unicode and escaped control characters. Child order,
+attributes, object identity and shared references are significant. Consistent
+native object-ID renumbering is accepted during comparison. Mixed content,
+namespaced elements, qualified type names, duplicate IDs and references outside
+the graph are refused. Nonempty plain scalar `frmflow` values retain their
+existing TOML spelling; that control does not establish that `frmflow` is a path.
+
+Re-export frames produced by older gorak versions to recover omitted metadata.
+An existing structured or empty native `frmflow` requires its sidecar before an
+edit can be pushed.
+To remove it deliberately, keep a sidecar containing
+`{"version": 1, "frmflow": null}`. Removing an empty property is also treated as
+a change; equivalence does not assume that empty generation metadata is disposable.
 
 Macro definitions use ordered tables such as `[[framesource.macro_vars]]`, with `name`,
 `value` and optional `shortremark`; re-export older sources to recover omitted definitions.

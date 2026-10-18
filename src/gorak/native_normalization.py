@@ -15,14 +15,15 @@ XSI = "{http://www.w3.org/2001/XMLSchema-instance}type"
 
 def opaque_descendant(node: etree._Element) -> bool:
     return any(
-        parent.tag in {"extension", "taggedvalues"} for parent in node.iterancestors()
+        parent.tag in {"extension", "taggedvalues", "frmflow"}
+        for parent in node.iterancestors()
     )
 
 
 def explicit_row_types(root: etree._Element) -> None:
     """Resolve native array default types without changing row order or contents."""
     for node in root.iter():
-        if opaque_descendant(node):
+        if node.tag == "frmflow" or opaque_descendant(node):
             continue
         row_class = node.find("row_class")
         rows = node.findall("row")
@@ -43,6 +44,10 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
     from .importer import signature as raw_signature
 
     node = deepcopy(root)
+    from .frame_flow import canonical_ids
+
+    for flow in node.findall("frmflow"):
+        canonical_ids(flow)
     explicit_row_types(node)
     for child in list(node.iter()):
         if not isinstance(child.tag, str) or opaque_descendant(child):
@@ -97,7 +102,9 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
     # Snapshot traversal before reordering ancestors, which can otherwise skip
     # nested fields in lxml's live iterator.
     for field in list(node.iter()):
-        if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
+        if field.tag in {"extension", "taggedvalues", "frmflow"} or opaque_descendant(
+            field
+        ):
             continue
         if (
             all(isinstance(child.tag, str) for child in field)

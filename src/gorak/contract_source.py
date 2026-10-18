@@ -189,6 +189,7 @@ def equivalent(
     from copy import deepcopy
 
     from .bitmap_codec import normalized
+    from .frame_flow import flow_signature
     from .importer import signature
     from .native_normalization import explicit_row_types, opaque_descendant
     from .parser import (
@@ -197,7 +198,14 @@ def equivalent(
         parse_component_node,
     )
 
+    if flow_signature(left) != flow_signature(right):
+        return False
     left, right = deepcopy(left), deepcopy(right)
+    # The independent check above owns frmflow; field/default normalizations
+    # must never reinterpret metadata inside the graph.
+    for root in (left, right):
+        for flow in root.findall("frmflow"):
+            root.remove(flow)
     for root in (left, right):
         for child in root:
             if child.tag in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN | {

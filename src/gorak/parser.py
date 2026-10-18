@@ -281,9 +281,18 @@ def parse_component_node(
 
         markup = encode_layout(node)
 
+    from .frame_flow import encode_flow
     from .query_metadata import encode_queries
 
-    return Component(name, component_type, props, script, markup, encode_queries(node))
+    return Component(
+        name,
+        component_type,
+        props,
+        script,
+        markup,
+        encode_queries(node),
+        encode_flow(node),
+    )
 
 
 def encode_frame_markup(
@@ -650,6 +659,11 @@ def extract_props(
 
     for child in node:
         if child.tag not in ignored:
+            if child.tag == "frmflow":
+                from .frame_flow import scalar_flow
+
+                if not scalar_flow(child):
+                    continue
             if child.tag == "windowicon":
                 from .bitmap_codec import normalized
 

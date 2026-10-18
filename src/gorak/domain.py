@@ -39,6 +39,7 @@ class Component:
     script: str | None = None
     markup: str | None = None
     queries: dict[str, Any] | None = None
+    frmflow: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,9 @@ def write_component(path: Path, node: etree._Element) -> None:
     )
     path.write_text(encode_source_w4gl(component), encoding="utf-8", newline="\n")
     write_queries(path, component.queries)
+    from gorak.frame_flow import write_flow
+
+    write_flow(path, component.frmflow)
     if component.markup is not None:
         path.with_suffix(".wml").write_text(
             component.markup, encoding="utf-8", newline="\n"

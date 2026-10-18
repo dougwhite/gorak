@@ -1,0 +1,246 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <COMPONENT name="frmflow_regression" xsi:type="framesource">
+    <versshortremarks>Synthetic structured frmflow preservation fixture</versshortremarks>
+    <script>initialize() = { return ER_OK; }</script>
+    <datatype>integer</datatype>
+    <startmenu>
+      <bgcolor>2</bgcolor>
+      <fgcolor>1</fgcolor>
+      <designbias>16384</designbias>
+      <trimbias>16384</trimbias>
+      <updatebias>16384</updatebias>
+      <querybias>16384</querybias>
+      <readbias>16384</readbias>
+      <user1bias>16384</user1bias>
+      <user2bias>16384</user2bias>
+      <user3bias>16384</user3bias>
+    </startmenu>
+    <topform>
+      <bgcolor>2</bgcolor>
+      <fgcolor>1</fgcolor>
+      <width>23999</width>
+      <height>24000</height>
+      <designbias>16</designbias>
+      <trimbias>8</trimbias>
+      <updatebias>16</updatebias>
+      <querybias>16</querybias>
+      <readbias>16</readbias>
+      <user1bias>16</user1bias>
+      <user2bias>16</user2bias>
+      <user3bias>16</user3bias>
+      <bgpattern>-1</bgpattern>
+      <focusbehavior>1</focusbehavior>
+      <outlinecolor>1</outlinecolor>
+      <transparentcolor>91</transparentcolor>
+    </topform>
+    <windowtitle>Synthetic frmflow fixture</windowtitle>
+    <frmflow>
+      <query>
+        <name>frmflow_regression.M</name>
+        <type>3</type>
+        <erinfo>
+          <typesize>10</typesize>
+          <isbold>1</isbold>
+          <tabledefs>
+            <row oid="2">
+              <name>fixture_customers</name>
+              <structure>Heap</structure>
+              <duplicates>1</duplicates>
+              <createdate>2026_01_01 00:00:00 GMT</createdate>
+              <insertallowed>1</insertallowed>
+              <updateallowed>1</updateallowed>
+              <deleteallowed>1</deleteallowed>
+              <columns>
+                <row oid="1">
+                  <name>customer_id</name>
+                  <length>4</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>30</dbtypecode>
+                </row>
+                <row oid="3">
+                  <name>display_name</name>
+                  <length>80</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>21</dbtypecode>
+                </row>
+                <row oid="4">
+                  <name>city</name>
+                  <length>80</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>21</dbtypecode>
+                </row>
+                <row oid="5">
+                  <name>notes</name>
+                  <length>80</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>21</dbtypecode>
+                </row>
+                <row_class>tblcol</row_class>
+              </columns>
+              <hasindexes>1</hasindexes>
+              <isjournalled>1</isjournalled>
+              <minpages>1</minpages>
+              <maxpages>1</maxpages>
+              <fillfactor>100</fillfactor>
+              <locationname>ii_database</locationname>
+              <role>1</role>
+              <corvar>fixture_customers</corvar>
+              <alterdate>2026_01_01 00:00:00 GMT</alterdate>
+              <modifydate>2026_01_01 00:00:00 GMT</modifydate>
+              <version>II10.0</version>
+            </row>
+            <row oid="7">
+              <name>fixture_orders</name>
+              <structure>Heap</structure>
+              <duplicates>1</duplicates>
+              <createdate>2026_01_01 00:00:00 GMT</createdate>
+              <insertallowed>1</insertallowed>
+              <updateallowed>1</updateallowed>
+              <deleteallowed>1</deleteallowed>
+              <columns>
+                <row oid="6">
+                  <name>order_id</name>
+                  <length>4</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>30</dbtypecode>
+                </row>
+                <row oid="8">
+                  <name>customer_id</name>
+                  <length>4</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>30</dbtypecode>
+                </row>
+                <row oid="9">
+                  <name>quantity</name>
+                  <length>4</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>30</dbtypecode>
+                </row>
+                <row oid="10">
+                  <name>description</name>
+                  <length>80</length>
+                  <updateable>1</updateable>
+                  <qualtype>1</qualtype>
+                  <dbtypecode>21</dbtypecode>
+                </row>
+                <row_class>tblcol</row_class>
+              </columns>
+              <hasindexes>1</hasindexes>
+              <isjournalled>1</isjournalled>
+              <minpages>1</minpages>
+              <maxpages>1</maxpages>
+              <fillfactor>100</fillfactor>
+              <locationname>ii_database</locationname>
+              <role>1</role>
+              <corvar>fixture_orders</corvar>
+              <alterdate>2026_01_01 00:00:00 GMT</alterdate>
+              <modifydate>2026_01_01 00:00:00 GMT</modifydate>
+              <version>II10.0</version>
+            </row>
+            <row_class>tabledef</row_class>
+          </tabledefs>
+        </erinfo>
+        <rescols>
+          <row>
+            <expression>fixture_customers.customer_id</expression>
+            <colname>customer_id</colname>
+            <tabname>fixture_customers</tabname>
+            <fldname>fixture_customers_customer_id</fldname>
+            <tblcol oidref="1"/>
+            <tabdef oidref="2"/>
+          </row>
+          <row>
+            <expression>fixture_customers.display_name</expression>
+            <colname>display_name</colname>
+            <tabname>fixture_customers</tabname>
+            <fldname>fixture_customers_display_name</fldname>
+            <tblcol oidref="3"/>
+            <tabdef oidref="2"/>
+          </row>
+          <row>
+            <expression>fixture_customers.city</expression>
+            <colname>city</colname>
+            <tabname>fixture_customers</tabname>
+            <fldname>fixture_customers_city</fldname>
+            <tblcol oidref="4"/>
+            <tabdef oidref="2"/>
+          </row>
+          <row>
+            <expression>fixture_customers.notes</expression>
+            <colname>notes</colname>
+            <tabname>fixture_customers</tabname>
+            <fldname>fixture_customers_notes</fldname>
+            <tblcol oidref="5"/>
+            <tabdef oidref="2"/>
+          </row>
+          <row>
+            <expression>fixture_orders.order_id</expression>
+            <colname>order_id</colname>
+            <tabname>fixture_orders</tabname>
+            <fldname>fixture_orders_order_id</fldname>
+            <tblcol oidref="6"/>
+            <tabdef oidref="7"/>
+          </row>
+          <row>
+            <expression>fixture_orders.customer_id</expression>
+            <colname>customer_id</colname>
+            <tabname>fixture_orders</tabname>
+            <fldname>fixture_orders_customer_id</fldname>
+            <tblcol oidref="8"/>
+            <tabdef oidref="7"/>
+          </row>
+          <row>
+            <expression>fixture_orders.quantity</expression>
+            <colname>quantity</colname>
+            <tabname>fixture_orders</tabname>
+            <fldname>fixture_orders_quantity</fldname>
+            <tblcol oidref="9"/>
+            <tabdef oidref="7"/>
+          </row>
+          <row>
+            <expression>fixture_orders.description</expression>
+            <colname>description</colname>
+            <tabname>fixture_orders</tabname>
+            <fldname>fixture_orders_description</fldname>
+            <tblcol oidref="10"/>
+            <tabdef oidref="7"/>
+          </row>
+          <row>
+            <expression>trim(fixture_customers.display_name) + ' — Größe &amp; Maß &lt;probe&gt;'</expression>
+            <colname>display_name</colname>
+            <tabname>fixture_customers</tabname>
+            <fldname>customer_caption</fldname>
+            <tblcol oidref="3"/>
+            <tabdef oidref="2"/>
+          </row>
+          <row>
+            <expression>case when fixture_orders.quantity &gt; 0
+then fixture_orders.quantity * 2 else 0 end</expression>
+            <colname>quantity</colname>
+            <tabname>fixture_orders</tabname>
+            <fldname>doubled_quantity</fldname>
+            <tblcol oidref="9"/>
+            <tabdef oidref="7"/>
+          </row>
+          <row_class>resultcolumn</row_class>
+        </rescols>
+        <genclassname>frmflow_regression_row</genclassname>
+        <frame>
+          <name>frmflow_regression</name>
+          <template>synthetic_query_template</template>
+          <isgenerated>1</isgenerated>
+          <isreconciled>1</isreconciled>
+        </frame>
+      </query>
+      <framenum>1</framenum>
+    </frmflow>
+  </COMPONENT>
+</OPENROAD>

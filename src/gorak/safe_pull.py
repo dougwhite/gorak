@@ -255,6 +255,12 @@ def _sync_project(
                         )
                         old_files.update(
                             path
+                            for path in (root / name).glob("*.frmflow.json")
+                            if path.name.removesuffix(".frmflow.json").casefold()
+                            == component
+                        )
+                        old_files.update(
+                            path
                             for path in (root / name).glob("*.icons.json")
                             if path.name.removesuffix(".icons.json").casefold()
                             == component
@@ -269,6 +275,7 @@ def _sync_project(
                         old_files.update((root / name).glob("*.wml"))
                         old_files.update((root / name).glob("*.fielddefaults.json"))
                         old_files.update((root / name).glob("*.queries.json"))
+                        old_files.update((root / name).glob("*.frmflow.json"))
                         old_files.update((root / name).glob("*.icons.json"))
                     old_files.update((root / ".openroad" / name).glob("*.xml"))
                     for path in old_files:

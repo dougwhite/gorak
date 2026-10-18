@@ -95,6 +95,7 @@ def failed_source(path: Path, failures: list[ExportFailure]) -> bool:
         ".wml",
         ".fielddefaults.json",
         ".queries.json",
+        ".frmflow.json",
         ".icons.json",
         ".xml",
     ):
