@@ -10,6 +10,7 @@ import tomlkit
 from lxml import etree
 
 from .domain import Application, ApplicationExport, Component, IncludedApplication
+from .errors import ProjectError
 from .field_defaults import parse_field_defaults_node
 from .xml_text import (
     INVALID_XML,
@@ -26,6 +27,7 @@ FIELD_TEMPLATE_CHILDREN = {"framefield", "reportfield"}
 TYPED_FIELD_PROPERTIES = {"protofield", "viewfield", *FIELD_TEMPLATE_CHILDREN}
 
 IGNORED_PROPERTIES = {
+    "frmflow",
     "queries",
     "extension",
     "script",
@@ -41,6 +43,7 @@ IGNORED_PROPERTIES = {
     "mainbartop",
 }
 FRAME_MARKUP_CHILDREN = {
+    "frmflow",
     "startmenu",
     "topform",
     "mainbarbottom",
@@ -78,6 +81,10 @@ def parse_w4gl(text: str, name: str) -> Component:
     metadata = tomllib.loads(front_matter)
     component_type = first_table_name(metadata)
     props = dict(metadata[component_type])
+    if "frmflow" in props or "frmflow" in metadata:
+        raise ProjectError(
+            "frmflow belongs in frame WML; TOML declarations are unsupported"
+        )
     props.pop("queries", None)
     props.update(
         {
@@ -281,8 +288,10 @@ def parse_component_node(
 
         markup = encode_layout(node)
 
+    from .frame_flow import validate_component_flow
     from .query_metadata import encode_queries
 
+    validate_component_flow(node)
     return Component(name, component_type, props, script, markup, encode_queries(node))
 
 
@@ -311,6 +320,10 @@ def frame_markup_elements(
     mapping: dict[etree._Element, etree._Element] | None = None,
 ) -> list[etree._Element]:
     """Keep each toolbar row as an ordered, repeated WML section."""
+    if node.tag == "frmflow":
+        from .frame_flow import flow_markup
+
+        return [flow_markup(node)]
     if node.tag not in MAINBAR_MARKUP_CHILDREN:
         return [frame_markup_element(node, defaults_index, mapping)]
     elements = []
@@ -562,6 +575,10 @@ def matching_default_count(
 def serialize_wml(element: etree._Element, indent: int = 0) -> str:
     """Serialize generated markup with multiline attributes for dense elements."""
 
+    if element.tag == "frmflow":
+        from .frame_flow import serialize_flow
+
+        return serialize_flow(element, indent)
     if is_text_node(element) and len(element):
         text_value(element)
         return "  " * indent + str(
