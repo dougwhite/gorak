@@ -10,6 +10,7 @@ import tomlkit
 from lxml import etree
 
 from .domain import Application, ApplicationExport, Component, IncludedApplication
+from .errors import ProjectError
 from .field_defaults import parse_field_defaults_node
 from .xml_text import (
     INVALID_XML,
@@ -80,6 +81,10 @@ def parse_w4gl(text: str, name: str) -> Component:
     metadata = tomllib.loads(front_matter)
     component_type = first_table_name(metadata)
     props = dict(metadata[component_type])
+    if "frmflow" in props or "frmflow" in metadata:
+        raise ProjectError(
+            "frmflow belongs in frame WML; TOML declarations are unsupported"
+        )
     props.pop("queries", None)
     props.update(
         {

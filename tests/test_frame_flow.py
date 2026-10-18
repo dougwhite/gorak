@@ -125,27 +125,42 @@ def test_empty_typed_empty_scalar_and_character_controls(
     assert not equivalent(original, missing)
 
 
-def test_missing_wml_flow_requires_explicit_removal(tmp_path: Path) -> None:
+@pytest.mark.parametrize("kind", ["framesource", "frametemplate"])
+@pytest.mark.parametrize(
+    "flow_xml",
+    [
+        None,
+        "<frmflow/>",
+        "<frmflow><row_class>menufield</row_class></frmflow>",
+        "<frmflow>scalar value</frmflow>",
+    ],
+)
+def test_deleting_wml_flow_removes_native_property(
+    tmp_path: Path, kind: str, flow_xml: str | None
+) -> None:
     original = native()
+    original.set("{http://www.w3.org/2001/XMLSchema-instance}type", kind)
+    if flow_xml is not None:
+        original.replace(original.find("frmflow"), etree.fromstring(flow_xml))
     path = source(tmp_path, original)
     wml = path.with_suffix(".wml")
     markup = etree.fromstring(wml.read_bytes())
     markup.remove(markup.find("frmflow"))
     wml.write_bytes(etree.tostring(markup))
-    with pytest.raises(ProjectError, match="Missing frmflow section"):
-        overlay_component(deepcopy(original), path)
-    etree.SubElement(markup, "frmflow", remove="true")
-    wml.write_bytes(etree.tostring(markup))
-    assert overlay_component(deepcopy(original), path).find("frmflow") is None
-    assert restore_component(path).find("frmflow") is None
+    cold = restore_component(path)
+    overlaid = overlay_component(deepcopy(original), path)
+    assert cold.find("frmflow") is None
+    assert overlaid.find("frmflow") is None
+    assert not equivalent(original, cold)
+    assert not equivalent(original, overlaid)
 
 
 @pytest.mark.parametrize(
     "xml",
     [
-        '<frmflow remove="false"/>',
-        '<frmflow remove="true"><query/></frmflow>',
-        '<frmflow remove="true">lost</frmflow>',
+        '<frmflow><item oidref="missing"/></frmflow>',
+        '<frmflow><item oid="1"/><item oid="1"/></frmflow>',
+        "<frmflow>lost<query/></frmflow>",
         "<frmflow/><frmflow/>",
     ],
 )
@@ -277,24 +292,36 @@ def test_failed_import_retains_wml_flow(
     assert copies[0].read_bytes() == saved == path.with_suffix(".wml").read_bytes()
 
 
-def test_legacy_scalar_toml_and_duplicate_sources(tmp_path: Path) -> None:
+@pytest.mark.parametrize("wml_flow", [False, True])
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'frmflow = "legacy scalar"\n[framesource]',
+        '[framesource]\nfrmflow = ""',
+        '[framesource]\nfrmflow = "legacy scalar"',
+        '[framesource]\n[framesource.frmflow]\nvalue = "legacy scalar"',
+        '[framesource]\n[frmflow]\nvalue = "legacy scalar"',
+    ],
+)
+def test_toml_flow_is_rejected(
+    tmp_path: Path, wml_flow: bool, declaration: str
+) -> None:
+    from gorak.parser import parse_w4gl
+
     original = native()
-    original.replace(
-        original.find("frmflow"), etree.fromstring("<frmflow>legacy scalar</frmflow>")
-    )
     path = source(tmp_path, original)
-    text = path.read_text().replace(
-        "[framesource]", '[framesource]\nfrmflow = "legacy scalar"'
-    )
-    path.write_text(text)
-    with pytest.raises(ProjectError, match="both TOML and WML"):
+    path.write_text(declaration)
+    if not wml_flow:
+        wml = path.with_suffix(".wml")
+        markup = etree.fromstring(wml.read_bytes())
+        markup.remove(markup.find("frmflow"))
+        wml.write_bytes(etree.tostring(markup))
+    with pytest.raises(ProjectError, match="frmflow belongs in frame WML"):
+        parse_w4gl(declaration, path.stem)
+    with pytest.raises(ProjectError, match="frmflow belongs in frame WML"):
         restore_component(path)
-    wml = path.with_suffix(".wml")
-    markup = etree.fromstring(wml.read_bytes())
-    markup.remove(markup.find("frmflow"))
-    wml.write_bytes(etree.tostring(markup))
-    assert equivalent(original, restore_component(path))
-    assert equivalent(original, overlay_component(deepcopy(original), path))
+    with pytest.raises(ProjectError, match="frmflow belongs in frame WML"):
+        overlay_component(deepcopy(original), path)
 
 
 def test_flow_is_not_reinterpreted_as_layout(tmp_path: Path) -> None:

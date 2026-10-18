@@ -5,7 +5,6 @@ without applying layout/default rules to generation metadata.
 """
 
 from copy import deepcopy
-from pathlib import Path
 
 from lxml import etree
 
@@ -73,8 +72,6 @@ def validate_component_flow(component: etree._Element) -> None:
 
     if component.get(XSI) not in FRAME_COMPONENT_TYPES:
         raise ProjectError("Only frames support frmflow metadata")
-    if "remove" in nodes[0].attrib:
-        raise ProjectError("Native frmflow uses the reserved WML remove attribute")
     validate_tree(nodes[0])
 
 
@@ -98,46 +95,6 @@ def serialize_flow(node: etree._Element, indent: int) -> str:
     formatting(copied, indent)
     return "  " * indent + str(
         etree.tostring(copied, encoding="unicode", with_tail=False)
-    )
-
-
-def decode_flow(section: etree._Element) -> etree._Element | None:
-    if "remove" in section.attrib:
-        if (
-            dict(section.attrib) != {"remove": "true"}
-            or len(section)
-            or (section.text or "").strip()
-        ):
-            raise ProjectError(
-                'Removing frmflow requires an empty <frmflow remove="true"/>'
-            )
-        return None
-    return flow_markup(section)
-
-
-def require_flow(component: etree._Element, source: Path) -> None:
-    """Refuse old/incomplete WML unless removal is explicitly requested."""
-    previous = component.find("frmflow")
-    if previous is None:
-        return
-    from .wml_writer import parse_markup
-
-    markup = parse_markup(source.with_suffix(".wml").read_text(encoding="utf-8"))
-    if markup.find("frmflow") is not None:
-        return  # decode_component validates content and removal directives.
-    from .parser import parse_w4gl
-
-    # Continue accepting existing manually authored scalar TOML controls.
-    if (
-        is_text_node(previous)
-        and not previous.attrib
-        and "frmflow"
-        in parse_w4gl(source.read_text(encoding="utf-8"), source.stem).props
-    ):
-        return
-    raise ProjectError(
-        "Missing frmflow section in WML; re-export the component. "
-        'To remove explicitly, use <frmflow remove="true"/>.'
     )
 
 

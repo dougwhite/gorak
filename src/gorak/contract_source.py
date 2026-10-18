@@ -160,13 +160,9 @@ def decode_component(path: Path) -> etree._Element:
                 raise ProjectError(f"Unsupported or duplicate frame section: {tag}")
             seen.add(tag)
             if tag == "frmflow":
-                from .frame_flow import decode_flow
+                from .frame_flow import flow_markup
 
-                if node.find("frmflow") is not None:
-                    raise ProjectError("frmflow cannot appear in both TOML and WML")
-                flow = decode_flow(section)
-                if flow is not None:
-                    node.append(flow)
+                node.append(flow_markup(section))
             elif tag in MAINBAR_MARKUP_CHILDREN:
                 wrapper = node.find(tag)
                 if wrapper is None:
