@@ -585,10 +585,8 @@ def shared_key(
                 path for path in (parent / "images").rglob("*") if path.is_file()
             )
         else:
-            prefix = (parent / "images").relative_to(root).parts
+            prefix = (parent / "images").relative_to(root).as_posix() + "/"
             paths.extend(
-                root / name
-                for name in verified_digests
-                if Path(name).parts[: len(prefix)] == prefix
+                root / name for name in verified_digests if name.startswith(prefix)
             )
     return content_key(paths, root, verified_digests=verified_digests)

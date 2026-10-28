@@ -507,3 +507,53 @@ def test_identical_component_bytes_skip_repeated_normalization(
 
     monkeypatch.setattr(sync_plan, "native_signature", forbidden)
     assert sync_plan.signature(etree.fromstring(etree.tostring(node))) == first
+
+
+def test_snapshot_shared_dependencies_require_exact_image_directory_prefixes(
+    tmp_path: Path,
+) -> None:
+    included = [
+        "field_defaults.json",
+        "images/root.png",
+        "images/nested/icon.png",
+        "example/field_defaults.json",
+        "example/images/app.png",
+        "example/images/.git/asset.png",
+        "example/images/.openroad/asset.png",
+    ]
+    excluded = [
+        "field_defaults.json.extra",
+        "images2/root.png",
+        "example/images2/app.png",
+        "example/images-lookalike/app.png",
+        "example2/images/other.png",
+        "other/images/other.png",
+    ]
+    snapshot = {}
+    for name in included + excluded:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
+        snapshot[name] = comparison_cache.file_digest(path)
+    folder = tmp_path / "example"
+    expected = comparison_cache.content_key(
+        [tmp_path / name for name in included],
+        tmp_path,
+        verified_digests=snapshot,
+    )
+    assert comparison_cache.shared_key(tmp_path, folder) == expected
+    assert (
+        comparison_cache.shared_key(tmp_path, folder, verified_digests=snapshot)
+        == expected
+    )
+    for name in excluded:
+        snapshot[name] = "0" * 64
+    assert (
+        comparison_cache.shared_key(tmp_path, folder, verified_digests=snapshot)
+        == expected
+    )
+    snapshot["example/images/app.png"] = "0" * 64
+    assert (
+        comparison_cache.shared_key(tmp_path, folder, verified_digests=snapshot)
+        != expected
+    )
