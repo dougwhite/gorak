@@ -9,10 +9,12 @@ from typing import Literal
 
 from lxml import etree
 
+from . import comparison_cache
 from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
 from .export_pipeline import prefetched_exports
 from .native_normalization import signature as native_signature
+from .native_styles import resolution_scope, validation_scope
 from .operation_progress import report
 from .portable_source import (
     cached_source_scope,
@@ -70,11 +72,31 @@ def compare(key: str, baseline: object, disk: object, database: object) -> Chang
     return Change(key, action, local_change, remote_change)
 
 
-def xml_inventory(root: etree._Element, app: str) -> dict[str, object]:
+def xml_inventory(
+    root: etree._Element,
+    app: str,
+    *,
+    raw_sink: dict[str, str] | None = None,
+    memo: dict[str, str] | None = None,
+    next_memo: dict[str, str] | None = None,
+) -> dict[str, object]:
     result: dict[str, object] = {}
+
+    def compare_node(node: etree._Element, key: str) -> SemanticDigest:
+        raw = hashlib.sha256(
+            etree.tostring(node, encoding="utf-8", with_tail=False)
+        ).hexdigest()
+        if raw_sink is not None:
+            raw_sink[key] = raw
+        cached = memo.get(raw) if memo is not None else None
+        value = SemanticDigest(cached) if cached is not None else signature(node)
+        if next_memo is not None:
+            next_memo[raw] = value
+        return value
+
     application = root.find("APPLICATION")
     if application is not None:
-        result[app.casefold()] = signature(application)
+        result[app.casefold()] = compare_node(application, app.casefold())
     nodes = root.findall("COMPONENT")
     report(f"Comparing XML components: {app}", 0, len(nodes))
     for index, node in enumerate(nodes, 1):
@@ -84,12 +106,53 @@ def xml_inventory(root: etree._Element, app: str) -> dict[str, object]:
         key = f"{app}/{name}".casefold()
         if key in result:
             raise ProjectError(f"Case-insensitive component collision: {key}")
-        result[key] = signature(node)
+        result[key] = compare_node(node, key)
         report(f"Comparing XML components: {app}", index, len(nodes))
     return result
 
 
-def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
+def path_inventory(
+    path: Path, app: str, scope: str, *, raw_sink: dict[str, str] | None = None
+) -> dict[str, object]:
+    """Reuse normalization only for byte-identical XML under this implementation."""
+    key = comparison_cache.file_digest(path)
+    cache_scope = "xml:" + scope + ":" + app
+    saved = comparison_cache.load(cache_scope, key)
+    cached = (
+        comparison_cache.digests(saved.get("inventory")) if saved is not None else None
+    )
+    raw_cached = (
+        comparison_cache.digests(saved.get("raw")) if saved is not None else None
+    )
+    if cached is not None and (raw_sink is None or raw_cached is not None):
+        if raw_sink is not None and raw_cached is not None:
+            raw_sink.update(raw_cached)
+        report(f"Reusing byte-identical XML comparison: {app}")
+        return {key: SemanticDigest(value) for key, value in cached.items()}
+    memo_scope = "native-components:" + scope + ":" + app.casefold()
+    previous = comparison_cache.load(memo_scope, "latest")
+    memo = (
+        comparison_cache.digests(previous.get("entries"))
+        if previous is not None
+        else None
+    )
+    raw: dict[str, str] = {}
+    next_memo: dict[str, str] = {}
+    inventory = xml_inventory(
+        read_document(path), app, raw_sink=raw, memo=memo, next_memo=next_memo
+    )
+    if raw_sink is not None:
+        raw_sink.update(raw)
+    # External edits during a read must never publish under an earlier digest.
+    if comparison_cache.file_digest(path) == key:
+        comparison_cache.save(cache_scope, key, {"inventory": inventory, "raw": raw})
+        comparison_cache.save(memo_scope, "latest", {"entries": next_memo})
+    return inventory
+
+
+def baseline_inventory(
+    root: Path, *, raw_sink: dict[str, str] | None = None
+) -> tuple[dict[str, object], set[str]]:
     """Read caches in age order so a newer component export supersedes an app export."""
     result: dict[str, object] = {}
     tracking = root / ".openroad/tracked-applications.json"
@@ -116,18 +179,192 @@ def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
         apps.add(directory.name)
         for path in files:
             report(f"Reading baseline XML: {directory.name}")
-            inventory = xml_inventory(read_document(path), directory.name)
+            raw: dict[str, str] = {}
+            inventory = path_inventory(
+                path, directory.name, str(root.resolve()), raw_sink=raw
+            )
+
             if directory.name.casefold() in inventory:
                 # A full app export also records absence of deleted components.
                 prefix = directory.name.casefold() + "/"
+                if raw_sink is not None:
+                    for key in list(raw_sink):
+                        if key.startswith(prefix):
+                            del raw_sink[key]
                 result = {
                     key: value
                     for key, value in result.items()
                     if not key.startswith(prefix)
                 }
             result.update(inventory)
+            if raw_sink is not None:
+                raw_sink.update(raw)
     report("Reading baseline applications", len(directories), len(directories))
     return result, apps
+
+
+def compare_source(
+    root: Path,
+    folder: Path,
+    source: Path,
+    records: dict[str, object],
+    next_records: dict[str, object],
+    *,
+    application: bool = False,
+    baseline_raw: str | None = None,
+) -> SemanticDigest:
+    inputs = [source]
+    if not application:
+        inputs.extend(
+            companion
+            for suffix in (
+                ".wml",
+                ".fielddefaults.json",
+                ".queries.json",
+                ".icons.json",
+            )
+            if (companion := source.with_suffix(suffix)).exists()
+        )
+    try:
+        input_key = hashlib.sha256(
+            (
+                comparison_cache.content_key(inputs, root) + (baseline_raw or "absent")
+            ).encode()
+        ).hexdigest()
+    except OSError:
+        input_key = None
+    record = comparison_cache.digests(records.get(source.name))
+    if (
+        record is not None
+        and record.get("input") == input_key
+        and "signature" in record
+    ):
+        result = SemanticDigest(record["signature"])
+    else:
+        result = signature(
+            comparison_application(folder)
+            if application
+            else comparison_component(source)
+        )
+    if input_key is not None:
+        next_records[source.name] = {"input": input_key, "signature": result}
+    return result
+
+
+@validation_scope()
+@resolution_scope()
+def local_inventory(
+    root: Path,
+) -> tuple[dict[str, object], set[str], dict[str, object], dict[str, str]]:
+    scope = "local:" + str(root.resolve())
+    report("Hashing local source and baseline bytes")
+    try:
+        cache_key = comparison_cache.project_key(root)
+    except OSError:
+        cache_key = None
+    saved = comparison_cache.load(scope, cache_key) if cache_key is not None else None
+    if saved is not None:
+        baseline_cached = comparison_cache.digests(saved.get("baseline"))
+        disk_cached = comparison_cache.digests(saved.get("disk"))
+        apps_cached = saved.get("apps")
+        if (
+            baseline_cached is not None
+            and disk_cached is not None
+            and isinstance(apps_cached, list)
+            and all(isinstance(app, str) for app in apps_cached)
+        ):
+            report("Reusing verified local comparison", 1, 1)
+            return (
+                {key: SemanticDigest(value) for key, value in baseline_cached.items()},
+                set(apps_cached),
+                {key: SemanticDigest(value) for key, value in disk_cached.items()},
+                {},
+            )
+    raw_baseline: dict[str, str] = {}
+    baseline, apps = baseline_inventory(root, raw_sink=raw_baseline)
+    disk: dict[str, object] = {}
+    invalid: dict[str, str] = {}
+    seen: set[str] = set()
+    manifests = sorted(
+        p for p in root.glob("*/app.json") if not p.parent.name.startswith(".")
+    )
+    source_count = sum(1 + len(list(p.parent.glob("*.w4gl"))) for p in manifests)
+    component_caches: list[tuple[str, str, dict[str, object]]] = []
+    source_done = 0
+    report("Comparing local source", source_done, source_count)
+    for manifest in manifests:
+        folder = manifest.parent
+        if folder.name.startswith("."):
+            continue
+        app = folder.name
+        if app.casefold() in seen:
+            raise ProjectError(f"Case-insensitive application collision: {app}")
+        seen.add(app.casefold())
+        apps.add(app)
+        memo_scope = "components:" + str(folder.resolve())
+        try:
+            dependency_key = (
+                comparison_cache.shared_key(root, folder)
+                if cache_key is not None
+                else None
+            )
+        except OSError:
+            dependency_key = None
+        memo = (
+            comparison_cache.load(memo_scope, dependency_key)
+            if dependency_key is not None
+            else None
+        )
+        records = memo if memo is not None else {}
+        next_records: dict[str, object] = {}
+
+        try:
+            disk[app.casefold()] = compare_source(
+                root,
+                folder,
+                manifest,
+                records,
+                next_records,
+                application=True,
+                baseline_raw=raw_baseline.get(app.casefold()),
+            )
+        except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
+            invalid[app.casefold()] = str(ex)
+        source_done += 1
+        report("Comparing local source", source_done, source_count)
+        for source in sorted(folder.glob("*.w4gl")):
+            key = f"{app}/{source.stem}".casefold()
+            if key in disk or key in invalid:
+                raise ProjectError(f"Case-insensitive component collision: {key}")
+            try:
+                disk[key] = compare_source(
+                    root,
+                    folder,
+                    source,
+                    records,
+                    next_records,
+                    baseline_raw=raw_baseline.get(key),
+                )
+            except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
+                invalid[key] = str(ex)
+            source_done += 1
+            report("Comparing local source", source_done, source_count)
+        if dependency_key is not None:
+            component_caches.append((memo_scope, dependency_key, next_records))
+    if cache_key is not None:
+        try:
+            if comparison_cache.project_key(root) == cache_key:
+                for memo_scope, dependency_key, records in component_caches:
+                    comparison_cache.save(memo_scope, dependency_key, records)
+                if not invalid:
+                    comparison_cache.save(
+                        scope,
+                        cache_key,
+                        {"baseline": baseline, "disk": disk, "apps": sorted(apps)},
+                    )
+        except OSError:
+            pass
+    return baseline, apps, disk, invalid
 
 
 @cached_source_scope()
@@ -143,41 +380,7 @@ def plan_project(
     """Inspect disk and fresh XML without writing project state or database source."""
     if capture_dir is not None:
         capture_dir.mkdir(parents=True, exist_ok=False)
-    baseline, apps = baseline_inventory(root)
-    disk: dict[str, object] = {}
-    invalid: dict[str, str] = {}
-    seen: set[str] = set()
-    manifests = sorted(
-        p for p in root.glob("*/app.json") if not p.parent.name.startswith(".")
-    )
-    source_count = sum(1 + len(list(p.parent.glob("*.w4gl"))) for p in manifests)
-    source_done = 0
-    report("Comparing local source", source_done, source_count)
-    for manifest in manifests:
-        folder = manifest.parent
-        if folder.name.startswith("."):
-            continue
-        app = folder.name
-        if app.casefold() in seen:
-            raise ProjectError(f"Case-insensitive application collision: {app}")
-        seen.add(app.casefold())
-        apps.add(app)
-        try:
-            disk[app.casefold()] = signature(comparison_application(folder))
-        except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
-            invalid[app.casefold()] = str(ex)
-        source_done += 1
-        report("Comparing local source", source_done, source_count)
-        for source in sorted(folder.glob("*.w4gl")):
-            key = f"{app}/{source.stem}".casefold()
-            if key in disk or key in invalid:
-                raise ProjectError(f"Case-insensitive component collision: {key}")
-            try:
-                disk[key] = signature(comparison_component(source))
-            except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
-                invalid[key] = str(ex)
-            source_done += 1
-            report("Comparing local source", source_done, source_count)
+    baseline, apps, disk, invalid = local_inventory(root)
     if database_hashes is not None:
         baseline = dict(semantic_hashes(baseline))
         disk = dict(semantic_hashes(disk))
@@ -202,7 +405,7 @@ def plan_project(
         ) as pending:
             for index, (name, path) in enumerate(pending):
                 report(f"Comparing database XML: {name}")
-                database.update(xml_inventory(read_document(path), name))
+                database.update(path_inventory(path, name, str(root.resolve())))
                 report(
                     "Exporting and comparing database applications",
                     index + 1,

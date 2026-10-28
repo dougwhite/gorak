@@ -219,3 +219,33 @@ def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
     output = capsys.readouterr()
     assert json.loads(output.out)["changes"] == []
     assert "Comparing local source: 100%" in output.err
+
+
+def test_warm_status_still_exports_database_and_detects_remote_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(
+        "GORAK_COMPARISON_CACHE_DIR", str(tmp_path.parent / (tmp_path.name + "-cache"))
+    )
+    connection = setup(tmp_path, monkeypatch, xml())
+    assert all(
+        change.action == "unchanged"
+        for change in sync_plan.plan_project(connection, tmp_path)
+    )
+    calls: list[str] = []
+
+    def exporting(connection: object, app: str, path: Path) -> None:
+        calls.append(app)
+        path.write_text(xml("RETURN 3;"))
+
+    def reconstructing(path: Path) -> object:
+        raise AssertionError("Unchanged local source should reuse its comparison")
+
+    monkeypatch.setattr(sync_plan, "backup_application_xml", exporting)
+    monkeypatch.setattr(sync_plan, "comparison_component", reconstructing)
+    changes = sync_plan.plan_project(connection, tmp_path)
+    assert calls == ["example"]
+    assert (
+        next(change for change in changes if change.key == "example/proc").action
+        == "pull"
+    )

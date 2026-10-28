@@ -226,7 +226,42 @@ def is_native_layer(value: Any) -> TypeGuard[Json]:
     }
 
 
+_resolved: ContextVar[dict[bytes, bytes] | None] = ContextVar(
+    "resolved_styles", default=None
+)
+
+
+@contextmanager
+def resolution_scope() -> Iterator[None]:
+    """Bound repeated stylesheet resolution to one comparison, with independent values."""
+    if _resolved.get() is not None:
+        yield
+        return
+    token = _resolved.set({})
+    try:
+        yield
+    finally:
+        _resolved.reset(token)
+
+
 def resolve(parent: Json | None, layer: Json) -> Json:
+    cache = _resolved.get()
+    if cache is None:
+        return _resolve_uncached(parent, layer)
+    try:
+        key = pickle.dumps((parent, layer), protocol=5)
+    except (pickle.PickleError, TypeError, AttributeError):
+        return _resolve_uncached(parent, layer)
+    value = cache.pop(key, None)
+    if value is None:
+        value = pickle.dumps(_resolve_uncached(parent, layer), protocol=5)
+    cache[key] = value
+    if len(cache) > 32:
+        del cache[next(iter(cache))]
+    return cast(Json, pickle.loads(value))
+
+
+def _resolve_uncached(parent: Json | None, layer: Json) -> Json:
     if not is_native_layer(layer):
         raise ProjectError(
             "Unsupported stylesheet properties; re-export the application"
