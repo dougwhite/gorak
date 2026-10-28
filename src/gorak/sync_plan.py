@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+from collections.abc import Mapping
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from shutil import copyfile
@@ -24,6 +26,7 @@ from .portable_source import (
     read_document,
 )
 from .project import ProjectError
+from .source_xml import application_children
 
 
 class SemanticDigest(str):
@@ -153,7 +156,9 @@ def xml_inventory(
             value = DeferredDigest(raw, defer_path, str(node.tag), node.get("name", ""))
         else:
             value = signature(node)
-        comparison_cache.remember_semantic(raw, value)
+        comparison_cache.remember_semantic(
+            raw, value, baseline_read=defer_path is not None
+        )
         if next_memo is not None:
             next_memo[raw] = value
         return value
@@ -182,9 +187,12 @@ def path_inventory(
     *,
     raw_sink: dict[str, str] | None = None,
     defer_path: Path | None = None,
+    expected_digest: str | None = None,
 ) -> dict[str, object]:
     """Reuse normalization only for byte-identical XML under this implementation."""
     key = comparison_cache.file_digest(path)
+    if expected_digest is not None and key != expected_digest:
+        raise ProjectError("Native XML changed during comparison; retry")
     cache_scope = "xml:" + scope + ":" + app
     saved = comparison_cache.load(cache_scope, key)
     cached = inventory_values(saved.get("inventory")) if saved is not None else None
@@ -204,7 +212,11 @@ def path_inventory(
         if raw_cached is not None:
             for name, raw_digest in raw_cached.items():
                 if name in cached:
-                    comparison_cache.remember_semantic(raw_digest, cached[name])
+                    comparison_cache.remember_semantic(
+                        raw_digest,
+                        cached[name],
+                        baseline_read=defer_path is not None,
+                    )
         if raw_sink is not None and raw_cached is not None:
             raw_sink.update(raw_cached)
         report(f"Reusing byte-identical XML comparison: {app}")
@@ -224,15 +236,20 @@ def path_inventory(
     )
     if raw_sink is not None:
         raw_sink.update(raw)
-    # External edits during a read must never publish under an earlier digest.
-    if comparison_cache.file_digest(path) == key:
-        comparison_cache.save(cache_scope, key, {"inventory": inventory, "raw": raw})
-        comparison_cache.save(memo_scope, "latest", {"entries": next_memo})
+    # A caller may use the inventory to certify source equality. A changed
+    # native read must not escape merely because its own cache was skipped.
+    if comparison_cache.file_digest(path) != key:
+        raise ProjectError("Native XML changed during comparison; retry")
+    comparison_cache.save(cache_scope, key, {"inventory": inventory, "raw": raw})
+    comparison_cache.save(memo_scope, "latest", {"entries": next_memo})
     return inventory
 
 
 def baseline_inventory(
-    root: Path, *, raw_sink: dict[str, str] | None = None
+    root: Path,
+    *,
+    raw_sink: dict[str, str] | None = None,
+    expected_digests: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, object], set[str]]:
     """Read caches in age order so a newer component export supersedes an app export."""
     result: dict[str, object] = {}
@@ -260,6 +277,13 @@ def baseline_inventory(
         apps.add(directory.name)
         for path in files:
             report(f"Reading baseline XML: {directory.name}")
+            expected_digest = None
+            if expected_digests is not None:
+                expected_digest = expected_digests.get(
+                    path.relative_to(root).as_posix()
+                )
+                if expected_digest is None:
+                    raise ProjectError("Native XML changed during comparison; retry")
             raw: dict[str, str] = {}
             inventory = path_inventory(
                 path,
@@ -267,6 +291,7 @@ def baseline_inventory(
                 str(root.resolve()),
                 raw_sink=raw,
                 defer_path=path if comparison_cache.active() else None,
+                expected_digest=expected_digest,
             )
 
             if directory.name.casefold() in inventory:
@@ -288,6 +313,40 @@ def baseline_inventory(
     return result, apps
 
 
+def source_input_key(
+    root: Path,
+    source: Path,
+    *,
+    application: bool = False,
+    baseline_raw: str | None = None,
+    verified_digests: Mapping[str, str] | None = None,
+) -> str:
+    inputs = [source]
+    if not application:
+        for suffix in (
+            ".wml",
+            ".fielddefaults.json",
+            ".queries.json",
+            ".icons.json",
+        ):
+            companion = source.with_suffix(suffix)
+            exists = (
+                companion.relative_to(root).as_posix() in verified_digests
+                if verified_digests is not None
+                else companion.exists()
+            )
+            if exists:
+                inputs.append(companion)
+    return hashlib.sha256(
+        (
+            comparison_cache.content_key(
+                inputs, root, verified_digests=verified_digests
+            )
+            + (baseline_raw or "absent")
+        ).encode()
+    ).hexdigest()
+
+
 def compare_source(
     root: Path,
     folder: Path,
@@ -297,25 +356,23 @@ def compare_source(
     *,
     application: bool = False,
     baseline_raw: str | None = None,
+    verified_digests: dict[str, str] | None = None,
 ) -> object:
-    inputs = [source]
-    if not application:
-        inputs.extend(
-            companion
-            for suffix in (
-                ".wml",
-                ".fielddefaults.json",
-                ".queries.json",
-                ".icons.json",
-            )
-            if (companion := source.with_suffix(suffix)).exists()
-        )
+    input_key: str | None
     try:
-        input_key = hashlib.sha256(
-            (
-                comparison_cache.content_key(inputs, root) + (baseline_raw or "absent")
-            ).encode()
-        ).hexdigest()
+        input_key = source_input_key(
+            root, source, application=application, baseline_raw=baseline_raw
+        )
+        if verified_digests is not None and input_key != source_input_key(
+            root,
+            source,
+            application=application,
+            baseline_raw=baseline_raw,
+            verified_digests=verified_digests,
+        ):
+            # A transient edit must not attach the snapshot's comparison to
+            # a cache key describing different source bytes.
+            input_key = None
     except OSError:
         input_key = None
     record = records.get(source.name)
@@ -357,8 +414,9 @@ def local_inventory(
 ) -> tuple[dict[str, object], set[str], dict[str, object], dict[str, str]]:
     scope = "local:" + str(root.resolve())
     report("Hashing local source and baseline bytes")
+    source_digests: dict[str, str] = {}
     try:
-        cache_key = comparison_cache.project_key(root)
+        cache_key = comparison_cache.project_key(root, digest_sink=source_digests)
     except OSError:
         cache_key = None
     saved = comparison_cache.load(scope, cache_key) if cache_key is not None else None
@@ -380,7 +438,11 @@ def local_inventory(
                 {},
             )
     raw_baseline: dict[str, str] = {}
-    baseline, apps = baseline_inventory(root, raw_sink=raw_baseline)
+    baseline, apps = baseline_inventory(
+        root,
+        raw_sink=raw_baseline,
+        expected_digests=source_digests if cache_key is not None else None,
+    )
     disk: dict[str, object] = {}
     invalid: dict[str, str] = {}
     seen: set[str] = set()
@@ -389,6 +451,7 @@ def local_inventory(
     )
     source_count = sum(1 + len(list(p.parent.glob("*.w4gl"))) for p in manifests)
     component_caches: list[tuple[str, str, dict[str, object]]] = []
+    cache_valid = True
     source_done = 0
     report("Comparing local source", source_done, source_count)
     for manifest in manifests:
@@ -407,8 +470,18 @@ def local_inventory(
                 if cache_key is not None
                 else None
             )
+            if (
+                dependency_key is not None
+                and dependency_key
+                != comparison_cache.shared_key(
+                    root, folder, verified_digests=source_digests
+                )
+            ):
+                dependency_key = None
         except OSError:
             dependency_key = None
+        if dependency_key is None:
+            cache_valid = False
         memo = (
             comparison_cache.load(memo_scope, dependency_key)
             if dependency_key is not None
@@ -426,11 +499,14 @@ def local_inventory(
                 next_records,
                 application=True,
                 baseline_raw=raw_baseline.get(app.casefold()),
+                verified_digests=source_digests if cache_key is not None else None,
             )
         except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
             invalid[app.casefold()] = str(ex)
         source_done += 1
         report("Comparing local source", source_done, source_count)
+        if manifest.name not in next_records:
+            cache_valid = False
         for source in sorted(folder.glob("*.w4gl")):
             key = f"{app}/{source.stem}".casefold()
             if key in disk or key in invalid:
@@ -443,11 +519,14 @@ def local_inventory(
                     records,
                     next_records,
                     baseline_raw=raw_baseline.get(key),
+                    verified_digests=source_digests if cache_key is not None else None,
                 )
             except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
                 invalid[key] = str(ex)
             source_done += 1
             report("Comparing local source", source_done, source_count)
+            if source.name not in next_records:
+                cache_valid = False
         if dependency_key is not None:
             component_caches.append((memo_scope, dependency_key, next_records))
     if cache_key is not None:
@@ -455,7 +534,7 @@ def local_inventory(
             if comparison_cache.project_key(root) == cache_key:
                 for memo_scope, dependency_key, records in component_caches:
                     comparison_cache.save(memo_scope, dependency_key, records)
-                if not invalid:
+                if not invalid and cache_valid:
                     comparison_cache.save(
                         scope,
                         cache_key,
@@ -491,6 +570,11 @@ def plan_project(
         available = {
             app.name.casefold(): app.name for app in read_applications(connection)
         }
+        local_folders = {
+            manifest.parent.name.casefold(): manifest.parent
+            for manifest in root.glob("*/app.json")
+            if not manifest.parent.name.startswith(".")
+        }
         database = {}
         names = sorted({app.casefold() for app in apps} & available.keys())
 
@@ -507,6 +591,40 @@ def plan_project(
             for index, (name, path) in enumerate(pending):
                 report(f"Comparing database XML: {name}")
                 database.update(path_inventory(path, name, str(root.resolve())))
+                if (
+                    name not in baseline
+                    and name in disk
+                    and name in database
+                    and name not in invalid
+                    and name in local_folders
+                    and disk[name] != database[name]
+                ):
+                    # Fresh clones have no historical native representation.
+                    # Apply the existing metadata overlay to current XML only
+                    # for this comparison; the baseline remains absent.
+                    try:
+                        # All prefetched exports share a temporary directory;
+                        # never retain their full trees in the baseline index.
+                        with closing(application_children(path)) as native_children:
+                            native_context = next(
+                                (
+                                    node
+                                    for node in native_children
+                                    if node.tag == "APPLICATION"
+                                    and node.get("name", "").casefold() == name
+                                ),
+                                None,
+                            )
+                        if native_context is not None:
+                            disk[name] = signature(
+                                comparison_application(
+                                    local_folders[name], native_context=native_context
+                                )
+                            )
+                    except (ProjectError, ValueError, OSError, etree.XMLSyntaxError):
+                        # Unsupported native details cannot prove equality;
+                        # retain the original source comparison and conflict.
+                        pass
                 report(
                     "Exporting and comparing database applications",
                     index + 1,

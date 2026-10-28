@@ -5,7 +5,7 @@ import inspect
 import json
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -37,7 +37,14 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def content_key(paths: Iterable[Path], root: Path, *, phase: str | None = None) -> str:
+def content_key(
+    paths: Iterable[Path],
+    root: Path,
+    *,
+    phase: str | None = None,
+    digest_sink: dict[str, str] | None = None,
+    verified_digests: Mapping[str, str] | None = None,
+) -> str:
     digest = hashlib.sha256()
     from .operation_progress import report
 
@@ -45,11 +52,25 @@ def content_key(paths: Iterable[Path], root: Path, *, phase: str | None = None) 
     if phase:
         report(phase, 0, len(ordered))
     for index, path in enumerate(ordered, 1):
-        digest.update(str(path.relative_to(root)).encode("utf-8"))
+        relative = path.relative_to(root)
+        name = relative.as_posix()
+        digest.update(str(relative).encode("utf-8"))
         digest.update(b"\0")
-        digest.update(b"symlink" if path.is_symlink() else b"regular")
-        digest.update(file_digest(path).encode("ascii"))
-        if path.relative_to(root).parts[0] == ".openroad" and path.suffix == ".xml":
+        if verified_digests is None:
+            digest.update(b"symlink" if path.is_symlink() else b"regular")
+            value = file_digest(path)
+        else:
+            # A sync fingerprint proves regular source files and their bytes.
+            # Do not independently observe transient bytes while making proofs.
+            digest.update(b"regular")
+            try:
+                value = verified_digests[name]
+            except KeyError as ex:
+                raise OSError("Source is absent from the verified snapshot") from ex
+        if digest_sink is not None:
+            digest_sink[name] = value
+        digest.update(value.encode("ascii"))
+        if relative.parts[0] == ".openroad" and path.suffix == ".xml":
             # Baseline overlay precedence is explicitly ordered by export mtime.
             digest.update(str(path.stat().st_mtime_ns).encode("ascii"))
         digest.update(b"\0")
@@ -482,7 +503,7 @@ def semantic(raw: str) -> object:
     return entries.get(raw) if entries is not None else None
 
 
-def remember_semantic(raw: str, digest: object) -> None:
+def remember_semantic(raw: str, digest: object, *, baseline_read: bool = False) -> None:
     entries = _semantics.get()
     if entries is not None:
         if len(entries) >= 32768:
@@ -490,7 +511,9 @@ def remember_semantic(raw: str, digest: object) -> None:
         entries[raw] = digest
     persistent = _persistent.get()
     if persistent is not None:
-        persistent.bind(digest, fresh=True)
+        # Reusing bytes from a fetched export does not prove that an old
+        # deferred locator belongs to the baseline's newest file generation.
+        persistent.bind(digest, fresh=baseline_read)
 
 
 def digests(value: object) -> dict[str, str] | None:
@@ -505,9 +528,30 @@ def digests(value: object) -> dict[str, str] | None:
     return value
 
 
-def project_key(root: Path) -> str:
+def project_key(
+    root: Path,
+    *,
+    digest_sink: dict[str, str] | None = None,
+    verified_digests: Mapping[str, str] | None = None,
+) -> str:
     """Hash source bytes, including dependencies; never trust size/mtime alone."""
     paths: list[Path] = []
+    if verified_digests is not None:
+        for name in verified_digests:
+            relative = Path(name)
+            if (
+                relative.parts[0] not in {".git", ".openroad"}
+                or (len(relative.parts) == 3 and relative.suffix == ".xml")
+                or name == ".openroad/tracked-applications.json"
+            ):
+                paths.append(root / relative)
+        return content_key(
+            paths,
+            root,
+            phase="Checking source and baseline bytes",
+            digest_sink=digest_sink,
+            verified_digests=verified_digests,
+        )
     for folder, dirs, files in os.walk(root):
         if Path(folder) == root:
             dirs[:] = [name for name in dirs if name not in {".git", ".openroad"}]
@@ -519,14 +563,32 @@ def project_key(root: Path) -> str:
     tracking = cache / "tracked-applications.json"
     if tracking.exists():
         paths.append(tracking)
-    return content_key(paths, root, phase="Checking source and baseline bytes")
+    return content_key(
+        paths, root, phase="Checking source and baseline bytes", digest_sink=digest_sink
+    )
 
 
-def shared_key(root: Path, folder: Path) -> str:
+def shared_key(
+    root: Path, folder: Path, *, verified_digests: Mapping[str, str] | None = None
+) -> str:
     paths: list[Path] = []
     for parent in (root, folder):
         stylesheet = parent / "field_defaults.json"
-        if stylesheet.exists():
+        if (
+            stylesheet.relative_to(root).as_posix() in verified_digests
+            if verified_digests is not None
+            else stylesheet.exists()
+        ):
             paths.append(stylesheet)
-        paths.extend(path for path in (parent / "images").rglob("*") if path.is_file())
-    return content_key(paths, root)
+        if verified_digests is None:
+            paths.extend(
+                path for path in (parent / "images").rglob("*") if path.is_file()
+            )
+        else:
+            prefix = (parent / "images").relative_to(root).parts
+            paths.extend(
+                root / name
+                for name in verified_digests
+                if Path(name).parts[: len(prefix)] == prefix
+            )
+    return content_key(paths, root, verified_digests=verified_digests)

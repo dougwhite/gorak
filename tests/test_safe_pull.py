@@ -562,7 +562,9 @@ def test_baseline_adoption_preserves_catalog_omissions_and_full_absence(
     )
 
 
-@pytest.mark.parametrize("race", ["none", "before", "during"])
+@pytest.mark.parametrize(
+    "race", ["none", "before", "during", "source_aba", "project_aba"]
+)
 def test_priming_uses_only_source_bytes_proven_before_installation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, race: str
 ) -> None:
@@ -590,18 +592,39 @@ def test_priming_uses_only_source_bytes_proven_before_installation(
 
     if race == "before":
         editing()
-    elif race == "during":
+    elif race in {"during", "project_aba"}:
         project_key = comparison_cache.project_key
 
-        def hashing(root: Path) -> str:
-            key = project_key(root)
+        def hashing(root: Path, **kwargs: Any) -> str:
+            if race == "during":
+                key = project_key(root, **kwargs)
+                editing()
+                return key
+            original = source.read_bytes()
             editing()
-            return key
+            try:
+                return project_key(root, **kwargs)
+            finally:
+                source.write_bytes(original)
 
         monkeypatch.setattr(comparison_cache, "project_key", hashing)
+    elif race == "source_aba":
+        source_input_key = sync_plan.source_input_key
+
+        def input_key(root: Path, path: Path, **kwargs: Any) -> str:
+            if path != source:
+                return source_input_key(root, path, **kwargs)
+            original = source.read_bytes()
+            editing()
+            try:
+                return source_input_key(root, path, **kwargs)
+            finally:
+                source.write_bytes(original)
+
+        monkeypatch.setattr(safe_pull, "source_input_key", input_key)
     with comparison_cache.scope():
         primed = safe_pull.prime_matching_baseline(tmp_path, snapshot, changes, plan)
-        assert primed == (race == "none")
+        assert primed == (race in {"none", "source_aba"})
         if race == "none":
 
             def unexpected_reconstruction(path: Path) -> Any:
@@ -613,6 +636,11 @@ def test_priming_uses_only_source_bytes_proven_before_installation(
             current_baseline, _, disk, invalid = sync_plan.local_inventory(tmp_path)
             assert current_baseline == disk
             assert not invalid
+        elif race == "source_aba":
+            editing()
+            current_baseline, _, disk, invalid = sync_plan.local_inventory(tmp_path)
+            assert not invalid
+            assert current_baseline["example/proc"] != disk["example/proc"]
         else:
             assert (
                 comparison_cache.load(
@@ -621,3 +649,54 @@ def test_priming_uses_only_source_bytes_proven_before_installation(
                 )
                 is None
             )
+
+
+def test_first_edit_after_bootstrap_reconstructs_only_the_changed_component(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import export, sync_plan
+    from gorak.domain import ComponentInfo
+    from gorak.xml_writer import document, new_application, new_component
+
+    connection = OpenRoadConnection("local", "node", "db", None)
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    sources = [folder / f"{name}.w4gl" for name in ("first", "second")]
+    for source in sources:
+        source.write_text('[proc4glsource]\ndatatype="integer"\n===\nRETURN 1;')
+    xml = document([new_application(folder), *map(new_component, sources)])
+    for module in (safe_pull, sync_plan):
+        monkeypatch.setattr(
+            module, "backup_application_xml", lambda c, a, p: p.write_bytes(xml)
+        )
+        monkeypatch.setattr(
+            module, "read_applications", lambda c: [Application("example", "", "")]
+        )
+    monkeypatch.setattr(
+        export,
+        "read_components",
+        lambda c, a: [
+            ComponentInfo(a, source.stem, "proc4glsource", "") for source in sources
+        ],
+    )
+    safe_pull.sync_project(connection, load_context(tmp_path))
+    sources[0].write_text(sources[0].read_text().replace("RETURN 1", "RETURN 2"))
+    reconstructed: list[str] = []
+    from gorak.portable_source import comparison_component
+
+    def comparing(source: Path) -> Any:
+        reconstructed.append(source.name)
+        return comparison_component(source)
+
+    def unexpected_application(folder: Path) -> Any:
+        raise AssertionError("Unchanged application metadata already has a proof")
+
+    monkeypatch.setattr(sync_plan, "comparison_component", comparing)
+    monkeypatch.setattr(sync_plan, "comparison_application", unexpected_application)
+    baseline, _, disk, invalid = sync_plan.local_inventory(tmp_path)
+    assert reconstructed == ["first.w4gl"]
+    assert not invalid
+    assert disk["example/first"] != baseline["example/first"]
+    assert disk["example/second"] == baseline["example/second"]

@@ -156,12 +156,16 @@ def comparison_component(path: Path) -> etree._Element:
     return restore_component(path)
 
 
-def comparison_application(folder: Path) -> etree._Element:
+def comparison_application(
+    folder: Path, *, native_context: etree._Element | None = None
+) -> etree._Element:
     from .parser import parse_application_xml
     from .xml_writer import document
 
     desired = restore_application(folder)
     baseline = cached_node(folder, "APPLICATION", folder.name)
+    if baseline is None and native_context is not None:
+        baseline = deepcopy(native_context)
     if baseline is None:
         return desired
     from .source_xml import from_bytes

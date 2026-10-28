@@ -1,6 +1,6 @@
 """Large local source documents, with external entities disabled and size bounds."""
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from io import BytesIO
 from pathlib import Path
 
@@ -69,7 +69,7 @@ def _normalize_streamed_text(root: etree._Element) -> etree._Element:
     return root
 
 
-def application_children(path: Path) -> Iterator[etree._Element]:
+def application_children(path: Path) -> Generator[etree._Element, None, None]:
     """Read a native application a component at a time, retaining XML text/PI.
 
     Callers must exhaust a validation pass before installing any projected source.

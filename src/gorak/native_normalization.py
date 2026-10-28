@@ -103,6 +103,8 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
     # Snapshot traversal before reordering ancestors, which can otherwise skip
     # nested fields in lxml's live iterator.
     for field in list(node.iter()):
+        if len(field) < 2:
+            continue
         if field.tag in {"extension", "taggedvalues", "frmflow"} or opaque_descendant(
             field
         ):

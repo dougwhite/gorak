@@ -34,7 +34,7 @@ from .project import GorakContext, ProjectError
 from .project_lock import project_lock
 from .sync import SyncResult
 from .sync_guard import guard_sync
-from .sync_plan import Change, baseline_inventory
+from .sync_plan import Change, baseline_inventory, source_input_key
 
 
 def file_digest(path: Path) -> str:
@@ -136,18 +136,73 @@ def prime_matching_baseline(
         for change in plan
         if change.disk != "deleted" and change.database != "deleted"
     }
+    baseline_paths: dict[str, list[Path]] = {}
+    for name in expected:
+        relative = Path(name)
+        if (
+            len(relative.parts) == 3
+            and relative.parts[0] == ".openroad"
+            and relative.suffix == ".xml"
+        ):
+            baseline_paths.setdefault(relative.parts[1].casefold(), []).append(
+                root / relative
+            )
+    # This shortcut need not prove historical overlay precedence. A single
+    # full baseline per application has no mtime-dependent source selection.
+    if any(len(paths) != 1 for paths in baseline_paths.values()):
+        return False
     try:
         report("Recording verified local comparison")
         if fingerprint(root) != expected:
             return False
-        key = comparison_cache.project_key(root)
+        key = comparison_cache.project_key(root, verified_digests=expected)
         # Planning's parsed baseline index must not supply superseded XML.
+        raw_baseline: dict[str, str] = {}
         with cached_source_scope():
-            baseline, apps = baseline_inventory(root)
+            baseline, apps = baseline_inventory(
+                root, raw_sink=raw_baseline, expected_digests=expected
+            )
         if set(baseline) != expected_keys:
+            return False
+        if any(app not in baseline for app in baseline_paths):
+            return False
+        component_caches: list[tuple[str, str, dict[str, object]]] = []
+        source_keys: set[str] = set()
+        for manifest in sorted(root.glob("*/app.json")):
+            folder = manifest.parent
+            if folder.name.startswith("."):
+                continue
+            dependency = comparison_cache.shared_key(
+                root, folder, verified_digests=expected
+            )
+            records: dict[str, object] = {}
+            for source in [manifest, *sorted(folder.glob("*.w4gl"))]:
+                application = source == manifest
+                source_key = (
+                    folder.name if application else f"{folder.name}/{source.stem}"
+                ).casefold()
+                if source_key not in baseline or source_key not in raw_baseline:
+                    return False
+                source_keys.add(source_key)
+                records[source.name] = {
+                    "input": source_input_key(
+                        root,
+                        source,
+                        application=application,
+                        baseline_raw=raw_baseline[source_key],
+                        verified_digests=expected,
+                    ),
+                    "signature": baseline[source_key],
+                }
+            component_caches.append(
+                ("components:" + str(folder.resolve()), dependency, records)
+            )
+        if source_keys != expected_keys:
             return False
         if fingerprint(root) != expected or comparison_cache.project_key(root) != key:
             return False
+        for scope, dependency, records in component_caches:
+            comparison_cache.save(scope, dependency, records)
         comparison_cache.save(
             "local:" + str(root.resolve()),
             key,

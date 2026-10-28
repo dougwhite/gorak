@@ -1,6 +1,8 @@
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from types import ModuleType
+from typing import Any
 
 import pytest
 from lxml import etree
@@ -78,6 +80,136 @@ def test_xml_cache_preserves_hashes_and_rechecks_bytes(
     assert sync_plan.path_inventory(path, "app", "test") != first
 
 
+def test_xml_that_changes_during_read_is_refused_before_returning_an_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak.portable_source import read_document
+    from gorak.project import ProjectError
+
+    path = tmp_path / "app.xml"
+    path.write_text(
+        '<OPENROAD><COMPONENT name="proc"><script>one</script></COMPONENT></OPENROAD>'
+    )
+    initial_key = comparison_cache.file_digest(path)
+    original = read_document
+
+    def changing(source: Path) -> etree._Element:
+        result = original(source)
+        source.write_bytes(source.read_bytes().replace(b"one", b"two"))
+        return result
+
+    monkeypatch.setattr(sync_plan, "read_document", changing)
+    with pytest.raises(ProjectError, match="Native XML changed during comparison"):
+        sync_plan.path_inventory(path, "app", "test")
+    assert comparison_cache.load("xml:test:app", initial_key) is None
+    assert comparison_cache.load("native-components:test:app", "latest") is None
+
+
+@pytest.mark.parametrize("memo_kind", ["components", "xml"])
+def test_transient_native_read_cannot_prime_a_persisted_false_source_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memo_kind: str
+) -> None:
+    from gorak import safe_pull
+    from gorak.portable_source import read_document
+    from gorak.source_xml import from_bytes
+    from gorak.xml_writer import document, new_application, new_component
+
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    source = folder / "proc.w4gl"
+    source.write_text('[proc4glsource]\ndatatype="integer"\n===\nRETURN 1;')
+    initial = document([new_application(folder), new_component(source)])
+    transient = initial.replace(b"RETURN 1;", b"RETURN 2;")
+    snapshot = safe_pull.fingerprint(tmp_path)
+    path = tmp_path / ".openroad/example/example.xml"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(initial)
+    stamp = path.stat()
+    plan = [
+        sync_plan.Change("example", "converged", "added", "added"),
+        sync_plan.Change("example/proc", "converged", "added", "added"),
+    ]
+    original_read = read_document
+    original_inventory = sync_plan.baseline_inventory
+    original_load = comparison_cache.load
+
+    def restore() -> None:
+        path.write_bytes(initial)
+        os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+
+    def restoring(source: Path) -> etree._Element:
+        result = original_read(source)
+        if source == path:
+            restore()
+        return result
+
+    def changing(*args: Any, **kwargs: Any) -> tuple[dict[str, object], set[str]]:
+        path.write_bytes(transient)
+        try:
+            return original_inventory(*args, **kwargs)
+        finally:
+            restore()
+
+    def loading(scope: str, key: str) -> dict[str, object] | None:
+        result = original_load(scope, key)
+        if scope.startswith("xml:"):
+            restore()
+        return result
+
+    token = comparison_cache._entries.set(None)
+    try:
+        with comparison_cache.project_scope(tmp_path):
+            # Previously normalized component memos have no deferred-file
+            # binding, so that independent check cannot catch this race.
+            if memo_kind == "components":
+                memo: dict[str, object] = {}
+                sync_plan.xml_inventory(
+                    from_bytes(transient), "example", next_memo=memo
+                )
+                comparison_cache.save(
+                    "native-components:" + str(tmp_path.resolve()) + ":example",
+                    "latest",
+                    {"entries": memo},
+                )
+            else:
+                path.write_bytes(transient)
+                sync_plan.path_inventory(path, "example", str(tmp_path.resolve()))
+                restore()
+            with monkeypatch.context() as race:
+                race.setattr(sync_plan, "read_document", restoring)
+                race.setattr(safe_pull, "baseline_inventory", changing)
+                if memo_kind == "xml":
+                    race.setattr(comparison_cache, "load", loading)
+                assert not safe_pull.prime_matching_baseline(
+                    tmp_path, snapshot, {path: initial}, plan
+                )
+        expected = sync_plan.xml_inventory(from_bytes(initial), "example")
+        baseline, _, disk, invalid = sync_plan.local_inventory(tmp_path)
+        assert not invalid
+        assert baseline == disk == expected
+        assert path.read_bytes() == initial
+    finally:
+        comparison_cache._entries.reset(token)
+
+
+def test_verified_baseline_inventory_rejects_unexpected_xml_paths(
+    tmp_path: Path,
+) -> None:
+    from gorak.project import ProjectError
+
+    path = tmp_path / ".openroad/example/example.xml"
+    path.parent.mkdir(parents=True)
+    path.write_text('<OPENROAD><APPLICATION name="example"/></OPENROAD>')
+    expected = {
+        path.relative_to(tmp_path).as_posix(): comparison_cache.file_digest(path)
+    }
+    (path.parent / "later.xml").write_bytes(path.read_bytes())
+
+    with pytest.raises(ProjectError, match="Native XML changed during comparison"):
+        sync_plan.baseline_inventory(tmp_path, expected_digests=expected)
+
+
 def test_local_cache_invalidates_source_and_dependencies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -144,6 +276,80 @@ def test_changes_during_reconstruction_are_not_cached(
     monkeypatch.setattr(sync_plan, "comparison_component", changing)
     sync_plan.local_inventory(root)
     assert comparison_cache.load("local:" + str(root.resolve()), key) is None
+
+
+@pytest.mark.parametrize("changed", ["source", "image"])
+def test_transient_key_bytes_cannot_hide_a_later_edit_in_persisted_memos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str
+) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from gorak.xml_writer import document, new_application, new_component
+
+    folder = tmp_path / "example"
+    folder.mkdir()
+    manifest = folder / "app.json"
+    manifest.write_text("{}")
+    module: ModuleType
+    if changed == "source":
+        source = folder / "proc.w4gl"
+        original_bytes = b'[proc4glsource]\ndatatype="integer"\n===\nRETURN 1;'
+        edited_bytes = original_bytes.replace(b"RETURN 1", b"RETURN 2")
+        source.write_bytes(original_bytes)
+        nodes = [new_application(folder), new_component(source)]
+        target_key = "example/proc"
+        module = sync_plan
+        helper = "source_input_key"
+    else:
+        source = folder / "images/icon.png"
+        source.parent.mkdir()
+        images = []
+        for color in ("red", "blue"):
+            output = BytesIO()
+            Image.new("RGB", (1, 1), color).save(output, format="PNG")
+            images.append(output.getvalue())
+        original_bytes, edited_bytes = images
+        source.write_bytes(original_bytes)
+        manifest.write_text('{"window_icon":{"src":"images/icon.png"}}')
+        nodes = [new_application(folder)]
+        target_key = "example"
+        module = comparison_cache
+        helper = "shared_key"
+    baseline = tmp_path / ".openroad/example/example.xml"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_bytes(document(nodes))
+    original: Callable[..., str] = getattr(module, helper)
+
+    def transient(*args: Any, **kwargs: Any) -> str:
+        if kwargs.get("verified_digests") is not None or (
+            changed == "source" and args[1] != source
+        ):
+            return original(*args, **kwargs)
+        source.write_bytes(edited_bytes)
+        try:
+            return original(*args, **kwargs)
+        finally:
+            source.write_bytes(original_bytes)
+
+    # Exercise separate commands loading the actual persisted JSON metadata.
+    token = comparison_cache._entries.set(None)
+    try:
+        monkeypatch.setattr(module, helper, transient)
+        native, _, disk, invalid = sync_plan.local_inventory(tmp_path)
+        assert not invalid
+        assert native[target_key] == disk[target_key]
+        assert comparison_cache.storage_path(tmp_path).exists()
+        monkeypatch.setattr(module, helper, original)
+        source.write_bytes(edited_bytes)
+
+        native, _, disk, invalid = sync_plan.local_inventory(tmp_path)
+
+        assert not invalid
+        assert native[target_key] != disk[target_key]
+    finally:
+        comparison_cache._entries.reset(token)
 
 
 def test_baseline_timestamp_precedence_invalidates_inventory(tmp_path: Path) -> None:

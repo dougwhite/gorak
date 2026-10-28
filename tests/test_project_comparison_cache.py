@@ -122,6 +122,57 @@ def test_new_baseline_generation_is_persisted_but_stale_refs_are_not(
         assert result["signature"] == after
 
 
+def test_remembering_fetched_xml_does_not_rebind_a_replaced_baseline(
+    tmp_path: Path,
+) -> None:
+    with cache.project_scope(tmp_path):
+        original = deferred(tmp_path)
+        cache.save("native", "input", {"signature": original})
+    with cache.project_scope(tmp_path):
+        loaded = cache.load("native", "input")
+        assert loaded is not None
+        stale = loaded["signature"]
+        assert isinstance(stale, sync_plan.DeferredDigest)
+        stale.path.write_bytes(
+            stale.path.read_bytes().replace(b"RETURN 1;", b"RETURN 2;")
+        )
+        cache.file_digest(stale.path)
+        # A fetched database export can still contain the old component bytes.
+        cache.remember_semantic(stale.raw, stale)
+        cache.save("native", "input", {"signature": stale})
+    with cache.project_scope(tmp_path):
+        assert cache.load("native", "input") is None
+
+
+def test_reading_unchanged_component_in_new_baseline_rebinds_its_generation(
+    tmp_path: Path,
+) -> None:
+    with cache.project_scope(tmp_path):
+        original = deferred(tmp_path)
+        cache.save("native", "input", {"signature": original})
+    with cache.project_scope(tmp_path):
+        loaded = cache.load("native", "input")
+        assert loaded is not None
+        original.path.write_bytes(
+            original.path.read_bytes().replace(
+                b"</OPENROAD>", b'<COMPONENT name="new"/></OPENROAD>'
+            )
+        )
+        # Reading the exact component from the new baseline establishes its
+        # locator against the new file bytes, even though the raw hash matches.
+        inventory = sync_plan.path_inventory(
+            original.path, "example", "scope", defer_path=original.path
+        )
+        cache.save("native", "input", {"signature": inventory["example/calculate"]})
+    with cache.project_scope(tmp_path):
+        result = cache.load("native", "input")
+        assert result is not None
+        restored = result["signature"]
+        assert isinstance(restored, sync_plan.DeferredDigest)
+        assert restored.raw == original.raw
+        assert sync_plan.semantic_hash(restored) == sync_plan.semantic_hash(original)
+
+
 def test_resolved_hashes_remain_reusable_without_original_xml(tmp_path: Path) -> None:
     with cache.project_scope(tmp_path):
         value = deferred(tmp_path)
