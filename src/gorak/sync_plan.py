@@ -17,6 +17,7 @@ from .native_normalization import signature as native_signature
 from .native_styles import resolution_scope, validation_scope
 from .operation_progress import report
 from .portable_source import (
+    cached_node_at,
     cached_source_scope,
     comparison_application,
     comparison_component,
@@ -29,10 +30,61 @@ class SemanticDigest(str):
     """An already hashed normalized signature, distinct from raw source strings."""
 
 
-def signature(node: etree._Element) -> SemanticDigest:
-    # Release the expanded XML signature after each component instead of retaining
-    # its nested Python containers for the entire project's three inventories.
-    return SemanticDigest(semantic_hash(native_signature(node, pixel_geometry=True)))
+def raw_hash(node: etree._Element) -> str:
+    return hashlib.sha256(
+        etree.tostring(node, encoding="utf-8", with_tail=False)
+    ).hexdigest()
+
+
+@dataclass(eq=False)
+class DeferredDigest:
+    """Compare native bytes first; normalize only a component that differs."""
+
+    raw: str
+    path: Path
+    tag: str
+    name: str
+    digest: str | None = None
+
+    def resolve(self) -> str:
+        if self.digest is None:
+            try:
+                node = cached_node_at(self.path, self.tag, self.name)
+            except OSError as ex:
+                raise ProjectError("Baseline changed during comparison; retry") from ex
+            if node is None or raw_hash(node) != self.raw:
+                raise ProjectError("Baseline changed during comparison; retry")
+            self.digest = semantic_hash(native_signature(node, pixel_geometry=True))
+        return self.digest
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, DeferredDigest):
+            if self.raw == other.raw:
+                return True
+            return self.resolve() == other.resolve()
+        if isinstance(other, SemanticDigest):
+            return self.resolve() == str(other)
+        return False
+
+
+def inventory_values(value: object) -> dict[str, object] | None:
+    if isinstance(value, dict) and all(
+        isinstance(key, str) and isinstance(item, (SemanticDigest, DeferredDigest))
+        for key, item in value.items()
+    ):
+        return value
+    return None
+
+
+def signature(node: etree._Element) -> object:
+    # Exact bytes prove equality before applying the more expensive equivalences.
+    raw = raw_hash(node)
+    cached = comparison_cache.semantic(raw)
+    if isinstance(cached, (SemanticDigest, DeferredDigest)):
+        return cached
+    digest = SemanticDigest(semantic_hash(native_signature(node, pixel_geometry=True)))
+    comparison_cache.remember_semantic(raw, digest)
+    return digest
 
 
 Action = Literal["unchanged", "converged", "pull", "push", "conflict"]
@@ -77,19 +129,31 @@ def xml_inventory(
     app: str,
     *,
     raw_sink: dict[str, str] | None = None,
-    memo: dict[str, str] | None = None,
-    next_memo: dict[str, str] | None = None,
+    memo: dict[str, object] | None = None,
+    next_memo: dict[str, object] | None = None,
+    defer_path: Path | None = None,
 ) -> dict[str, object]:
     result: dict[str, object] = {}
 
-    def compare_node(node: etree._Element, key: str) -> SemanticDigest:
-        raw = hashlib.sha256(
-            etree.tostring(node, encoding="utf-8", with_tail=False)
-        ).hexdigest()
+    def compare_node(node: etree._Element, key: str) -> object:
+        raw = raw_hash(node)
         if raw_sink is not None:
             raw_sink[key] = raw
         cached = memo.get(raw) if memo is not None else None
-        value = SemanticDigest(cached) if cached is not None else signature(node)
+        if isinstance(cached, (SemanticDigest, DeferredDigest)):
+            value: object = cached
+            if isinstance(cached, DeferredDigest) and defer_path is not None:
+                value = DeferredDigest(
+                    raw, defer_path, cached.tag, cached.name, cached.digest
+                )
+        elif defer_path is not None and not (
+            any(len(flow) or flow.attrib for flow in node.findall("frmflow"))
+            or node.xpath(".//processing-instruction() | .//script[*]")
+        ):
+            value = DeferredDigest(raw, defer_path, str(node.tag), node.get("name", ""))
+        else:
+            value = signature(node)
+        comparison_cache.remember_semantic(raw, value)
         if next_memo is not None:
             next_memo[raw] = value
         return value
@@ -112,34 +176,51 @@ def xml_inventory(
 
 
 def path_inventory(
-    path: Path, app: str, scope: str, *, raw_sink: dict[str, str] | None = None
+    path: Path,
+    app: str,
+    scope: str,
+    *,
+    raw_sink: dict[str, str] | None = None,
+    defer_path: Path | None = None,
 ) -> dict[str, object]:
     """Reuse normalization only for byte-identical XML under this implementation."""
     key = comparison_cache.file_digest(path)
     cache_scope = "xml:" + scope + ":" + app
     saved = comparison_cache.load(cache_scope, key)
-    cached = (
-        comparison_cache.digests(saved.get("inventory")) if saved is not None else None
-    )
+    cached = inventory_values(saved.get("inventory")) if saved is not None else None
     raw_cached = (
         comparison_cache.digests(saved.get("raw")) if saved is not None else None
     )
     if cached is not None and (raw_sink is None or raw_cached is not None):
+        if defer_path is not None:
+            cached = {
+                name: DeferredDigest(
+                    value.raw, defer_path, value.tag, value.name, value.digest
+                )
+                if isinstance(value, DeferredDigest)
+                else value
+                for name, value in cached.items()
+            }
+        if raw_cached is not None:
+            for name, raw_digest in raw_cached.items():
+                if name in cached:
+                    comparison_cache.remember_semantic(raw_digest, cached[name])
         if raw_sink is not None and raw_cached is not None:
             raw_sink.update(raw_cached)
         report(f"Reusing byte-identical XML comparison: {app}")
-        return {key: SemanticDigest(value) for key, value in cached.items()}
+        return cached
     memo_scope = "native-components:" + scope + ":" + app.casefold()
     previous = comparison_cache.load(memo_scope, "latest")
-    memo = (
-        comparison_cache.digests(previous.get("entries"))
-        if previous is not None
-        else None
-    )
+    memo = inventory_values(previous.get("entries")) if previous is not None else None
     raw: dict[str, str] = {}
-    next_memo: dict[str, str] = {}
+    next_memo: dict[str, object] = {}
     inventory = xml_inventory(
-        read_document(path), app, raw_sink=raw, memo=memo, next_memo=next_memo
+        read_document(path),
+        app,
+        raw_sink=raw,
+        memo=memo,
+        next_memo=next_memo,
+        defer_path=defer_path,
     )
     if raw_sink is not None:
         raw_sink.update(raw)
@@ -181,7 +262,11 @@ def baseline_inventory(
             report(f"Reading baseline XML: {directory.name}")
             raw: dict[str, str] = {}
             inventory = path_inventory(
-                path, directory.name, str(root.resolve()), raw_sink=raw
+                path,
+                directory.name,
+                str(root.resolve()),
+                raw_sink=raw,
+                defer_path=path if comparison_cache.active() else None,
             )
 
             if directory.name.casefold() in inventory:
@@ -212,7 +297,7 @@ def compare_source(
     *,
     application: bool = False,
     baseline_raw: str | None = None,
-) -> SemanticDigest:
+) -> object:
     inputs = [source]
     if not application:
         inputs.extend(
@@ -233,14 +318,25 @@ def compare_source(
         ).hexdigest()
     except OSError:
         input_key = None
-    record = comparison_cache.digests(records.get(source.name))
+    record = records.get(source.name)
+    result: object = None
     if (
-        record is not None
+        isinstance(record, dict)
         and record.get("input") == input_key
-        and "signature" in record
+        and isinstance(record.get("signature"), (SemanticDigest, DeferredDigest))
     ):
-        result = SemanticDigest(record["signature"])
-    else:
+        result = record["signature"]
+        if isinstance(result, DeferredDigest):
+            # The same native component may now live in a newer full-app XML
+            # instead of its old component file. Baseline inventory has seeded
+            # the current locator; never retain an obsolete memo's file path.
+            current = comparison_cache.semantic(result.raw)
+            result = (
+                current
+                if isinstance(current, (SemanticDigest, DeferredDigest))
+                else None
+            )
+    if result is None:
         result = signature(
             comparison_application(folder)
             if application
@@ -251,6 +347,9 @@ def compare_source(
     return result
 
 
+@comparison_cache.project_cached
+@comparison_cache.scope()
+@cached_source_scope()
 @validation_scope()
 @resolution_scope()
 def local_inventory(
@@ -264,8 +363,8 @@ def local_inventory(
         cache_key = None
     saved = comparison_cache.load(scope, cache_key) if cache_key is not None else None
     if saved is not None:
-        baseline_cached = comparison_cache.digests(saved.get("baseline"))
-        disk_cached = comparison_cache.digests(saved.get("disk"))
+        baseline_cached = inventory_values(saved.get("baseline"))
+        disk_cached = inventory_values(saved.get("disk"))
         apps_cached = saved.get("apps")
         if (
             baseline_cached is not None
@@ -275,9 +374,9 @@ def local_inventory(
         ):
             report("Reusing verified local comparison", 1, 1)
             return (
-                {key: SemanticDigest(value) for key, value in baseline_cached.items()},
+                baseline_cached,
                 set(apps_cached),
-                {key: SemanticDigest(value) for key, value in disk_cached.items()},
+                disk_cached,
                 {},
             )
     raw_baseline: dict[str, str] = {}
@@ -367,6 +466,8 @@ def local_inventory(
     return baseline, apps, disk, invalid
 
 
+@comparison_cache.project_cached
+@comparison_cache.scope()
 @cached_source_scope()
 def plan_project(
     connection: OpenRoadConnection,
@@ -377,7 +478,7 @@ def plan_project(
     database_hashes: dict[str, str] | None = None,
     inventory_sink: dict[str, str] | None = None,
 ) -> list[Change]:
-    """Inspect disk and fresh XML without writing project state or database source."""
+    """Compare source with fresh XML, reusing verified comparison metadata."""
     if capture_dir is not None:
         capture_dir.mkdir(parents=True, exist_ok=False)
     baseline, apps, disk, invalid = local_inventory(root)
@@ -461,6 +562,7 @@ def format_plan(changes: list[Change]) -> list[dict[str, str]]:
     return [asdict(change) for change in changes if change.action != "unchanged"]
 
 
+@cached_source_scope()
 def semantic_hashes(inventory: dict[str, object]) -> dict[str, str]:
     """Compact exact semantic signatures without retaining XML/source in checkpoints."""
     return {key: semantic_hash(value) for key, value in inventory.items()}
@@ -469,6 +571,8 @@ def semantic_hashes(inventory: dict[str, object]) -> dict[str, str]:
 def semantic_hash(value: object) -> str:
     if isinstance(value, SemanticDigest):
         return str(value)
+    if isinstance(value, DeferredDigest):
+        return value.resolve()
     return hashlib.sha256(
         json.dumps(
             value,

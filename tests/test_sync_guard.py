@@ -71,3 +71,25 @@ def test_bind_requires_database_to_match_baseline(
 def test_dry_run_never_creates_binding(tmp_path: Path) -> None:
     sync_guard.guard_sync(connection(), tmp_path, push=True, dry_run=True)
     assert not (tmp_path / ".openroad").exists()
+
+
+def test_guard_forwards_optional_planning_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    captures: list[Path | None] = []
+
+    def planning(
+        c: OpenRoadConnection, root: Path, *, capture_dir: Path | None = None
+    ) -> list[Change]:
+        captures.append(capture_dir)
+        return []
+
+    monkeypatch.setattr(sync_guard, "plan_project", planning)
+    destination = tmp_path / "capture"
+    sync_guard.guard_sync(
+        connection(), tmp_path, push=False, dry_run=True, capture_dir=destination
+    )
+    assert captures == [destination]

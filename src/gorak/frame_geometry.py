@@ -33,10 +33,18 @@ def pixel(value: str) -> int:
 def geometry_signature(node: etree._Element) -> object:
     from .importer import signature
 
+    if node.get(f"{{{NS['xsi']}}}type") not in WML_COMPONENT_TYPES:
+        return signature(node)
     copied = deepcopy(node)
-    if copied.get(f"{{{NS['xsi']}}}type") not in WML_COMPONENT_TYPES:
-        return signature(copied)
-    for section in copied:
+    _normalize_geometry(copied)
+    return signature(copied)
+
+
+def _normalize_geometry(node: etree._Element) -> None:
+    """Normalize an owned comparison tree without taking another full copy."""
+    if node.get(f"{{{NS['xsi']}}}type") not in WML_COMPONENT_TYPES:
+        return
+    for section in node:
         if section.tag not in FRAME_MARKUP_CHILDREN | FIELD_TEMPLATE_CHILDREN:
             continue
         for child in list(section.iter()):
@@ -63,7 +71,6 @@ def geometry_signature(node: etree._Element) -> object:
                 parent.remove(child)
             else:
                 child.text = str(coordinate)
-    return signature(copied)
 
 
 def normalized_markup(expected: etree._Element, actual: etree._Element) -> str | None:

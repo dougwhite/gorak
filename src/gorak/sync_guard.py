@@ -5,6 +5,7 @@ import socket
 from pathlib import Path
 from uuid import uuid4
 
+from . import comparison_cache
 from .connection import OpenRoadConnection
 from .project import ProjectError
 from .sync_plan import Change, baseline_inventory, plan_project
@@ -101,6 +102,8 @@ def can_bind_fresh_export(connection: OpenRoadConnection, root: Path) -> bool:
     )
 
 
+@comparison_cache.project_cached
+@comparison_cache.scope()
 def guard_sync(
     connection: OpenRoadConnection,
     root: Path,
@@ -110,6 +113,7 @@ def guard_sync(
     dry_run: bool = False,
     lock_held: bool = False,
     force: bool = False,
+    capture_dir: Path | None = None,
 ) -> list[Change]:
     status = binding_status(connection, root, recover_pull=force)
     baseline, _ = baseline_inventory(root)
@@ -118,8 +122,14 @@ def guard_sync(
         from .revision_checkpoint import revision_plan
 
         changes, _ = revision_plan(connection, root, lock_held=lock_held)
+    elif has_sources or baseline:
+        changes = (
+            plan_project(connection, root, capture_dir=capture_dir)
+            if capture_dir is not None
+            else plan_project(connection, root)
+        )
     else:
-        changes = plan_project(connection, root) if has_sources or baseline else []
+        changes = []
     if bind:
         changed = [c.key for c in changes if c.database != "unchanged"]
         if changed:

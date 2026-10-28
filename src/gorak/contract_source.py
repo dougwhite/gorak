@@ -220,9 +220,12 @@ def equivalent(
         from .frame_geometry import ZERO_DIMENSIONS
 
         for field in root.iter():
+            dimensions = ZERO_DIMENSIONS.get(field.get(XSI, ""), ())
+            if not dimensions:
+                continue
             if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
                 continue
-            for dimension in ZERO_DIMENSIONS.get(field.get(XSI, ""), ()):
+            for dimension in dimensions:
                 scalar = field.find(dimension)
                 if scalar is not None and text_value(scalar) == "0":
                     field.remove(scalar)
@@ -256,13 +259,21 @@ def equivalent(
             and encode(lstyle) != encode(rstyle)
         ):
             return False
-    from dataclasses import replace
+    from .domain import Component
+
+    def metadata(node: etree._Element) -> Component:
+        parsed = parse_component_node(node, project_markup=False)
+        # Unknown palette types can fail while the legacy projection selects
+        # defaults. Keep that validation path for unrecognized native layouts.
+        if any(
+            style["type"] not in shapes()
+            for style in parsed.props.get("fielddefaults", {}).get("field_styles", [])
+        ):
+            parse_component_node(node)
+        return parsed
 
     # Attribute order in serialized WML is immaterial; compare its structure below.
-    if replace(parse_component_node(left), markup=None) != replace(
-        parse_component_node(right), markup=None
-    ):
-        return False
+    left_metadata, right_metadata = metadata(left), metadata(right)
     # Compare explicit field state, allowing only the WML contract's implicit
     # DV_SYSTEM mode and the parser's bitmap whitespace normalization.
     empty = MarkupDefaultsIndex({}, {}, explicit=exact_styles)
@@ -275,4 +286,6 @@ def equivalent(
             for element in frame_markup_elements(child, empty)
         ]
 
-    return effective_markup(left) == effective_markup(right)
+    # Project both layouts even if metadata differs, retaining layout validation.
+    left_markup, right_markup = effective_markup(left), effective_markup(right)
+    return left_metadata == right_metadata and left_markup == right_markup

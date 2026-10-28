@@ -53,7 +53,7 @@ def setup(
     return OpenRoadConnection("local", "node", "db", None)
 
 
-def test_status_is_read_only_and_detects_conflicting_scripts(
+def test_status_preserves_source_and_detects_conflicting_scripts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     connection = setup(tmp_path, monkeypatch, xml("RETURN 3;"))
@@ -79,7 +79,7 @@ def test_status_is_read_only_and_detects_conflicting_scripts(
     assert before == {
         p.relative_to(tmp_path): p.read_bytes()
         for p in tmp_path.rglob("*")
-        if p.is_file()
+        if p.is_file() and p != tmp_path / ".openroad/comparison-cache.json"
     }
 
 
@@ -206,7 +206,7 @@ def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
 ) -> None:
     import json
 
-    from gorak import cli
+    import gorak.cli as cli
 
     setup(tmp_path, monkeypatch, xml())
     (tmp_path / "gorak.json").write_text('{"name":"example"}')
@@ -221,17 +221,13 @@ def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
     assert "Comparing local source: 100%" in output.err
 
 
-def test_warm_status_still_exports_database_and_detects_remote_edits(
+def test_reused_local_comparison_still_exports_database_and_detects_remote_edits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(
-        "GORAK_COMPARISON_CACHE_DIR", str(tmp_path.parent / (tmp_path.name + "-cache"))
-    )
+    from gorak.comparison_cache import scope
+
     connection = setup(tmp_path, monkeypatch, xml())
-    assert all(
-        change.action == "unchanged"
-        for change in sync_plan.plan_project(connection, tmp_path)
-    )
+
     calls: list[str] = []
 
     def exporting(connection: object, app: str, path: Path) -> None:
@@ -241,9 +237,14 @@ def test_warm_status_still_exports_database_and_detects_remote_edits(
     def reconstructing(path: Path) -> object:
         raise AssertionError("Unchanged local source should reuse its comparison")
 
-    monkeypatch.setattr(sync_plan, "backup_application_xml", exporting)
-    monkeypatch.setattr(sync_plan, "comparison_component", reconstructing)
-    changes = sync_plan.plan_project(connection, tmp_path)
+    with scope():
+        assert all(
+            change.action == "unchanged"
+            for change in sync_plan.plan_project(connection, tmp_path)
+        )
+        monkeypatch.setattr(sync_plan, "backup_application_xml", exporting)
+        monkeypatch.setattr(sync_plan, "comparison_component", reconstructing)
+        changes = sync_plan.plan_project(connection, tmp_path)
     assert calls == ["example"]
     assert (
         next(change for change in changes if change.key == "example/proc").action

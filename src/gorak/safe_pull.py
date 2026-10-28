@@ -2,12 +2,17 @@
 
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
 from shutil import copy2
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+from lxml import etree
+
+from . import comparison_cache
 from .connection import OpenRoadConnection
 from .export import (
     application_export_paths,
@@ -24,7 +29,7 @@ from .export_failures import (
 from .export_pipeline import prefetched_exports
 from .importer import signature
 from .operation_progress import report
-from .portable_source import read_document
+from .portable_source import cached_source_scope, read_document
 from .project import GorakContext, ProjectError
 from .project_lock import project_lock
 from .sync import SyncResult
@@ -32,34 +37,127 @@ from .sync_guard import guard_sync
 from .sync_plan import Change, baseline_inventory
 
 
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def same_xml(first: Path, second: Path) -> bool:
+    # Staging has already parsed the exported XML. Identical bytes need no second
+    # tree comparison; differing serialization still uses the complete comparison.
+    return file_digest(first) == file_digest(second) or signature(
+        read_document(first)
+    ) == signature(read_document(second))
+
+
+def matching_native_inventory(
+    path: Path, app: str, expected: set[str], catalog: set[str]
+) -> int | None:
+    """Validate complete captured XML before adopting it without source conversion."""
+    from .source_xml import application_children
+
+    keys: set[str] = set()
+    for node in application_children(path):
+        if node.tag == "APPLICATION":
+            key = app
+        else:
+            name = node.get("name")
+            if not name:
+                raise ProjectError("Missing or duplicate exported component names")
+            key = f"{app}/{name}".casefold()
+        if key in keys:
+            raise ProjectError("Missing or duplicate exported component names")
+        keys.add(key)
+    if app not in keys:
+        raise ProjectError("Expected one exported application")
+    if keys != expected or not catalog.issubset(keys):
+        return None
+    return len(keys) - 1
+
+
 def fingerprint(root: Path) -> dict[str, str]:
     result = {}
-    for path in root.rglob("*"):
-        relative = path.relative_to(root)
-        if relative.parts[0] in {".git", ".openroad"}:
-            continue
-        if path.is_symlink():
-            raise ProjectError(
-                f"Sync does not support symlinked project source: {relative}"
-            )
-        if path.is_file():
-            result[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    for directory, directories, files in os.walk(root):
+        folder = Path(directory)
+        if folder == root:
+            directories[:] = [
+                name for name in directories if name not in {".git", ".openroad"}
+            ]
+            files = [name for name in files if name not in {".git", ".openroad"}]
+        for name in directories + files:
+            path = folder / name
+            relative = path.relative_to(root)
+            if path.is_symlink():
+                raise ProjectError(
+                    f"Sync does not support symlinked project source: {relative}"
+                )
+            if path.is_file():
+                result[relative.as_posix()] = file_digest(path)
     for path in (root / ".openroad").glob("*/*"):
         if not path.is_file() or not (
             path.suffix == ".xml" or path.name.endswith(".receipt.json")
         ):
             continue
         if path.parent.name not in {"pulls", "pushes", "imports", "runs"}:
-            result[path.relative_to(root).as_posix()] = hashlib.sha256(
-                path.read_bytes()
-            ).hexdigest()
+            result[path.relative_to(root).as_posix()] = file_digest(path)
     for name in ["sync-target.json", "tracked-applications.json"]:
         path = root / ".openroad" / name
         if path.exists():
-            result[path.relative_to(root).as_posix()] = hashlib.sha256(
-                path.read_bytes()
-            ).hexdigest()
+            result[path.relative_to(root).as_posix()] = file_digest(path)
     return result
+
+
+def prime_matching_baseline(
+    root: Path,
+    snapshot: dict[str, str],
+    changes: dict[Path, bytes | None],
+    plan: list[Change],
+) -> bool:
+    """Retain proven source equality only if the installed bytes still match it."""
+    if any(
+        change.action not in {"unchanged", "converged"}
+        or change.reason
+        or change.disk == "invalid"
+        for change in plan
+    ) or any(path.relative_to(root).parts[0] != ".openroad" for path in changes):
+        return False
+    expected = dict(snapshot)
+    for path, content in changes.items():
+        key = path.relative_to(root).as_posix()
+        if content is None:
+            expected.pop(key, None)
+        else:
+            expected[key] = hashlib.sha256(content).hexdigest()
+    expected_keys = {
+        change.key
+        for change in plan
+        if change.disk != "deleted" and change.database != "deleted"
+    }
+    try:
+        report("Recording verified local comparison")
+        if fingerprint(root) != expected:
+            return False
+        key = comparison_cache.project_key(root)
+        # Planning's parsed baseline index must not supply superseded XML.
+        with cached_source_scope():
+            baseline, apps = baseline_inventory(root)
+        if set(baseline) != expected_keys:
+            return False
+        if fingerprint(root) != expected or comparison_cache.project_key(root) != key:
+            return False
+        comparison_cache.save(
+            "local:" + str(root.resolve()),
+            key,
+            {"baseline": baseline, "disk": baseline, "apps": sorted(apps)},
+        )
+        return True
+    except (OSError, ValueError, ProjectError, etree.XMLSyntaxError):
+        # Comparison metadata is disposable; a concurrent edit must not be
+        # certified or turn a completed source installation into a failed pull.
+        return False
 
 
 def apply_files(
@@ -133,6 +231,8 @@ def sync_project(
         return _sync_project(connection, root, progress)
 
 
+@comparison_cache.project_cached
+@comparison_cache.scope()
 def _sync_project(
     connection: OpenRoadConnection,
     root: Path,
@@ -149,20 +249,25 @@ def _sync_project(
         raise ProjectError(f"Another pull may be active; inspect {lock}") from ex
     operation = directory / uuid4().hex
     try:
-        with handle:
+        with handle, TemporaryDirectory(prefix="gorak-sync-") as temporary:
             handle.write(str(operation))
             handle.flush()
+            capture_dir = Path(temporary) / "planning"
             report("Checking local files before pull")
             before = fingerprint(root)
             if take_database:
                 from .sync_plan import plan_project
 
-                plan = plan_project(connection, root)
+                plan = plan_project(connection, root, capture_dir=capture_dir)
             else:
-                plan = guard_sync(connection, root, push=False, lock_held=True)
+                plan = guard_sync(
+                    connection,
+                    root,
+                    push=False,
+                    lock_held=True,
+                    capture_dir=capture_dir,
+                )
             # guard_sync can establish a binding only for a previously empty cache.
-            if set(before) - fingerprint(root).keys():
-                raise ProjectError("Project changed while planning pull")
             snapshot = fingerprint(root)
             if (set(snapshot) - set(before) - {".openroad/sync-target.json"}) or any(
                 snapshot.get(key) != value for key, value in before.items()
@@ -185,10 +290,13 @@ def _sync_project(
             from .export import read_components
 
             planned = {change.key for change in plan}
+            catalogs: dict[str, set[str]] = {}
             report("Checking database component catalogs")
             for app in sorted(names.keys() & available.keys()):
+                catalog = catalogs[app] = set()
                 for catalog_component in read_components(connection, available[app]):
                     key = f"{app}/{catalog_component.name}".casefold()
+                    catalog.add(key)
                     if key not in baseline and key not in planned:
                         plan.append(Change(key, "pull", "unchanged", "added"))
                         planned.add(key)
@@ -204,23 +312,49 @@ def _sync_project(
             stage.mkdir()
             staged_xml: dict[str, Path] = {}
             changes: dict[Path, bytes | None] = {}
-            defaults = root / "field_defaults.json"
-            if defaults.exists():
-                copy2(defaults, stage / defaults.name)
-            from .image_assets import source_files
-
-            for asset in source_files(root):
-                target = stage / asset.relative_to(root)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                copy2(asset, target)
+            shared_assets_staged = False
             exported_count = 0
             failures: list[ExportFailure] = []
             app_failures: dict[str, list[ExportFailure]] = {}
+            adopted_apps: set[str] = set()
+            captures = capture_dir / "applications.json"
+            captured_xml = (
+                {
+                    app: capture_dir / filename
+                    for app, filename in json.loads(captures.read_text()).items()
+                }
+                if captures.exists()
+                else {}
+            )
+            app_plans: dict[str, list[Change]] = {}
+            for change in plan:
+                app_plans.setdefault(change.key.split("/", 1)[0], []).append(change)
+            baseline_only = {
+                app: {change.key for change in app_plan if change.database != "deleted"}
+                for app, app_plan in app_plans.items()
+                if not take_database
+                and app in captured_xml
+                and any(change.key == app for change in app_plan)
+                and all(
+                    change.action in {"unchanged", "converged"}
+                    and not change.reason
+                    and change.disk != "invalid"
+                    for change in app_plan
+                )
+            }
+
+            def stage_export(app: str, path: Path) -> None:
+                planned_xml = captured_xml.get(app.casefold())
+                if planned_xml is None:
+                    backup_application_xml(connection, app, path)
+                else:
+                    copy2(planned_xml, path)
+
             report("Exporting pull applications", 0, len(apps))
             with prefetched_exports(
                 [available[app] for app in sorted(apps) if app in available],
                 connection.export_workers,
-                lambda app, path: backup_application_xml(connection, app, path),
+                stage_export,
             ) as prefetched:
                 for app_index, app in enumerate(sorted(apps), 1):
                     report("Exporting pull applications", app_index - 1, len(apps))
@@ -229,6 +363,36 @@ def _sync_project(
                         raise ProjectError(
                             f"Application casing changed; reconcile explicitly: {name}"
                         )
+                    native_xml = None
+                    if app in available:
+                        _, native_xml = next(prefetched)
+                    if native_xml is not None and app in baseline_only:
+                        # Normal conversion checks the catalog again. Retain that
+                        # freshness even when matching source needs no projection.
+                        catalog = catalogs.setdefault(app, set())
+                        catalog.update(
+                            f"{app}/{component.name}".casefold()
+                            for component in read_components(connection, name)
+                        )
+                        component_count = matching_native_inventory(
+                            native_xml,
+                            app,
+                            baseline_only[app],
+                            catalog,
+                        )
+                        if component_count is not None:
+                            report(f"Establishing baseline for matching source: {name}")
+                            paths = application_export_paths(stage, name)
+                            paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
+                            copy2(native_xml, paths.xml_path)
+                            for old_xml in (root / ".openroad" / name).glob("*.xml"):
+                                changes[old_xml] = None
+                            staged_xml[app] = paths.xml_path
+                            app_failures[app] = []
+                            adopted_apps.add(app)
+                            exported_count += component_count
+                            report("Exporting pull applications", app_index, len(apps))
+                            continue
                     known = [
                         key.split("/", 1)[1]
                         for key in baseline
@@ -282,13 +446,23 @@ def _sync_project(
                             changes[path] = None
                     if app not in available:
                         continue
+                    assert native_xml is not None
+                    from .image_assets import source_files
+
+                    if not shared_assets_staged:
+                        defaults = root / "field_defaults.json"
+                        if defaults.exists():
+                            copy2(defaults, stage / defaults.name)
+                        for asset in source_files(root):
+                            target = stage / asset.relative_to(root)
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            copy2(asset, target)
+                        shared_assets_staged = True
                     app_defaults = root / name / "field_defaults.json"
                     if app_defaults.exists():
                         (stage / name).mkdir(parents=True, exist_ok=True)
                         copy2(app_defaults, stage / name / "field_defaults.json")
                     # Seed assets for stable name allocation; never prune shared files.
-                    from .image_assets import source_files
-
                     for asset in source_files(root / name):
                         if "images" not in asset.relative_to(root / name).parts:
                             continue
@@ -296,7 +470,6 @@ def _sync_project(
                         target.parent.mkdir(parents=True, exist_ok=True)
                         copy2(asset, target)
                     paths = application_export_paths(stage, name)
-                    _, native_xml = next(prefetched)
                     report(f"Converting pull source: {name}")
                     exported = export_application_to_paths(
                         connection,
@@ -334,9 +507,7 @@ def _sync_project(
                 for verify_index, (app, native_xml) in enumerate(verification, 1):
                     check = operation / f"{app}-verify.xml"
                     copy2(native_xml, check)
-                    if signature(read_document(check)) != signature(
-                        read_document(staged_xml[app])
-                    ):
+                    if not same_xml(check, staged_xml[app]):
                         raise ProjectError(
                             f"Database source changed during pull: {app}"
                         )
@@ -388,6 +559,8 @@ def _sync_project(
                 "Pull installed after disk and database revalidation\n"
             )
             pending.unlink()
+            if not take_database and not failures and apps <= adopted_apps:
+                prime_matching_baseline(root, snapshot, changes, plan)
             if progress:
                 progress(f"Pull recovery artifacts: {operation}")
             return SyncResult(

@@ -115,6 +115,35 @@ def test_comparison_keeps_unrepresented_baseline_metadata(tmp_path: Path) -> Non
     assert node.findtext("script") == "return 12;"
 
 
+def test_comparison_overlays_keep_reused_baseline_independent(tmp_path: Path) -> None:
+    from gorak.portable_source import cached_node, cached_source_scope
+
+    folder = project(tmp_path)
+    path = folder / "calculate.w4gl"
+    path.write_text('[proc4glsource]\ndatatype="integer"\n===\nreturn 12;')
+    cache = tmp_path / ".openroad/example"
+    cache.mkdir(parents=True)
+    baseline = cache / "calculate.xml"
+    baseline.write_text(
+        '<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+        '<COMPONENT name="calculate" xsi:type="proc4glsource">'
+        "<script>return 10;</script><datatype>integer</datatype>"
+        "</COMPONENT></OPENROAD>"
+    )
+    before = baseline.read_bytes()
+    with cached_source_scope():
+        first = comparison_component(path)
+        first.find("script").text = "mutated result"
+        path.write_text('[proc4glsource]\ndatatype="integer"\n===\nreturn 14;')
+        second = comparison_component(path)
+        assert second.findtext("script") == "return 14;"
+        original = cached_node(folder, "COMPONENT", "calculate")
+        assert original is not None
+        assert original.findtext("script") == "return 10;"
+        assert first.findtext("script") == "mutated result"
+    assert baseline.read_bytes() == before
+
+
 def test_removing_positioned_gravity_changes_existing_component(tmp_path: Path) -> None:
     folder = project(tmp_path)
     path = folder / "panel.w4gl"

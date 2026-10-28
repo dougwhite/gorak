@@ -1,4 +1,5 @@
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -8,8 +9,9 @@ from gorak import comparison_cache, sync_plan
 
 
 @pytest.fixture(autouse=True)
-def cache_location(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GORAK_COMPARISON_CACHE_DIR", str(tmp_path / "cache"))
+def comparison_scope() -> Iterator[None]:
+    with comparison_cache.scope():
+        yield
 
 
 def test_key_detects_same_size_same_mtime_edits_and_dependency_changes(
@@ -38,21 +40,16 @@ def test_key_detects_same_size_same_mtime_edits_and_dependency_changes(
     assert comparison_cache.project_key(root) != previous
 
 
-def test_invalid_cache_and_unwritable_cache_fall_back(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    comparison_cache.save("scope", "key", {"inventory": {"component": "a" * 64}})
-    assert comparison_cache.load("scope", "key") is not None
-    path = comparison_cache.cache_path("scope", "key")
-    path.write_text('{"payload": {}, "sha256":"wrong"}')
-    assert comparison_cache.load("scope", "key") is None
-    path.write_text("not JSON")
-    assert comparison_cache.load("scope", "key") is None
-    blocked = tmp_path / "blocked"
-    blocked.write_text("file, not directory")
-    monkeypatch.setenv("GORAK_COMPARISON_CACHE_DIR", str(blocked))
-    comparison_cache.save("scope", "key", {})
-    assert comparison_cache.load("scope", "key") is None
+def test_reused_results_are_independent_and_bound_to_scope_and_input() -> None:
+    comparison_cache.save("first", "one", {"inventory": {"component": "a" * 64}})
+    result = comparison_cache.load("first", "one")
+    assert result is not None
+    result.clear()
+    assert comparison_cache.load("first", "one") == {
+        "inventory": {"component": "a" * 64}
+    }
+    assert comparison_cache.load("second", "one") is None
+    assert comparison_cache.load("first", "two") is None
 
 
 def test_xml_cache_preserves_hashes_and_rechecks_bytes(
@@ -160,14 +157,6 @@ def test_baseline_timestamp_precedence_invalidates_inventory(tmp_path: Path) -> 
     assert comparison_cache.project_key(root) != first
 
 
-def test_valid_cache_hits_refresh_eviction_age() -> None:
-    comparison_cache.save("scope", "key", {"inventory": {}})
-    path = comparison_cache.cache_path("scope", "key")
-    os.utime(path, ns=(1, 1))
-    assert comparison_cache.load("scope", "key") is not None
-    assert path.stat().st_mtime_ns > 1
-
-
 def test_symlink_image_cannot_reuse_regular_image_cache(tmp_path: Path) -> None:
     root = tmp_path / "project"
     folder = root / "example"
@@ -187,14 +176,6 @@ def test_symlink_image_cannot_reuse_regular_image_cache(tmp_path: Path) -> None:
     assert comparison_cache.shared_key(root, folder) != shared
 
 
-def test_cache_entry_is_bound_to_its_input_and_scope() -> None:
-    comparison_cache.save("first", "one", {"inventory": {}})
-    original = comparison_cache.cache_path("first", "one")
-    other = comparison_cache.cache_path("second", "two")
-    other.write_bytes(original.read_bytes())
-    assert comparison_cache.load("second", "two") is None
-
-
 def test_changed_xml_only_normalizes_changed_subtree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -208,7 +189,7 @@ def test_changed_xml_only_normalizes_changed_subtree(
     original = sync_plan.signature
     calls: list[str | None] = []
 
-    def normalizing(node: etree._Element) -> sync_plan.SemanticDigest:
+    def normalizing(node: etree._Element) -> object:
         calls.append(node.get("name"))
         return original(node)
 
@@ -257,9 +238,7 @@ def test_changed_baseline_only_reconstructs_affected_source(
     baseline.write_bytes(baseline.read_bytes().replace(b"RETURN 2;", b"RETURN 3;"))
     incremental = sync_plan.local_inventory(root)
     assert calls == [second]
-    blocked = tmp_path / "disabled"
-    blocked.write_text("not a directory")
-    monkeypatch.setenv("GORAK_COMPARISON_CACHE_DIR", str(blocked))
+    monkeypatch.setattr(comparison_cache, "load", lambda *args: None)
     assert sync_plan.local_inventory(root) == incremental
     assert calls == [second, first, second]
 
@@ -288,3 +267,37 @@ def test_invalid_source_does_not_prevent_reuse_of_valid_components(
     monkeypatch.setattr(sync_plan, "comparison_component", reconstructing)
     assert sync_plan.local_inventory(root) == first
     assert calls == [invalid]
+
+
+def test_operation_scope_releases_results_and_never_writes_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Clear the fixture's outer scope to exercise independent command lifetimes.
+    token = comparison_cache._entries.set(None)
+    try:
+        monkeypatch.setenv("GORAK_COMPARISON_CACHE_DIR", str(tmp_path / "forbidden"))
+        with comparison_cache.scope():
+            comparison_cache.save("one", "two", {"value": "result"})
+            comparison_cache.remember_semantic("raw", "digest")
+            with comparison_cache.scope():
+                assert comparison_cache.load("one", "two") == {"value": "result"}
+                assert comparison_cache.semantic("raw") == "digest"
+        with comparison_cache.scope():
+            assert comparison_cache.load("one", "two") is None
+            assert comparison_cache.semantic("raw") is None
+        assert not list(tmp_path.iterdir())
+    finally:
+        comparison_cache._entries.reset(token)
+
+
+def test_identical_component_bytes_skip_repeated_normalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = etree.fromstring(b'<COMPONENT name="proc"><script>body</script></COMPONENT>')
+    first = sync_plan.signature(node)
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        raise AssertionError("Identical bytes must reuse semantic comparison")
+
+    monkeypatch.setattr(sync_plan, "native_signature", forbidden)
+    assert sync_plan.signature(etree.fromstring(etree.tostring(node))) == first

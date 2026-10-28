@@ -29,35 +29,49 @@ class CachedSourceIndex:
             ],
         ] = {}
 
-    def lookup(self, folder: Path, tag: str, name: str) -> etree._Element | None:
-        if folder != self.folder:
+    def entry(
+        self, path: Path
+    ) -> tuple[dict[tuple[str, str], list[etree._Element]], bool]:
+        if path.parent != self.folder:
             self.files.clear()  # Bound retained XML to one application.
-            self.folder = folder
+            self.folder = path.parent
+        stat = path.stat()
+        stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+        entry = self.files.get(path)
+        if entry is None or entry[0] != stamp:
+            root = read_document(path)
+            nodes: dict[tuple[str, str], list[etree._Element]] = {}
+            for node in root:
+                if isinstance(node.tag, str):
+                    nodes.setdefault(
+                        (node.tag, node.get("name", "").casefold()), []
+                    ).append(node)
+            entry = (stamp, nodes, root.find("APPLICATION") is not None)
+            self.files[path] = entry
+        return entry[1], entry[2]
+
+    def lookup_file(
+        self, path: Path, tag: str, name: str, *, clone: bool = True
+    ) -> etree._Element | None:
+        nodes, _ = self.entry(path)
+        matches = nodes.get((tag, name.casefold()), [])
+        if len(matches) > 1:
+            raise ProjectError(f"Ambiguous cached source: {path}")
+        # Callers overlay metadata; the shared index must remain pristine.
+        if not matches:
+            return None
+        return deepcopy(matches[0]) if clone else matches[0]
+
+    def lookup(self, folder: Path, tag: str, name: str) -> etree._Element | None:
         cache = folder.parent / ".openroad" / folder.name
         paths = sorted(
             cache.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns, reverse=True
         )
         for path in paths:
-            stat = path.stat()
-            stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
-            entry = self.files.get(path)
-            if entry is None or entry[0] != stamp:
-                root = read_document(path)
-                nodes: dict[tuple[str, str], list[etree._Element]] = {}
-                for node in root:
-                    if isinstance(node.tag, str):
-                        nodes.setdefault(
-                            (node.tag, node.get("name", "").casefold()), []
-                        ).append(node)
-                entry = (stamp, nodes, root.find("APPLICATION") is not None)
-                self.files[path] = entry
-            matches = entry[1].get((tag, name.casefold()), [])
-            if len(matches) > 1:
-                raise ProjectError(f"Ambiguous cached source: {path}")
-            if matches:
-                # Callers overlay metadata; the shared index must remain pristine.
-                return deepcopy(matches[0])
-            if tag == "COMPONENT" and entry[2]:
+            node = self.lookup_file(path, tag, name)
+            if node is not None:
+                return node
+            if tag == "COMPONENT" and self.entry(path)[1]:
                 return None
         return None
 
@@ -82,6 +96,13 @@ def cached_source_scope() -> Iterator[None]:
 def cached_node(folder: Path, tag: str, name: str) -> etree._Element | None:
     """Read an older checkout baseline, respecting newer full-export absence."""
     return (_source_index.get() or CachedSourceIndex()).lookup(folder, tag, name)
+
+
+def cached_node_at(path: Path, tag: str, name: str) -> etree._Element | None:
+    """Resolve an exact observed baseline, including superseded component files."""
+    return (_source_index.get() or CachedSourceIndex()).lookup_file(
+        path, tag, name, clone=False
+    )
 
 
 def overlay_component(node: etree._Element, path: Path) -> etree._Element:
@@ -131,7 +152,7 @@ def comparison_component(path: Path) -> etree._Element:
     """Preserve unrepresented baseline details for three-way comparison only."""
     baseline = cached_node(path.parent, "COMPONENT", path.stem)
     if baseline is not None:
-        return overlay_component(deepcopy(baseline), path)
+        return overlay_component(baseline, path)
     return restore_component(path)
 
 

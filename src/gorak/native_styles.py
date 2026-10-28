@@ -53,6 +53,21 @@ def is_absent(node: etree._Element | None) -> bool:
 
 def encode(node: etree._Element) -> Json:
     """Preserve group metadata and samples without suppressing native properties."""
+    cache = _resolved.get()
+    if cache is None or node.tag != "fielddefaults":
+        return _encode_uncached(node)
+    key = hashlib.sha256(
+        etree.tostring(node, encoding="utf-8", with_tail=False)
+    ).digest()
+    cached = cache.get("encode", key)
+    if isinstance(cached, bytes):
+        return cast(Json, pickle.loads(cached))
+    value = _encode_uncached(node)
+    cache.put("encode", key, pickle.dumps(value, protocol=5))
+    return value
+
+
+def _encode_uncached(node: etree._Element) -> Json:
     if node.tag != "fielddefaults":
         raise ProjectError("Native stylesheet root must be fielddefaults")
     from .native_normalization import explicit_row_types
@@ -86,6 +101,27 @@ def encode(node: etree._Element) -> Json:
 
 
 def decode(value: Json) -> etree._Element:
+    cache = _resolved.get()
+    if cache is None:
+        return _decode_uncached(value)
+    try:
+        key = pickle.dumps(value, protocol=5)
+    except (pickle.PickleError, TypeError, AttributeError):
+        return _decode_uncached(value)
+    cached = cache.get("decode", key)
+    if isinstance(cached, etree._Element):
+        return deepcopy(cached)
+    result = _decode_uncached(value)
+    # Keep an XML tree so character references and CDATA never pass through a
+    # parser again. Budget both character buffers and native nodes conservatively.
+    size = len(etree.tostring(result, encoding="utf-8", with_tail=False)) * 8
+    size += sum(1 + len(node.attrib) for node in result.iter()) * 128
+    if len(key) + len("decode") + size <= _COMPARISON_MAX_BYTES:
+        cache.put("decode", key, deepcopy(result), size=size)
+    return result
+
+
+def _decode_uncached(value: Json) -> etree._Element:
     if not isinstance(value, dict) or set(value) != {
         "properties",
         "group_order",
@@ -226,18 +262,64 @@ def is_native_layer(value: Any) -> TypeGuard[Json]:
     }
 
 
-_resolved: ContextVar[dict[bytes, bytes] | None] = ContextVar(
+_COMPARISON_MAX_ENTRIES = 32
+_COMPARISON_MAX_BYTES = 32 * 1024 * 1024
+
+
+class _ComparisonStyles:
+    """Immutable results with one shared size budget for comparison operations."""
+
+    def __init__(self) -> None:
+        self.entries: dict[tuple[str, bytes], tuple[object, int]] = {}
+        self.bytes = 0
+
+    def get(self, kind: str, key: bytes) -> object:
+        entry = self.entries.pop((kind, key), None)
+        if entry is not None:
+            self.entries[(kind, key)] = entry
+            return entry[0]
+        return None
+
+    def put(
+        self,
+        kind: str,
+        key: bytes,
+        value: bytes | etree._Element,
+        *,
+        size: int | None = None,
+    ) -> None:
+        previous = self.entries.pop((kind, key), None)
+        if previous is not None:
+            self.bytes -= previous[1]
+        if size is None:
+            assert isinstance(value, bytes)
+            size = len(value)
+        size += len(kind) + len(key)
+        if size > _COMPARISON_MAX_BYTES:
+            return
+        while self.entries and (
+            len(self.entries) >= _COMPARISON_MAX_ENTRIES
+            or self.bytes + size > _COMPARISON_MAX_BYTES
+        ):
+            oldest_kind, oldest_key = next(iter(self.entries))
+            oldest = self.entries.pop((oldest_kind, oldest_key))
+            self.bytes -= oldest[1]
+        self.entries[(kind, key)] = (value, size)
+        self.bytes += size
+
+
+_resolved: ContextVar[_ComparisonStyles | None] = ContextVar(
     "resolved_styles", default=None
 )
 
 
 @contextmanager
 def resolution_scope() -> Iterator[None]:
-    """Bound repeated stylesheet resolution to one comparison, with independent values."""
+    """Reuse stylesheet conversion/resolution only inside one bounded comparison."""
     if _resolved.get() is not None:
         yield
         return
-    token = _resolved.set({})
+    token = _resolved.set(_ComparisonStyles())
     try:
         yield
     finally:
@@ -252,12 +334,10 @@ def resolve(parent: Json | None, layer: Json) -> Json:
         key = pickle.dumps((parent, layer), protocol=5)
     except (pickle.PickleError, TypeError, AttributeError):
         return _resolve_uncached(parent, layer)
-    value = cache.pop(key, None)
-    if value is None:
+    value = cache.get("resolve", key)
+    if not isinstance(value, bytes):
         value = pickle.dumps(_resolve_uncached(parent, layer), protocol=5)
-    cache[key] = value
-    if len(cache) > 32:
-        del cache[next(iter(cache))]
+        cache.put("resolve", key, value)
     return cast(Json, pickle.loads(value))
 
 
