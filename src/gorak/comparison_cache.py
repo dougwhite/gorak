@@ -37,12 +37,25 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def read_xml_bytes(path: Path) -> bytes:
+    """Capture a bounded XML input so its digest and parser use identical bytes."""
+    from .project import ProjectError
+    from .source_xml import MAX_DOCUMENT_BYTES
+
+    with path.open("rb") as stream:
+        data = stream.read(MAX_DOCUMENT_BYTES + 1)
+    if len(data) > MAX_DOCUMENT_BYTES:
+        raise ProjectError("Source XML exceeds the 512 MiB document limit")
+    return data
+
+
 def content_key(
     paths: Iterable[Path],
     root: Path,
     *,
     phase: str | None = None,
     digest_sink: dict[str, str] | None = None,
+    mtime_sink: dict[str, int] | None = None,
     verified_digests: Mapping[str, str] | None = None,
 ) -> str:
     digest = hashlib.sha256()
@@ -70,9 +83,12 @@ def content_key(
         if digest_sink is not None:
             digest_sink[name] = value
         digest.update(value.encode("ascii"))
-        if relative.parts[0] == ".openroad" and path.suffix == ".xml":
+        if relative.parts[0] == ".openroad" and path.match("*.xml"):
             # Baseline overlay precedence is explicitly ordered by export mtime.
-            digest.update(str(path.stat().st_mtime_ns).encode("ascii"))
+            modified = path.stat().st_mtime_ns
+            if mtime_sink is not None:
+                mtime_sink[name] = modified
+            digest.update(str(modified).encode("ascii"))
         digest.update(b"\0")
         if phase:
             report(phase, index, len(ordered))
@@ -532,6 +548,7 @@ def project_key(
     root: Path,
     *,
     digest_sink: dict[str, str] | None = None,
+    mtime_sink: dict[str, int] | None = None,
     verified_digests: Mapping[str, str] | None = None,
 ) -> str:
     """Hash source bytes, including dependencies; never trust size/mtime alone."""
@@ -541,7 +558,7 @@ def project_key(
             relative = Path(name)
             if (
                 relative.parts[0] not in {".git", ".openroad"}
-                or (len(relative.parts) == 3 and relative.suffix == ".xml")
+                or (len(relative.parts) == 3 and relative.match("*.xml"))
                 or name == ".openroad/tracked-applications.json"
             ):
                 paths.append(root / relative)
@@ -550,6 +567,7 @@ def project_key(
             root,
             phase="Checking source and baseline bytes",
             digest_sink=digest_sink,
+            mtime_sink=mtime_sink,
             verified_digests=verified_digests,
         )
     for folder, dirs, files in os.walk(root):
@@ -557,6 +575,34 @@ def project_key(
             dirs[:] = [name for name in dirs if name not in {".git", ".openroad"}]
         if any((Path(folder) / name).is_symlink() for name in dirs):
             raise OSError("Comparison cache does not follow directory symlinks")
+        for name in dirs:
+            relative = (Path(folder) / name).relative_to(root)
+            if (
+                (len(relative.parts) <= 2 and name == "field_defaults.json")
+                or (
+                    len(relative.parts) == 2
+                    and (
+                        name == "app.json"
+                        or name.endswith(
+                            (
+                                ".w4gl",
+                                ".wml",
+                                ".fielddefaults.json",
+                                ".queries.json",
+                                ".icons.json",
+                            )
+                        )
+                    )
+                )
+                or ("images" in relative.parts[:2] and name.endswith(".bitmap.json"))
+            ):
+                from .project import ProjectError
+
+                # These paths affect reconstruction through existence checks.
+                # A directory must not disappear from the initial byte proof.
+                raise ProjectError(
+                    f"Comparison input is not a regular file: {relative}"
+                )
         paths.extend(Path(folder) / name for name in files)
     cache = root / ".openroad"
     paths.extend(cache.glob("*/*.xml"))
@@ -564,7 +610,11 @@ def project_key(
     if tracking.exists():
         paths.append(tracking)
     return content_key(
-        paths, root, phase="Checking source and baseline bytes", digest_sink=digest_sink
+        paths,
+        root,
+        phase="Checking source and baseline bytes",
+        digest_sink=digest_sink,
+        mtime_sink=mtime_sink,
     )
 
 

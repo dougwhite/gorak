@@ -78,6 +78,33 @@ def matching_native_inventory(
     return len(keys) - 1
 
 
+def component_source_files(folder: Path, names: set[str]) -> set[Path]:
+    """Select only known component files, leaving shared assets and notes alone."""
+    files: set[Path] = set()
+    if not names:
+        return files
+    for path in folder.glob("*"):
+        for suffix in (
+            ".w4gl",
+            ".wml",
+            ".fielddefaults.json",
+            ".queries.json",
+            ".icons.json",
+        ):
+            if (
+                path.name.endswith(suffix)
+                and path.name.removesuffix(suffix).casefold() in names
+            ):
+                files.add(path)
+                break
+    files.update(
+        path
+        for path in (folder / ".gorak-source/components").glob("*.xml")
+        if path.stem.casefold() in names
+    )
+    return files
+
+
 def fingerprint(root: Path) -> dict[str, str]:
     result = {}
     for directory, directories, files in os.walk(root):
@@ -469,6 +496,17 @@ def _sync_project(
                             paths = application_export_paths(stage, name)
                             paths.xml_path.parent.mkdir(parents=True, exist_ok=True)
                             copy2(native_xml, paths.xml_path)
+                            deleted = {
+                                change.key.split("/", 1)[1]
+                                for change in app_plans[app]
+                                if change.key != app
+                                and change.key in baseline
+                                and change.action == "converged"
+                                and change.disk == change.database == "deleted"
+                            }
+                            for path in component_source_files(root / name, deleted):
+                                if path.is_file():
+                                    changes[path] = None
                             for old_xml in (root / ".openroad" / name).glob("*.xml"):
                                 changes[old_xml] = None
                             staged_xml[app] = paths.xml_path
@@ -477,47 +515,18 @@ def _sync_project(
                             exported_count += component_count
                             report("Exporting pull applications", app_index, len(apps))
                             continue
-                    known = [
+                    known = {
                         key.split("/", 1)[1]
                         for key in baseline
                         if key.startswith(app + "/")
-                    ]
+                    }
                     old_files = {
                         root / name / "app.json",
                         root / name / "field_defaults.json",
                         root / name / ".gorak-source/application.xml",
                         root / name / ".gorak-source/format",
                     }
-                    for component in known:
-                        for path in (root / name).glob("*"):
-                            if path.stem.casefold() == component and path.suffix in {
-                                ".w4gl",
-                                ".wml",
-                            }:
-                                old_files.add(path)
-                        old_files.update(
-                            path
-                            for path in (root / name).glob("*.fielddefaults.json")
-                            if path.name.removesuffix(".fielddefaults.json").casefold()
-                            == component
-                        )
-                        old_files.update(
-                            path
-                            for path in (root / name).glob("*.queries.json")
-                            if path.name.removesuffix(".queries.json").casefold()
-                            == component
-                        )
-                        old_files.update(
-                            path
-                            for path in (root / name).glob("*.icons.json")
-                            if path.name.removesuffix(".icons.json").casefold()
-                            == component
-                        )
-                        for path in (root / name / ".gorak-source/components").glob(
-                            "*.xml"
-                        ):
-                            if path.stem.casefold() == component:
-                                old_files.add(path)
+                    old_files.update(component_source_files(root / name, known))
                     if take_database:
                         old_files.update((root / name).glob("*.w4gl"))
                         old_files.update((root / name).glob("*.wml"))

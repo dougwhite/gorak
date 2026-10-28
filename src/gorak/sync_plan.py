@@ -11,7 +11,7 @@ from typing import Literal
 
 from lxml import etree
 
-from . import comparison_cache
+from . import comparison_cache, comparison_inputs
 from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
 from .export_pipeline import prefetched_exports
@@ -226,8 +226,11 @@ def path_inventory(
     memo = inventory_values(previous.get("entries")) if previous is not None else None
     raw: dict[str, str] = {}
     next_memo: dict[str, object] = {}
+    captured = comparison_cache.read_xml_bytes(path)
+    if hashlib.sha256(captured).hexdigest() != key:
+        raise ProjectError("Native XML changed during comparison; retry")
     inventory = xml_inventory(
-        read_document(path),
+        read_document(path, data=captured),
         app,
         raw_sink=raw,
         memo=memo,
@@ -250,11 +253,34 @@ def baseline_inventory(
     *,
     raw_sink: dict[str, str] | None = None,
     expected_digests: Mapping[str, str] | None = None,
+    expected_mtimes: Mapping[str, int] | None = None,
 ) -> tuple[dict[str, object], set[str]]:
     """Read caches in age order so a newer component export supersedes an app export."""
     result: dict[str, object] = {}
     tracking = root / ".openroad/tracked-applications.json"
-    names = json.loads(tracking.read_text()) if tracking.exists() else []
+    tracking_expected = (
+        expected_digests.get(".openroad/tracked-applications.json")
+        if expected_digests is not None
+        else None
+    )
+    if expected_digests is not None and tracking.exists() != (
+        tracking_expected is not None
+    ):
+        raise ProjectError(
+            "Tracked application inventory changed during comparison; retry"
+        )
+    names = []
+    if tracking_expected is not None or (
+        expected_digests is None and tracking.exists()
+    ):
+        tracked_bytes = tracking.read_bytes()
+        if tracking_expected is not None and (
+            hashlib.sha256(tracked_bytes).hexdigest() != tracking_expected
+        ):
+            raise ProjectError(
+                "Tracked application inventory changed during comparison; retry"
+            )
+        names = json.loads(tracked_bytes)
     if not isinstance(names, list) or any(
         not isinstance(name, str) or not name or "/" in name or "\\" in name
         for name in names
@@ -262,19 +288,48 @@ def baseline_inventory(
         raise ProjectError("Invalid tracked application inventory")
     apps: set[str] = set(names)
     cache = root / ".openroad"
-    directories = [
-        directory
-        for directory in (cache.iterdir() if cache.exists() else [])
-        if directory.is_dir()
-        and directory.name not in {"pulls", "pushes", "imports", "runs"}
-    ]
+    ignored = {"pulls", "pushes", "imports", "runs"}
+    if expected_digests is not None:
+        files_by_directory: dict[Path, list[Path]] = {}
+        for name in expected_digests:
+            relative = Path(name)
+            if (
+                len(relative.parts) == 3
+                and relative.parts[0] == ".openroad"
+                and relative.parts[1] not in ignored
+                and relative.match("*.xml")
+            ):
+                path = root / relative
+                files_by_directory.setdefault(path.parent, []).append(path)
+        actual = {
+            path for path in cache.glob("*/*.xml") if path.parent.name not in ignored
+        }
+        expected = {path for paths in files_by_directory.values() for path in paths}
+        if actual != expected:
+            raise ProjectError("Native XML changed during comparison; retry")
+    else:
+        files_by_directory = {
+            directory: list(directory.glob("*.xml"))
+            for directory in (cache.iterdir() if cache.exists() else [])
+            if directory.is_dir() and directory.name not in ignored
+        }
+    directories = list(files_by_directory)
     report("Reading baseline applications", 0, len(directories))
     for directory_index, directory in enumerate(directories, 1):
         report("Reading baseline applications", directory_index - 1, len(directories))
-        files = sorted(directory.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns)
+        file_times = {
+            path: (
+                expected_mtimes[path.relative_to(root).as_posix()]
+                if expected_mtimes is not None
+                else path.stat().st_mtime_ns
+            )
+            for path in files_by_directory[directory]
+        }
+        files = sorted(file_times, key=lambda path: (file_times[path], path.name))
         if not files:
             continue
         apps.add(directory.name)
+        generations: dict[int, tuple[dict[str, object], bool]] = {}
         for path in files:
             report(f"Reading baseline XML: {directory.name}")
             expected_digest = None
@@ -293,8 +348,29 @@ def baseline_inventory(
                 defer_path=path if comparison_cache.active() else None,
                 expected_digest=expected_digest,
             )
-
-            if directory.name.casefold() in inventory:
+            complete = directory.name.casefold() in inventory
+            stamp = file_times[path]
+            previous, previous_complete = generations.get(stamp, ({}, False))
+            # Files written together can share a timestamp on Windows. Their
+            # order is immaterial when overlapping values agree and a full
+            # export also contains everything in its tied partial exports.
+            if (
+                (complete and not previous.keys() <= inventory.keys())
+                or (previous_complete and not inventory.keys() <= previous.keys())
+                or any(
+                    previous[key] != inventory[key]
+                    for key in previous.keys() & inventory.keys()
+                )
+            ):
+                raise ProjectError(
+                    "Baseline export order is ambiguous: overlapping exports share "
+                    "a modification time; refresh or reconcile the baseline"
+                )
+            generations[stamp] = (
+                previous | inventory,
+                previous_complete or complete,
+            )
+            if complete:
                 # A full app export also records absence of deleted components.
                 prefix = directory.name.casefold() + "/"
                 if raw_sink is not None:
@@ -394,11 +470,27 @@ def compare_source(
                 else None
             )
     if result is None:
-        result = signature(
-            comparison_application(folder)
-            if application
-            else comparison_component(source)
-        )
+        with comparison_inputs.capture(
+            root,
+            source,
+            application=application,
+            baseline_raw=baseline_raw,
+            verified_digests=verified_digests,
+        ) as consumed:
+            consumed_key = source_input_key(
+                root,
+                source,
+                application=application,
+                baseline_raw=baseline_raw,
+                verified_digests=consumed,
+            )
+            if input_key is not None and consumed_key != input_key:
+                raise ProjectError("Source changed during comparison; retry")
+            result = signature(
+                comparison_application(folder)
+                if application
+                else comparison_component(source)
+            )
     if input_key is not None:
         next_records[source.name] = {"input": input_key, "signature": result}
     return result
@@ -406,6 +498,7 @@ def compare_source(
 
 @comparison_cache.project_cached
 @comparison_cache.scope()
+@comparison_inputs.scope()
 @cached_source_scope()
 @validation_scope()
 @resolution_scope()
@@ -415,10 +508,14 @@ def local_inventory(
     scope = "local:" + str(root.resolve())
     report("Hashing local source and baseline bytes")
     source_digests: dict[str, str] = {}
+    baseline_mtimes: dict[str, int] = {}
     try:
-        cache_key = comparison_cache.project_key(root, digest_sink=source_digests)
+        cache_key = comparison_cache.project_key(
+            root, digest_sink=source_digests, mtime_sink=baseline_mtimes
+        )
     except OSError:
         cache_key = None
+    comparison_inputs.set_proof(root, source_digests if cache_key is not None else None)
     saved = comparison_cache.load(scope, cache_key) if cache_key is not None else None
     if saved is not None:
         baseline_cached = inventory_values(saved.get("baseline"))
@@ -430,6 +527,13 @@ def local_inventory(
             and isinstance(apps_cached, list)
             and all(isinstance(app, str) for app in apps_cached)
         ):
+            try:
+                if comparison_cache.project_key(root) != cache_key:
+                    raise ProjectError("Local source changed during comparison; retry")
+            except OSError as ex:
+                raise ProjectError(
+                    "Local source changed during comparison; retry"
+                ) from ex
             report("Reusing verified local comparison", 1, 1)
             return (
                 baseline_cached,
@@ -442,14 +546,41 @@ def local_inventory(
         root,
         raw_sink=raw_baseline,
         expected_digests=source_digests if cache_key is not None else None,
+        expected_mtimes=baseline_mtimes if cache_key is not None else None,
     )
     disk: dict[str, object] = {}
     invalid: dict[str, str] = {}
     seen: set[str] = set()
-    manifests = sorted(
-        p for p in root.glob("*/app.json") if not p.parent.name.startswith(".")
-    )
-    source_count = sum(1 + len(list(p.parent.glob("*.w4gl"))) for p in manifests)
+    if cache_key is not None:
+        # The byte proof also fixes membership. Live enumeration could omit a
+        # temporarily removed source whose bytes reappear before the final check.
+        manifests = sorted(
+            root / relative
+            for name in source_digests
+            if len((relative := Path(name)).parts) == 2
+            and relative.match("*/app.json")
+            and not relative.parent.name.startswith(".")
+        )
+        components: dict[Path, list[Path]] = {path.parent: [] for path in manifests}
+        for name in source_digests:
+            relative = Path(name)
+            folder = root / relative.parent
+            if (
+                len(relative.parts) == 2
+                and relative.match("*.w4gl")
+                and folder in components
+            ):
+                components[folder].append(root / relative)
+        for paths in components.values():
+            paths.sort()
+    else:
+        manifests = sorted(
+            p for p in root.glob("*/app.json") if not p.parent.name.startswith(".")
+        )
+        components = {
+            path.parent: sorted(path.parent.glob("*.w4gl")) for path in manifests
+        }
+    source_count = sum(1 + len(components[path.parent]) for path in manifests)
     component_caches: list[tuple[str, str, dict[str, object]]] = []
     cache_valid = True
     source_done = 0
@@ -507,7 +638,7 @@ def local_inventory(
         report("Comparing local source", source_done, source_count)
         if manifest.name not in next_records:
             cache_valid = False
-        for source in sorted(folder.glob("*.w4gl")):
+        for source in components[folder]:
             key = f"{app}/{source.stem}".casefold()
             if key in disk or key in invalid:
                 raise ProjectError(f"Case-insensitive component collision: {key}")
@@ -531,22 +662,24 @@ def local_inventory(
             component_caches.append((memo_scope, dependency_key, next_records))
     if cache_key is not None:
         try:
-            if comparison_cache.project_key(root) == cache_key:
-                for memo_scope, dependency_key, records in component_caches:
-                    comparison_cache.save(memo_scope, dependency_key, records)
-                if not invalid and cache_valid:
-                    comparison_cache.save(
-                        scope,
-                        cache_key,
-                        {"baseline": baseline, "disk": disk, "apps": sorted(apps)},
-                    )
-        except OSError:
-            pass
+            if comparison_cache.project_key(root) != cache_key:
+                raise ProjectError("Local source changed during comparison; retry")
+        except OSError as ex:
+            raise ProjectError("Local source changed during comparison; retry") from ex
+        for memo_scope, dependency_key, records in component_caches:
+            comparison_cache.save(memo_scope, dependency_key, records)
+        if not invalid and cache_valid:
+            comparison_cache.save(
+                scope,
+                cache_key,
+                {"baseline": baseline, "disk": disk, "apps": sorted(apps)},
+            )
     return baseline, apps, disk, invalid
 
 
 @comparison_cache.project_cached
 @comparison_cache.scope()
+@comparison_inputs.scope()
 @cached_source_scope()
 def plan_project(
     connection: OpenRoadConnection,
@@ -616,11 +749,17 @@ def plan_project(
                                 None,
                             )
                         if native_context is not None:
-                            disk[name] = signature(
-                                comparison_application(
-                                    local_folders[name], native_context=native_context
+                            with comparison_inputs.capture(
+                                root,
+                                local_folders[name] / "app.json",
+                                application=True,
+                            ):
+                                disk[name] = signature(
+                                    comparison_application(
+                                        local_folders[name],
+                                        native_context=native_context,
+                                    )
                                 )
-                            )
                     except (ProjectError, ValueError, OSError, etree.XMLSyntaxError):
                         # Unsupported native details cannot prove equality;
                         # retain the original source comparison and conflict.

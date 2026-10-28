@@ -2,13 +2,11 @@
 
 import os
 from pathlib import Path
-from types import SimpleNamespace
-from typing import cast
 
 import pytest
 from lxml import etree
 
-from gorak import comparison_cache, portable_source, sync_plan, windows_file_info
+from gorak import comparison_cache, portable_source, sync_plan
 from gorak.native_normalization import signature as native_signature
 from gorak.portable_source import cached_source_scope, read_document
 from gorak.project import ProjectError
@@ -168,84 +166,79 @@ def test_deferred_resolution_rejects_same_size_same_mtime_baseline_edit(
 ) -> None:
     path = baseline_file(tmp_path)
     original_time = path.stat().st_mtime_ns
-    with comparison_cache.scope(), cached_source_scope():
+    with (
+        pytest.raises(ProjectError, match="Baseline changed"),
+        comparison_cache.scope(),
+        cached_source_scope(),
+    ):
         values, _ = sync_plan.baseline_inventory(tmp_path)
         # Materialize only the application so the XML index is already populated.
         sync_plan.semantic_hash(values["example"])
         path.write_bytes(path.read_bytes().replace(b"RETURN 1;", b"RETURN 2;"))
         os.utime(path, ns=(original_time, original_time))
-        with pytest.raises(ProjectError, match="Baseline changed"):
-            sync_plan.semantic_hash(values["example/calculate"])
+        sync_plan.semantic_hash(values["example/calculate"])
+        pytest.fail("The changed component must fail before scope completion")
 
 
-def test_deferred_resolution_uses_windows_change_time_with_unchanged_stat(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("change_time_moves", [False, True])
+def test_deferred_resolution_verifies_bytes_even_when_stat_is_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change_time_moves: bool
 ) -> None:
     path = baseline_file(tmp_path)
     original = path.stat()
-    real_stat = Path.stat
     generation = [1]
-
-    def windows_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
-        current = real_stat(self, follow_symlinks=follow_symlinks)
-        if self != path:
-            return current
-        fields = {
-            key: getattr(current, key) for key in dir(current) if key.startswith("st_")
-        }
-        fields["st_ctime_ns"] = original.st_ctime_ns
-        return cast(os.stat_result, SimpleNamespace(**fields))
-
-    monkeypatch.setattr(Path, "stat", windows_stat)
-    monkeypatch.setattr(portable_source, "sys", SimpleNamespace(platform="win32"))
-    monkeypatch.setattr(windows_file_info, "change_time", lambda path: generation[0])
-    with comparison_cache.scope(), cached_source_scope():
+    monkeypatch.setattr(
+        portable_source,
+        "_source_stamp",
+        lambda path: (original.st_mtime_ns, generation[0], original.st_size),
+    )
+    with (
+        pytest.raises(ProjectError, match="Baseline changed"),
+        comparison_cache.scope(),
+        cached_source_scope(),
+    ):
         values, _ = sync_plan.baseline_inventory(tmp_path)
         sync_plan.semantic_hash(values["example"])
         path.write_bytes(path.read_bytes().replace(b"RETURN 1;", b"RETURN 2;"))
         os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
-        generation[0] += 1
-        current = path.stat()
-        assert (current.st_mtime_ns, current.st_ctime_ns, current.st_size) == (
+        generation[0] += int(change_time_moves)
+        assert portable_source._source_stamp(path) == (
             original.st_mtime_ns,
-            original.st_ctime_ns,
+            1 + int(change_time_moves),
             original.st_size,
         )
-        with pytest.raises(ProjectError, match="Baseline changed"):
-            sync_plan.semantic_hash(values["example/calculate"])
+        sync_plan.semantic_hash(values["example/calculate"])
+        pytest.fail("The changed component must fail before scope completion")
 
 
-def test_windows_metadata_errors_do_not_reuse_cached_baseline(
+def test_stat_errors_do_not_reuse_cached_baseline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = baseline_file(tmp_path)
-    monkeypatch.setattr(portable_source, "sys", SimpleNamespace(platform="win32"))
-    monkeypatch.setattr(windows_file_info, "change_time", lambda path: 1)
 
-    def unavailable(path: Path) -> int:
+    def unavailable(path: Path) -> tuple[int, int, int]:
         raise OSError("metadata query failed")
 
     with comparison_cache.scope(), cached_source_scope():
         values, _ = sync_plan.baseline_inventory(tmp_path)
         sync_plan.semantic_hash(values["example"])
-        monkeypatch.setattr(windows_file_info, "change_time", unavailable)
+        monkeypatch.setattr(portable_source, "_source_stamp", unavailable)
         with pytest.raises(ProjectError, match="Baseline changed"):
             sync_plan.semantic_hash(values["example/calculate"])
     assert path.exists()
 
 
-def test_windows_unchanged_baseline_reuses_one_parsed_index(
+def test_unchanged_baseline_reuses_one_parsed_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = baseline_file(tmp_path)
     reads: list[Path] = []
 
-    def counted_read(path: Path) -> etree._Element:
+    def counted_read(path: Path, *, data: bytes | None = None) -> etree._Element:
         reads.append(path)
-        return read_document(path)
+        return read_document(path, data=data)
 
-    monkeypatch.setattr(portable_source, "sys", SimpleNamespace(platform="win32"))
-    monkeypatch.setattr(windows_file_info, "change_time", lambda path: 1)
+    monkeypatch.setattr(portable_source, "_source_stamp", lambda path: (1, 1, 249))
     monkeypatch.setattr(portable_source, "read_document", counted_read)
     with cached_source_scope():
         for _ in range(10):
@@ -258,6 +251,136 @@ def test_windows_unchanged_baseline_reuses_one_parsed_index(
                 is not None
             )
     assert reads == [path]
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16"])
+@pytest.mark.parametrize(
+    "item",
+    [
+        '<COMPONENT name="calculate"/>',
+        '<COMPONENT name="calculate"></COMPONENT>',
+        '<COMPONENT name="calculate" description="literal > and /&gt;">'
+        "<script><![CDATA[literal </COMPONENT>]]></script>"
+        "<!-- <COMPONENT/> --><?example value?></COMPONENT >",
+    ],
+)
+def test_cached_source_byte_spans_are_exact(encoding: str, item: str) -> None:
+    declared = "utf-8" if encoding == "utf-8-sig" else encoding
+    prefix = f'<?xml version="1.0" encoding="{declared}"?><OPENROAD>'
+    data = (prefix + item + "</OPENROAD>").encode(encoding)
+    spans = portable_source._source_spans(data)
+    assert spans is not None and len(spans) == 1
+    # Encoding the isolated item must not introduce another byte order mark.
+    expected = item.encode("utf-16-le" if encoding == "utf-16" else "utf-8")
+    assert data[spans[0].start : spans[0].end] == expected
+
+
+def test_cached_source_verifies_component_spans_and_one_full_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    components = [
+        f'<COMPONENT name="item{index}"><script>x</script></COMPONENT>'
+        for index in range(40)
+    ]
+    content = "<OPENROAD>" + "".join(components) + "</OPENROAD>"
+    path = baseline_file(tmp_path, content)
+    ranges: list[tuple[int, int | None]] = []
+    original = portable_source._range_digest
+
+    def measured(path: Path, start: int = 0, end: int | None = None) -> bytes:
+        ranges.append((start, end))
+        return original(path, start, end)
+
+    monkeypatch.setattr(portable_source, "_range_digest", measured)
+    with cached_source_scope():
+        for index in range(40):
+            assert (
+                portable_source.cached_node_at(path, "COMPONENT", f"item{index}")
+                is not None
+            )
+        assert all(end is not None for _, end in ranges)
+    assert ranges[-1] == (0, None)
+    assert len(ranges) == 41
+    assert sum(end - start for start, end in ranges if end is not None) == sum(
+        map(len, components)
+    )
+
+
+@pytest.mark.parametrize("evict", [False, True])
+def test_cached_source_checks_unrequested_structure_before_returning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evict: bool
+) -> None:
+    path = baseline_file(tmp_path)
+    other = tmp_path / ".openroad/other/other.xml"
+    other.parent.mkdir()
+    other.write_text('<OPENROAD><APPLICATION name="other"/></OPENROAD>')
+    monkeypatch.setattr(portable_source, "_source_stamp", lambda path: (1, 1, 249))
+    with pytest.raises(ProjectError, match="Baseline changed"), cached_source_scope():
+        assert (
+            portable_source.cached_node_at(path, "APPLICATION", "example") is not None
+        )
+        # The application itself is unchanged; its surrounding namespace changed.
+        path.write_bytes(path.read_bytes().replace(b"urn:unused", b"urn:edited"))
+        assert (
+            portable_source.cached_node_at(path, "APPLICATION", "example") is not None
+        )
+        if evict:
+            portable_source.cached_node_at(other, "APPLICATION", "other")
+            pytest.fail("Eviction must validate the previous application's XML")
+
+
+def test_cached_source_refuses_changed_absence_immediately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = baseline_file(tmp_path)
+    monkeypatch.setattr(portable_source, "_source_stamp", lambda path: (1, 1, 249))
+    with pytest.raises(ProjectError, match="Baseline changed"), cached_source_scope():
+        assert (
+            portable_source.cached_node_at(path, "APPLICATION", "example") is not None
+        )
+        path.write_bytes(path.read_bytes().replace(b"calculate", b"different"))
+        portable_source.cached_node_at(path, "COMPONENT", "different")
+        pytest.fail("Missing indexed components require whole-document verification")
+
+
+def test_cached_source_checks_before_comparison_metadata_publication(
+    tmp_path: Path,
+) -> None:
+    path = baseline_file(tmp_path)
+    with (
+        pytest.raises(ProjectError, match="Baseline changed"),
+        comparison_cache.project_scope(tmp_path),
+        cached_source_scope(),
+    ):
+        assert (
+            portable_source.cached_node_at(path, "APPLICATION", "example") is not None
+        )
+        comparison_cache.save("test", "key", {"verified": True})
+        path.write_bytes(path.read_bytes().replace(b"RETURN 1;", b"RETURN 2;"))
+    assert not comparison_cache.storage_path(tmp_path).exists()
+
+
+def test_cached_source_unsupported_span_encoding_uses_byte_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = baseline_file(tmp_path)
+    data = ('<?xml version="1.0" encoding="utf-32"?>' + document()).encode("utf-32")
+    path.write_bytes(data)
+    assert portable_source._source_spans(data) is None
+    monkeypatch.setattr(
+        portable_source, "_source_stamp", lambda path: (1, 1, len(data))
+    )
+    with pytest.raises(ProjectError, match="Baseline changed"), cached_source_scope():
+        assert (
+            portable_source.cached_node_at(path, "APPLICATION", "example") is not None
+        )
+        path.write_bytes(
+            data.replace(
+                "RETURN 1;".encode("utf-32-le"), "RETURN 2;".encode("utf-32-le")
+            )
+        )
+        portable_source.cached_node_at(path, "COMPONENT", "calculate")
+        pytest.fail("Unsupported span encodings must still verify actual bytes")
 
 
 def test_deferred_resolution_rejects_disappeared_baseline(tmp_path: Path) -> None:

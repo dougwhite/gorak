@@ -718,6 +718,117 @@ def test_partial_clone_pull_preserves_matching_frame_sidecars_and_installs_new_a
     assert baseline == disk
 
 
+@pytest.mark.parametrize("name", ["sample", "MiXeD"])
+@pytest.mark.parametrize("catalog_retains", [False, True])
+def test_baseline_adoption_cleans_deleted_companions_after_catalog_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    catalog_retains: bool,
+) -> None:
+    from lxml import etree
+    from PIL import Image
+
+    from gorak import export, sync_plan
+    from gorak.domain import ComponentInfo
+    from gorak.sync_guard import save_binding
+    from gorak.xml_writer import document, new_application, new_component
+    from tests.native_source import write_component
+    from tests.test_query_metadata import component
+
+    connection = OpenRoadConnection("local", "node", "db", None)
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    removed = folder / f"{name}.w4gl"
+    frame = component("framesource")
+    frame.set("name", name)
+    write_component(removed, frame)
+    companions = {
+        removed.with_suffix(suffix): removed.with_suffix(suffix).read_bytes()
+        for suffix in (".wml", ".queries.json", ".fielddefaults.json")
+    }
+    kept = folder / "kept.w4gl"
+    kept.write_bytes(b'[proc4glsource]\r\ndatatype="integer"\r\n===\r\nRETURN 1;')
+    application = new_application(folder)
+    kept_native = new_component(kept)
+    baseline = tmp_path / ".openroad/example/example.xml"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_bytes(document([application, frame, kept_native]))
+    save_binding(connection, tmp_path)
+    removed.unlink()
+    (folder / f"{name}.notes.txt").write_text("human notes")
+    (folder / f"{name}-other.wml").write_text("unrelated layout")
+    images = folder / "images"
+    images.mkdir()
+    Image.new("RGB", (1, 1), "red").save(images / f"{name}.png")
+    preserved = {
+        path: path.read_bytes()
+        for path in folder.rglob("*")
+        if path.is_file() and path not in companions
+    }
+    xml = document([application, kept_native])
+    for module in (safe_pull, sync_plan):
+        monkeypatch.setattr(
+            module, "backup_application_xml", lambda c, a, p: p.write_bytes(xml)
+        )
+        monkeypatch.setattr(
+            module, "read_applications", lambda c: [Application("example", "", "")]
+        )
+    monkeypatch.setattr(
+        export,
+        "read_components",
+        lambda c, a: (
+            [ComponentInfo(a, "kept", "proc4glsource", "")]
+            + ([ComponentInfo(a, name, "framesource", "")] if catalog_retains else [])
+        ),
+    )
+
+    def unexpected_projection(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Surviving matching source must not be projected")
+
+    if not catalog_retains:
+        monkeypatch.setattr(
+            safe_pull, "export_application_to_paths", unexpected_projection
+        )
+    before = sync_plan.plan_project(connection, tmp_path)
+    deleted = next(
+        change for change in before if change.key == f"example/{name}".casefold()
+    )
+    assert (deleted.action, deleted.disk, deleted.database) == (
+        "converged",
+        "deleted",
+        "deleted",
+    )
+    result = safe_pull.sync_project(connection, load_context(tmp_path))
+    assert [failure.component for failure in result.failures] == (
+        [name] if catalog_retains else []
+    )
+    assert result.exported == 1
+    assert not removed.exists()
+    assert preserved == {path: path.read_bytes() for path in preserved}
+    if catalog_retains:
+        assert companions == {path: path.read_bytes() for path in companions}
+        assert {
+            node.get("name") for node in etree.parse(str(baseline)).findall("COMPONENT")
+        } == {"kept", name}
+        return
+    assert all(not path.exists() for path in companions)
+    for path, content in companions.items():
+        recovered = list(
+            (tmp_path / ".openroad/pulls").glob(f"*/before/example/{path.name}")
+        )
+        assert len(recovered) == 1
+        assert recovered[0].read_bytes() == content
+    assert {
+        node.get("name") for node in etree.parse(str(baseline)).findall("COMPONENT")
+    } == {"kept"}
+    after = sync_plan.plan_project(connection, tmp_path)
+    assert {change.key for change in after} == {"example", "example/kept"}
+    assert all(change.action == "unchanged" for change in after)
+
+
 @pytest.mark.parametrize(
     "race", ["none", "before", "during", "source_aba", "project_aba"]
 )

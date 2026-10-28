@@ -93,8 +93,8 @@ def test_xml_that_changes_during_read_is_refused_before_returning_an_inventory(
     initial_key = comparison_cache.file_digest(path)
     original = read_document
 
-    def changing(source: Path) -> etree._Element:
-        result = original(source)
+    def changing(source: Path, *, data: bytes | None = None) -> etree._Element:
+        result = original(source, data=data)
         source.write_bytes(source.read_bytes().replace(b"one", b"two"))
         return result
 
@@ -138,8 +138,8 @@ def test_transient_native_read_cannot_prime_a_persisted_false_source_proof(
         path.write_bytes(initial)
         os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
 
-    def restoring(source: Path) -> etree._Element:
-        result = original_read(source)
+    def restoring(source: Path, *, data: bytes | None = None) -> etree._Element:
+        result = original_read(source, data=data)
         if source == path:
             restore()
         return result
@@ -265,6 +265,7 @@ def test_changes_during_reconstruction_are_not_cached(
     source.write_text('[proc4glsource]\ndatatype="integer"\n===\nRETURN 1;')
     key = comparison_cache.project_key(root)
     from gorak.portable_source import comparison_component
+    from gorak.project import ProjectError
 
     original = comparison_component
 
@@ -274,7 +275,8 @@ def test_changes_during_reconstruction_are_not_cached(
         return result
 
     monkeypatch.setattr(sync_plan, "comparison_component", changing)
-    sync_plan.local_inventory(root)
+    with pytest.raises(ProjectError, match="Local source changed during comparison"):
+        sync_plan.local_inventory(root)
     assert comparison_cache.load("local:" + str(root.resolve()), key) is None
 
 
