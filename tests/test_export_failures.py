@@ -322,7 +322,9 @@ def test_real_planner_retries_until_component_exports(
     cli.main(["sync"])
     output = capsys.readouterr()
     assert "exported 0 components" in output.out
-    assert not output.err
+    assert "Sync: starting" in output.err
+    assert "failure" not in output.err
+    assert "Error:" not in output.err
 
 
 def test_unexpected_procedure_stylesheet_still_fails_projection(

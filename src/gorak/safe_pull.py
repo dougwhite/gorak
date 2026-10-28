@@ -23,6 +23,7 @@ from .export_failures import (
 )
 from .export_pipeline import prefetched_exports
 from .importer import signature
+from .operation_progress import report
 from .portable_source import read_document
 from .project import GorakContext, ProjectError
 from .project_lock import project_lock
@@ -151,6 +152,7 @@ def _sync_project(
         with handle:
             handle.write(str(operation))
             handle.flush()
+            report("Checking local files before pull")
             before = fingerprint(root)
             if take_database:
                 from .sync_plan import plan_project
@@ -174,6 +176,7 @@ def _sync_project(
                     for p in root.glob("*/app.json")
                 }
             )
+            report("Listing database applications for pull")
             available = {
                 a.name.casefold(): a.name for a in read_applications(connection)
             }
@@ -182,6 +185,7 @@ def _sync_project(
             from .export import read_components
 
             planned = {change.key for change in plan}
+            report("Checking database component catalogs")
             for app in sorted(names.keys() & available.keys()):
                 for catalog_component in read_components(connection, available[app]):
                     key = f"{app}/{catalog_component.name}".casefold()
@@ -212,12 +216,14 @@ def _sync_project(
             exported_count = 0
             failures: list[ExportFailure] = []
             app_failures: dict[str, list[ExportFailure]] = {}
+            report("Exporting pull applications", 0, len(apps))
             with prefetched_exports(
                 [available[app] for app in sorted(apps) if app in available],
                 connection.export_workers,
                 lambda app, path: backup_application_xml(connection, app, path),
             ) as prefetched:
-                for app in sorted(apps):
+                for app_index, app in enumerate(sorted(apps), 1):
+                    report("Exporting pull applications", app_index - 1, len(apps))
                     name = names.get(app, available.get(app, app))
                     if app in available and name != available[app]:
                         raise ProjectError(
@@ -291,6 +297,7 @@ def _sync_project(
                         copy2(asset, target)
                     paths = application_export_paths(stage, name)
                     _, native_xml = next(prefetched)
+                    report(f"Converting pull source: {name}")
                     exported = export_application_to_paths(
                         connection,
                         name,
@@ -309,19 +316,22 @@ def _sync_project(
                             changes.pop(path, None)
                     staged_xml[app] = paths.xml_path
                     exported_count += len(exported.components)
+                    report("Exporting pull applications", app_index, len(apps))
             # Re-scan database inventory and compare the exact XML staged for installation.
+            report("Rechecking database applications before installation")
             latest = {a.name.casefold(): a.name for a in read_applications(connection)}
             for app in apps:
                 if (app in available) != (app in latest):
                     raise ProjectError(
                         f"Database application changed during pull: {app}"
                     )
+            report("Verifying pull applications", 0, len(staged_xml))
             with prefetched_exports(
                 sorted(staged_xml),
                 connection.export_workers,
                 lambda app, path: backup_application_xml(connection, latest[app], path),
             ) as verification:
-                for app, native_xml in verification:
+                for verify_index, (app, native_xml) in enumerate(verification, 1):
                     check = operation / f"{app}-verify.xml"
                     copy2(native_xml, check)
                     if signature(read_document(check)) != signature(
@@ -330,6 +340,8 @@ def _sync_project(
                         raise ProjectError(
                             f"Database source changed during pull: {app}"
                         )
+                    report("Verifying pull applications", verify_index, len(staged_xml))
+            report("Preparing verified source for installation")
             for app, xml_path in staged_xml.items():
                 finalize_baseline(
                     xml_path,
@@ -369,7 +381,9 @@ def _sync_project(
             }
             pending = root / ".openroad/pull-pending.json"
             pending.write_text(json.dumps({"operation": str(operation)}))
+            report("Installing verified source files")
             apply_files(root, changes, operation, snapshot)
+            report("Source installation", 1, 1)
             (operation / "verified").write_text(
                 "Pull installed after disk and database revalidation\n"
             )

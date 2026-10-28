@@ -40,6 +40,7 @@ from .export import (
 from .importer import import_component
 from .local import LocalCommandError
 from .odbc_runtime import odbc_error_types
+from .operation_progress import progress_scope
 from .project import (
     ProjectError,
     configure_project,
@@ -1208,68 +1209,70 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             )
             return
         if parsed.command == "status":
-            from lxml import etree
+            with progress_scope("Status"):
+                from lxml import etree
 
-            from .sync_guard import binding_status
-            from .sync_plan import format_plan, plan_project
+                from .sync_guard import binding_status
+                from .sync_plan import format_plan, plan_project
 
-            context = load_context(Path.cwd())
-            if context.project is None:
-                raise ProjectError("Status requires a gorak project")
-            connection = resolve_openroad_connection(parsed, context)
-            baseline_target = binding_status(
-                connection, context.project.root, recover_pull=True
-            )
-            status_diagnostics: dict[str, object] = {}
-            pending = context.project.root / ".openroad/push-pending.json"
-            sync_state: object = None
-            if pending.exists():
-                try:
-                    sync_state = json.loads(pending.read_text())
-                except (ValueError, OSError):
-                    sync_state = {
-                        "state": "recovery_required",
-                        "reason": "unreadable pending push record",
-                    }
-            try:
-                if connection.revision_generation:
-                    from .revision_checkpoint import revision_plan
-
-                    changes, status_diagnostics = revision_plan(
-                        connection, context.project.root
-                    )
-                else:
-                    changes = plan_project(connection, context.project.root)
-            except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
-                if sync_state is None:
-                    raise
-                changes = []
-                status_diagnostics = {
-                    "comparison_error": str(ex),
-                    "comparison_available": False,
-                }
-            print(
-                json.dumps(
-                    {
-                        "baseline_target": baseline_target,
-                        **(
-                            {"source_operation": sync_state}
-                            if sync_state is not None
-                            else {}
-                        ),
-                        "changes": format_plan(changes),
-                        **(
-                            {"observation": status_diagnostics}
-                            if status_diagnostics
-                            else {}
-                        ),
-                    },
-                    indent=2,
+                context = load_context(Path.cwd())
+                if context.project is None:
+                    raise ProjectError("Status requires a gorak project")
+                connection = resolve_openroad_connection(parsed, context)
+                baseline_target = binding_status(
+                    connection, context.project.root, recover_pull=True
                 )
-            )
-            return
+                status_diagnostics: dict[str, object] = {}
+                pending = context.project.root / ".openroad/push-pending.json"
+                sync_state: object = None
+                if pending.exists():
+                    try:
+                        sync_state = json.loads(pending.read_text())
+                    except (ValueError, OSError):
+                        sync_state = {
+                            "state": "recovery_required",
+                            "reason": "unreadable pending push record",
+                        }
+                try:
+                    if connection.revision_generation:
+                        from .revision_checkpoint import revision_plan
+
+                        changes, status_diagnostics = revision_plan(
+                            connection, context.project.root
+                        )
+                    else:
+                        changes = plan_project(connection, context.project.root)
+                except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
+                    if sync_state is None:
+                        raise
+                    changes = []
+                    status_diagnostics = {
+                        "comparison_error": str(ex),
+                        "comparison_available": False,
+                    }
+                print(
+                    json.dumps(
+                        {
+                            "baseline_target": baseline_target,
+                            **(
+                                {"source_operation": sync_state}
+                                if sync_state is not None
+                                else {}
+                            ),
+                            "changes": format_plan(changes),
+                            **(
+                                {"observation": status_diagnostics}
+                                if status_diagnostics
+                                else {}
+                            ),
+                        },
+                        indent=2,
+                    )
+                )
+                return
         if parsed.command == "sync":
-            print(sync_command(parsed))
+            with progress_scope("Sync"):
+                print(sync_command(parsed))
             return
         if parsed.command == "component" and parsed.component_command == "import":
             print(component_import_command(parsed))

@@ -61,9 +61,15 @@ def test_deleted_database_app_removes_source_but_preserves_notes(
         lambda r: ({"example": object(), "example/proc": object()}, {"example"}),
     )
     monkeypatch.setattr(safe_pull, "read_applications", lambda c: [])
-    safe_pull.sync_project(
-        OpenRoadConnection("local", "node", "db", None), load_context(tmp_path)
-    )
+    from gorak.operation_progress import progress_scope
+
+    messages: list[str] = []
+    with progress_scope("Sync", messages.append):
+        safe_pull.sync_project(
+            OpenRoadConnection("local", "node", "db", None), load_context(tmp_path)
+        )
+    assert any("Installing verified source files" in message for message in messages)
+    assert any("Source installation: 100%" in message for message in messages)
     assert not (folder / "app.json").exists()
     assert not (folder / "proc.w4gl").exists()
     assert not (folder / sidecar).exists()

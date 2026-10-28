@@ -64,7 +64,17 @@ def test_status_is_read_only_and_detects_conflicting_scripts(
         for p in tmp_path.rglob("*")
         if p.is_file()
     }
-    changes = sync_plan.plan_project(connection, tmp_path)
+    from gorak.operation_progress import progress_scope
+
+    messages: list[str] = []
+    with progress_scope("Status", messages.append):
+        changes = sync_plan.plan_project(connection, tmp_path)
+    assert any("Comparing local source: 100%" in message for message in messages)
+    assert any(
+        "Exporting and comparing database applications: 100%" in message
+        for message in messages
+    )
+    assert any("Waiting for native export" in message for message in messages)
     assert next(c for c in changes if c.key == "example/proc").action == "conflict"
     assert before == {
         p.relative_to(tmp_path): p.read_bytes()
@@ -189,3 +199,23 @@ def test_inventory_retains_compact_signatures_with_compatible_checkpoint_hashes(
     assert sync_plan.semantic_hashes(inventory)["example/proc"] == expected
     component.find("script").text = "RETURN 2;"
     assert sync_plan.signature(component) != digest
+
+
+def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    from gorak import cli
+
+    setup(tmp_path, monkeypatch, xml())
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    (tmp_path / ".env").write_text(
+        "GORAK_BACKEND=local\nGORAK_SQL_BACKEND=local\n"
+        "GORAK_VNODE=node\nGORAK_DATABASE=db\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    cli.main(["status"])
+    output = capsys.readouterr()
+    assert json.loads(output.out)["changes"] == []
+    assert "Comparing local source: 100%" in output.err

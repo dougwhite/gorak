@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from .errors import ProjectError
+from .operation_progress import report
 
 
 @contextmanager
@@ -42,6 +43,9 @@ def prefetched_exports(
 
         def consume() -> Generator[tuple[str, Path], None, None]:
             for index, name in enumerate(names):
+                report(
+                    f"Waiting for native export: {name} ({index + 1}/{len(names)} applications)"
+                )
                 path = pending.pop(index).result()
                 submit()
                 try:

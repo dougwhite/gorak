@@ -13,6 +13,7 @@ from .connection import OpenRoadConnection
 from .export import backup_application_xml, read_applications
 from .export_pipeline import prefetched_exports
 from .native_normalization import signature as native_signature
+from .operation_progress import report
 from .portable_source import (
     cached_source_scope,
     comparison_application,
@@ -74,7 +75,9 @@ def xml_inventory(root: etree._Element, app: str) -> dict[str, object]:
     application = root.find("APPLICATION")
     if application is not None:
         result[app.casefold()] = signature(application)
-    for node in root.findall("COMPONENT"):
+    nodes = root.findall("COMPONENT")
+    report(f"Comparing XML components: {app}", 0, len(nodes))
+    for index, node in enumerate(nodes, 1):
         name = node.get("name")
         if not name:
             raise ProjectError("Component XML is missing its name")
@@ -82,6 +85,7 @@ def xml_inventory(root: etree._Element, app: str) -> dict[str, object]:
         if key in result:
             raise ProjectError(f"Case-insensitive component collision: {key}")
         result[key] = signature(node)
+        report(f"Comparing XML components: {app}", index, len(nodes))
     return result
 
 
@@ -97,19 +101,21 @@ def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
         raise ProjectError("Invalid tracked application inventory")
     apps: set[str] = set(names)
     cache = root / ".openroad"
-    for directory in cache.iterdir() if cache.exists() else []:
-        if not directory.is_dir() or directory.name in {
-            "pulls",
-            "pushes",
-            "imports",
-            "runs",
-        }:
-            continue
+    directories = [
+        directory
+        for directory in (cache.iterdir() if cache.exists() else [])
+        if directory.is_dir()
+        and directory.name not in {"pulls", "pushes", "imports", "runs"}
+    ]
+    report("Reading baseline applications", 0, len(directories))
+    for directory_index, directory in enumerate(directories, 1):
+        report("Reading baseline applications", directory_index - 1, len(directories))
         files = sorted(directory.glob("*.xml"), key=lambda p: p.stat().st_mtime_ns)
         if not files:
             continue
         apps.add(directory.name)
         for path in files:
+            report(f"Reading baseline XML: {directory.name}")
             inventory = xml_inventory(read_document(path), directory.name)
             if directory.name.casefold() in inventory:
                 # A full app export also records absence of deleted components.
@@ -120,6 +126,7 @@ def baseline_inventory(root: Path) -> tuple[dict[str, object], set[str]]:
                     if not key.startswith(prefix)
                 }
             result.update(inventory)
+    report("Reading baseline applications", len(directories), len(directories))
     return result, apps
 
 
@@ -140,7 +147,13 @@ def plan_project(
     disk: dict[str, object] = {}
     invalid: dict[str, str] = {}
     seen: set[str] = set()
-    for manifest in sorted(root.glob("*/app.json")):
+    manifests = sorted(
+        p for p in root.glob("*/app.json") if not p.parent.name.startswith(".")
+    )
+    source_count = sum(1 + len(list(p.parent.glob("*.w4gl"))) for p in manifests)
+    source_done = 0
+    report("Comparing local source", source_done, source_count)
+    for manifest in manifests:
         folder = manifest.parent
         if folder.name.startswith("."):
             continue
@@ -153,6 +166,8 @@ def plan_project(
             disk[app.casefold()] = signature(comparison_application(folder))
         except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
             invalid[app.casefold()] = str(ex)
+        source_done += 1
+        report("Comparing local source", source_done, source_count)
         for source in sorted(folder.glob("*.w4gl")):
             key = f"{app}/{source.stem}".casefold()
             if key in disk or key in invalid:
@@ -161,11 +176,14 @@ def plan_project(
                 disk[key] = signature(comparison_component(source))
             except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
                 invalid[key] = str(ex)
+            source_done += 1
+            report("Comparing local source", source_done, source_count)
     if database_hashes is not None:
         baseline = dict(semantic_hashes(baseline))
         disk = dict(semantic_hashes(disk))
         database: dict[str, object] = dict(database_hashes)
     else:
+        report("Listing database applications")
         available = {
             app.name.casefold(): app.name for app in read_applications(connection)
         }
@@ -178,11 +196,18 @@ def plan_project(
             else:
                 backup_application_xml(connection, available[name], path)
 
+        report("Exporting and comparing database applications", 0, len(names))
         with prefetched_exports(
             names, connection.export_workers, export_one
         ) as pending:
             for index, (name, path) in enumerate(pending):
+                report(f"Comparing database XML: {name}")
                 database.update(xml_inventory(read_document(path), name))
+                report(
+                    "Exporting and comparing database applications",
+                    index + 1,
+                    len(names),
+                )
                 if capture_dir is not None:
                     copyfile(path, capture_dir / f"{index}.xml")
         if capture_dir is not None:
@@ -195,6 +220,7 @@ def plan_project(
             )
         if inventory_sink is not None:
             inventory_sink.update(semantic_hashes(database))
+    report("Building change plan")
     changes = [
         compare(key, baseline.get(key), disk.get(key), database.get(key))
         for key in sorted(

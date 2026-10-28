@@ -109,3 +109,12 @@ Push evidence and compiler logs are stored under `.openroad/`, including:
 
 These files can contain source and connection identities. Keep them private and
 out of Git.
+
+## Progress reporting
+
+`gorak status` and `gorak sync` report activity to stderr, with completed counts
+and percentages for phases with known totals. Percentages describe the named
+phase, not the entire operation or time remaining. A heartbeat every ten seconds
+shows elapsed time and the current activity during long processing or external
+waits. It indicates that the command is alive, not that the external service is
+advancing. Status JSON stays on stdout.
