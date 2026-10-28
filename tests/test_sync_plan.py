@@ -163,3 +163,29 @@ def test_compact_signatures_preserve_xml_comment_and_processing_instruction_cont
     assert digest("<!--one-->") != digest("<!--two-->")
     assert digest("<?test one?>") != digest("<?test two?>")
     assert digest("<!--one-->") != digest("<comment>one</comment>")
+
+
+def test_inventory_retains_compact_signatures_with_compatible_checkpoint_hashes() -> (
+    None
+):
+    from lxml import etree
+
+    from gorak.native_normalization import signature as native_signature
+
+    root = etree.fromstring(xml().encode())
+    component = root.find("COMPONENT")
+    assert component is not None
+    # Many nested values previously remained expanded in each project inventory.
+    for index in range(2000):
+        etree.SubElement(component, "property", name=str(index)).text = "value"
+    expected = sync_plan.semantic_hashes(
+        {"example/proc": native_signature(component, pixel_geometry=True)}
+    )["example/proc"]
+    inventory = sync_plan.xml_inventory(root, "example")
+    digest = inventory["example/proc"]
+    assert isinstance(digest, sync_plan.SemanticDigest)
+    assert len(digest) == 64
+    assert digest == expected
+    assert sync_plan.semantic_hashes(inventory)["example/proc"] == expected
+    component.find("script").text = "RETURN 2;"
+    assert sync_plan.signature(component) != digest

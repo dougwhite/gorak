@@ -22,8 +22,14 @@ from .portable_source import (
 from .project import ProjectError
 
 
-def signature(node: etree._Element) -> object:
-    return native_signature(node, pixel_geometry=True)
+class SemanticDigest(str):
+    """An already hashed normalized signature, distinct from raw source strings."""
+
+
+def signature(node: etree._Element) -> SemanticDigest:
+    # Release the expanded XML signature after each component instead of retaining
+    # its nested Python containers for the entire project's three inventories.
+    return SemanticDigest(semantic_hash(native_signature(node, pixel_geometry=True)))
 
 
 Action = Literal["unchanged", "converged", "pull", "push", "conflict"]
@@ -228,18 +234,21 @@ def format_plan(changes: list[Change]) -> list[dict[str, str]]:
 
 def semantic_hashes(inventory: dict[str, object]) -> dict[str, str]:
     """Compact exact semantic signatures without retaining XML/source in checkpoints."""
-    return {
-        key: hashlib.sha256(
-            json.dumps(
-                value,
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-                default=xml_special_signature,
-            ).encode("ascii")
-        ).hexdigest()
-        for key, value in inventory.items()
-    }
+    return {key: semantic_hash(value) for key, value in inventory.items()}
+
+
+def semantic_hash(value: object) -> str:
+    if isinstance(value, SemanticDigest):
+        return str(value)
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=xml_special_signature,
+        ).encode("ascii")
+    ).hexdigest()
 
 
 def xml_special_signature(value: object) -> dict[str, str]:

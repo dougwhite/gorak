@@ -127,7 +127,10 @@ Lists the applications included by `APP`.
 
 Compares readable disk source, Gorak's baseline, and the OpenROAD source
 database. It prints a read-only JSON plan showing pull, push, unchanged, or
-conflicting source.
+conflicting source. Status reconstructs local components and exports fresh native
+application XML; large projects can take time even with local backends. Planning
+retains compact semantic hashes per component rather than expanded XML comparison
+structures. Pull and push planning use the same comparison machinery.
 
 ```sh
 gorak status
