@@ -397,6 +397,35 @@ def _sync_project(
                     for change in app_plan
                 )
             }
+            matching_sources = {
+                change.key
+                for change in plan
+                if not take_database
+                and change.key.split("/", 1)[0] in captured_xml
+                and change.action in {"unchanged", "converged"}
+                and not change.reason
+                and change.disk not in {"invalid", "deleted"}
+                and change.database != "deleted"
+            }
+
+            def preserve_source(path: Path) -> bool:
+                relative = path.relative_to(root)
+                if len(relative.parts) != 2:
+                    return False
+                app, filename = relative.parts
+                if filename == "app.json":
+                    return app.casefold() in matching_sources
+                for suffix in (
+                    ".w4gl",
+                    ".wml",
+                    ".fielddefaults.json",
+                    ".queries.json",
+                    ".icons.json",
+                ):
+                    if filename.endswith(suffix):
+                        key = f"{app}/{filename.removesuffix(suffix)}".casefold()
+                        return key in matching_sources
+                return False
 
             def stage_export(app: str, path: Path) -> None:
                 planned_xml = captured_xml.get(app.casefold())
@@ -497,7 +526,7 @@ def _sync_project(
                         old_files.update((root / name).glob("*.icons.json"))
                     old_files.update((root / ".openroad" / name).glob("*.xml"))
                     for path in old_files:
-                        if path.is_file():
+                        if path.is_file() and not preserve_source(path):
                             changes[path] = None
                     if app not in available:
                         continue
@@ -586,6 +615,11 @@ def _sync_project(
             for path in stage.rglob("*"):
                 if path.is_file():
                     destination = root / path.relative_to(stage)
+                    # A catalog omission can require normal projection even when
+                    # other source already matches this captured native export.
+                    # Keep those proven source bytes, including CRLF and comments.
+                    if preserve_source(destination):
+                        continue
                     if (
                         destination.exists()
                         and destination not in changes

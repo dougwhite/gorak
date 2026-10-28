@@ -1,5 +1,6 @@
 """Current readable reconstruction and native baselines for verified comparisons."""
 
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -15,6 +16,16 @@ def read_document(path: Path) -> etree._Element:
     from .source_xml import read_tree
 
     return read_tree(path).getroot()
+
+
+def _source_stamp(path: Path) -> tuple[int, int, int]:
+    stat = path.stat()
+    changed = stat.st_ctime_ns
+    if sys.platform == "win32":
+        from .windows_file_info import change_time
+
+        changed = change_time(path)
+    return stat.st_mtime_ns, changed, stat.st_size
 
 
 class CachedSourceIndex:
@@ -35,8 +46,7 @@ class CachedSourceIndex:
         if path.parent != self.folder:
             self.files.clear()  # Bound retained XML to one application.
             self.folder = path.parent
-        stat = path.stat()
-        stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+        stamp = _source_stamp(path)
         entry = self.files.get(path)
         if entry is None or entry[0] != stamp:
             root = read_document(path)

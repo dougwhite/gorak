@@ -485,11 +485,13 @@ def test_fresh_clone_adopts_matching_xml_without_rewriting_source(
 
 @pytest.mark.parametrize("previous_baseline", [False, True])
 @pytest.mark.parametrize("catalog_omitted", [False, True])
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n"])
 def test_baseline_adoption_preserves_catalog_omissions_and_full_absence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     previous_baseline: bool,
     catalog_omitted: bool,
+    newline: bytes,
 ) -> None:
     from copy import deepcopy
 
@@ -506,7 +508,12 @@ def test_baseline_adoption_preserves_catalog_omissions_and_full_absence(
     folder.mkdir()
     (folder / "app.json").write_text("{}")
     source = folder / "good.w4gl"
-    source.write_text('[proc4glsource]\ndatatype = "integer"\n\n===\n\nRETURN 1;\n')
+    original_source = (
+        b'[proc4glsource]\ndatatype = "integer"\n\n===\n\nRETURN 1;\n'.replace(
+            b"\n", newline
+        )
+    )
+    source.write_bytes(original_source)
     application = new_application(folder)
     good = new_component(source)
     xml = document([application, good])
@@ -549,7 +556,8 @@ def test_baseline_adoption_preserves_catalog_omissions_and_full_absence(
         ["omitted"] if catalog_omitted else []
     )
     assert result.exported == 1
-    assert source.exists()
+    assert source.read_bytes() == original_source
+    assert (folder / "app.json").read_bytes() == b"{}"
     assert not (folder / "omitted.w4gl").exists()
     saved_names = {
         node.get("name") for node in etree.parse(str(baseline)).findall("COMPONENT")
@@ -560,6 +568,154 @@ def test_baseline_adoption_preserves_catalog_omissions_and_full_absence(
     assert (baseline.parent / "omitted.xml").exists() == (
         previous_baseline and catalog_omitted
     )
+
+
+@pytest.mark.parametrize("edit", ["none", "local", "concurrent", "untracked"])
+def test_partial_clone_pull_preserves_proven_source_and_rejects_other_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edit: str
+) -> None:
+    from copy import deepcopy
+
+    from gorak import export, sync_plan
+    from gorak.domain import ApplicationExport, ComponentInfo
+    from gorak.xml_writer import document, new_application, new_component
+
+    connection = OpenRoadConnection("local", "node", "db", None)
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    source = folder / "good.w4gl"
+    original = (
+        b'[proc4glsource]\r\n# Retain this comment\r\ndatatype="integer"\r\n'
+        b"\r\n===\r\n\r\nRETURN 1;\r\n"
+    )
+    source.write_bytes(original)
+    good = new_component(source)
+    added = deepcopy(good)
+    added.set("name", "added")
+    xml = document([new_application(folder), good, added])
+    notes = folder / "notes.txt"
+    notes.write_bytes(b"human notes")
+    if edit == "local":
+        source.write_bytes(original.replace(b"RETURN 1", b"RETURN 2"))
+    for module in (safe_pull, sync_plan):
+        monkeypatch.setattr(
+            module, "backup_application_xml", lambda c, a, p: p.write_bytes(xml)
+        )
+        monkeypatch.setattr(
+            module, "read_applications", lambda c: [Application("example", "", "")]
+        )
+    monkeypatch.setattr(
+        export,
+        "read_components",
+        lambda c, a: [
+            ComponentInfo(a, name, "proc4glsource", "") for name in ("good", "added")
+        ],
+    )
+    projecting = export.export_application_to_paths
+
+    def project(*args: Any, **kwargs: Any) -> ApplicationExport:
+        result = projecting(*args, **kwargs)
+        if edit == "concurrent":
+            source.write_bytes(original.replace(b"RETURN 1", b"RETURN 2"))
+        elif edit == "untracked":
+            (args[2].source_dir / "notes.txt").write_bytes(b"unexpected projection")
+        return result
+
+    monkeypatch.setattr(safe_pull, "export_application_to_paths", project)
+    if edit == "none":
+        result = safe_pull.sync_project(connection, load_context(tmp_path))
+        assert not result.failures
+        assert result.exported == 2
+        assert (folder / "added.w4gl").exists()
+        assert source.read_bytes() == original
+        assert (folder / "app.json").read_bytes() == b"{}"
+    else:
+        message = {
+            "local": "Sync stopped before writes",
+            "concurrent": "Local project changed during pull",
+            "untracked": "Pull would overwrite an untracked source file",
+        }[edit]
+        with pytest.raises(ProjectError, match=message):
+            safe_pull.sync_project(connection, load_context(tmp_path))
+        assert not (folder / "added.w4gl").exists()
+        assert not (tmp_path / ".openroad/example/example.xml").exists()
+        assert source.read_bytes() == (
+            original
+            if edit == "untracked"
+            else original.replace(b"RETURN 1", b"RETURN 2")
+        )
+    assert notes.read_bytes() == b"human notes"
+
+
+def test_partial_clone_pull_preserves_matching_frame_sidecars_and_installs_new_assets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from copy import deepcopy
+
+    from lxml import etree
+
+    from gorak import export, native_styles, sync_plan
+    from gorak.bitmap_codec import encode
+    from gorak.domain import ComponentInfo
+    from gorak.parser import NS
+    from gorak.xml_writer import document, new_application, new_component
+    from tests.native_source import write_component
+    from tests.test_image_assets import bitmap
+
+    connection = OpenRoadConnection("local", "node", "db", None)
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    source = folder / "kept.w4gl"
+    frame = etree.Element("COMPONENT", name="kept", nsmap=NS)
+    frame.set(f"{{{NS['xsi']}}}type", "framesource")
+    etree.SubElement(frame, "datatype").text = "integer"
+    etree.SubElement(etree.SubElement(frame, "topform"), "width").text = "100"
+    write_component(source, frame)
+    for path in folder.glob("kept.*"):
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n") + b"\r\n")
+    before = {path: path.read_bytes() for path in folder.glob("kept.*")}
+    assert source.with_suffix(".wml") in before
+    assert source.with_suffix(".fielddefaults.json") in before
+    kept = new_component(source)
+    added = deepcopy(kept)
+    added.set("name", "added")
+    styles = native_styles.decode(native_styles.baseline())
+    width = styles.find(".//width")
+    assert width is not None
+    width.text = "321"
+    added.append(styles)
+    etree.SubElement(
+        etree.SubElement(added, "windowicon"), "obj_encoded"
+    ).text = encode(bitmap("assets/added.png"))
+    xml = document([new_application(folder), kept, added])
+    for module in (safe_pull, sync_plan):
+        monkeypatch.setattr(
+            module, "backup_application_xml", lambda c, a, p: p.write_bytes(xml)
+        )
+        monkeypatch.setattr(
+            module, "read_applications", lambda c: [Application("example", "", "")]
+        )
+    monkeypatch.setattr(
+        export,
+        "read_components",
+        lambda c, a: [
+            ComponentInfo(a, name, "framesource", "") for name in ("kept", "added")
+        ],
+    )
+    result = safe_pull.sync_project(connection, load_context(tmp_path))
+    assert not result.failures
+    assert result.exported == 2
+    assert before == {path: path.read_bytes() for path in before}
+    assert (folder / "images/added.png").is_file()
+    assert (folder / "added.fielddefaults.json").is_file()
+    assert b"images/added.png" in (folder / "added.w4gl").read_bytes()
+    baseline, _, disk, invalid = sync_plan.local_inventory(tmp_path)
+    assert not invalid
+    assert baseline == disk
 
 
 @pytest.mark.parametrize(

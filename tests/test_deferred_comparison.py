@@ -2,11 +2,13 @@
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from lxml import etree
 
-from gorak import comparison_cache, sync_plan
+from gorak import comparison_cache, portable_source, sync_plan, windows_file_info
 from gorak.native_normalization import signature as native_signature
 from gorak.portable_source import cached_source_scope, read_document
 from gorak.project import ProjectError
@@ -174,6 +176,88 @@ def test_deferred_resolution_rejects_same_size_same_mtime_baseline_edit(
         os.utime(path, ns=(original_time, original_time))
         with pytest.raises(ProjectError, match="Baseline changed"):
             sync_plan.semantic_hash(values["example/calculate"])
+
+
+def test_deferred_resolution_uses_windows_change_time_with_unchanged_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = baseline_file(tmp_path)
+    original = path.stat()
+    real_stat = Path.stat
+    generation = [1]
+
+    def windows_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        current = real_stat(self, follow_symlinks=follow_symlinks)
+        if self != path:
+            return current
+        fields = {
+            key: getattr(current, key) for key in dir(current) if key.startswith("st_")
+        }
+        fields["st_ctime_ns"] = original.st_ctime_ns
+        return cast(os.stat_result, SimpleNamespace(**fields))
+
+    monkeypatch.setattr(Path, "stat", windows_stat)
+    monkeypatch.setattr(portable_source, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(windows_file_info, "change_time", lambda path: generation[0])
+    with comparison_cache.scope(), cached_source_scope():
+        values, _ = sync_plan.baseline_inventory(tmp_path)
+        sync_plan.semantic_hash(values["example"])
+        path.write_bytes(path.read_bytes().replace(b"RETURN 1;", b"RETURN 2;"))
+        os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
+        generation[0] += 1
+        current = path.stat()
+        assert (current.st_mtime_ns, current.st_ctime_ns, current.st_size) == (
+            original.st_mtime_ns,
+            original.st_ctime_ns,
+            original.st_size,
+        )
+        with pytest.raises(ProjectError, match="Baseline changed"):
+            sync_plan.semantic_hash(values["example/calculate"])
+
+
+def test_windows_metadata_errors_do_not_reuse_cached_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = baseline_file(tmp_path)
+    monkeypatch.setattr(portable_source, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(windows_file_info, "change_time", lambda path: 1)
+
+    def unavailable(path: Path) -> int:
+        raise OSError("metadata query failed")
+
+    with comparison_cache.scope(), cached_source_scope():
+        values, _ = sync_plan.baseline_inventory(tmp_path)
+        sync_plan.semantic_hash(values["example"])
+        monkeypatch.setattr(windows_file_info, "change_time", unavailable)
+        with pytest.raises(ProjectError, match="Baseline changed"):
+            sync_plan.semantic_hash(values["example/calculate"])
+    assert path.exists()
+
+
+def test_windows_unchanged_baseline_reuses_one_parsed_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = baseline_file(tmp_path)
+    reads: list[Path] = []
+
+    def counted_read(path: Path) -> etree._Element:
+        reads.append(path)
+        return read_document(path)
+
+    monkeypatch.setattr(portable_source, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(windows_file_info, "change_time", lambda path: 1)
+    monkeypatch.setattr(portable_source, "read_document", counted_read)
+    with cached_source_scope():
+        for _ in range(10):
+            assert (
+                portable_source.cached_node_at(path, "APPLICATION", "example")
+                is not None
+            )
+            assert (
+                portable_source.cached_node_at(path, "COMPONENT", "calculate")
+                is not None
+            )
+    assert reads == [path]
 
 
 def test_deferred_resolution_rejects_disappeared_baseline(tmp_path: Path) -> None:
