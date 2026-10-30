@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from lxml import etree
 
+from . import comparison_inputs
 from .connection import OpenRoadConnection
 from .errors import SourceVerificationError
 from .export import (
@@ -16,11 +17,12 @@ from .export import (
 from .import_backend import import_component_xml
 from .importer import component_tree, import_component, signature, validate_name
 from .native_normalization import signature as tracking_signature
+from .native_styles import resolution_scope, validation_scope
+from .operation_progress import report
 from .parser import (
     parse_application_xml,
     parse_component_node,
 )
-from .portable_source import restore_application, restore_component
 from .project import ProjectError
 from .project_lock import open_lock
 from .safe_pull import apply_files, fingerprint
@@ -49,6 +51,9 @@ def push_project(
         lock.unlink()
 
 
+@comparison_inputs.scope()
+@validation_scope()
+@resolution_scope()
 def _push_project(
     connection: OpenRoadConnection, root: Path, dry_run: bool = False
 ) -> str:
@@ -70,7 +75,8 @@ def _push_project(
             )
 
     known = {app.name.casefold() for app in read_applications(connection)}
-    creations: dict[str, tuple[str, bytes, list[Path]]] = {}
+    creations: dict[str, tuple[str, bytes | Path, list[Path]]] = {}
+    creation_targets: dict[str, list[tuple[str, str]]] = {}
     edits: list[tuple[str, str]] = []
     app_updates: dict[str, bytes] = {}
     prepared_edits: dict[tuple[str, str], Path] = {}
@@ -87,6 +93,19 @@ def _push_project(
         paths = sorted(folder.glob("*.w4gl"))
         if len({p.stem.casefold() for p in paths}) != len(paths):
             raise ProjectError(f"Component names collide ignoring case: {app}")
+        if app.casefold() not in known:
+            if any((root / ".openroad" / app).glob("*.xml")):
+                raise ProjectError(
+                    f"Previously exported application is missing from database: {app}"
+                )
+            from .creation_source import prepare_application
+
+            prepared = operation / f"prepared-{len(creations)}.xml"
+            dependencies[app.casefold()], creation_targets[app] = prepare_application(
+                root, folder, paths, prepared, source_snapshot
+            )
+            creations[app] = ("-", prepared, paths)
+            continue
         from .image_assets import source_files
 
         auxiliary = [
@@ -103,21 +122,6 @@ def _push_project(
         )
         for path in [folder / "app.json", *paths, *auxiliary]:
             snapshots[path] = path.read_bytes()
-        if app.casefold() not in known:
-            # Missing previously exported apps are deletions/conflicts, not creations.
-            if any((root / ".openroad" / app).glob("*.xml")):
-                raise ProjectError(
-                    f"Previously exported application is missing from database: {app}"
-                )
-            node = restore_application(folder)
-            nodes = [restore_component(path) for path in paths]
-            dependencies[app.casefold()] = {
-                row.findtext("appname", "").casefold()
-                for row in node.findall("included_apps/row")
-                if not row.findtext("imgfilename")
-            }
-            creations[app] = ("-", document([node, *nodes]), paths)
-            continue
         app_cache = root / ".openroad" / app / f"{app}.xml"
         if app_cache.is_file():
             previous_app = parse_application_xml(read_tree(str(app_cache)))
@@ -242,6 +246,7 @@ def _push_project(
         for key in list(creations):
             if key.startswith(app + "/"):
                 _, xml, paths = creations.pop(key)
+                assert isinstance(xml, bytes)
                 tree_root.extend(from_bytes(xml))
                 sources.extend(paths)
         creations[app] = (
@@ -274,7 +279,11 @@ def _push_project(
     from .xml_writer import prepare_submission
 
     for index, key in enumerate(ordered):
-        payload = from_bytes(creations[key][1])
+        prepared_source = creations[key][1]
+        if isinstance(prepared_source, Path):
+            prepared_source.replace(operation / f"{index}-submitted.xml")
+            continue
+        payload = from_bytes(prepared_source)
         prepare_submission(payload)
         (operation / f"{index}-submitted.xml").write_bytes(
             etree.tostring(payload, encoding="UTF-8", xml_declaration=True)
@@ -313,8 +322,13 @@ def _push_project(
 
     targets = list(edits)
     for key in ordered:
+        if key in creation_targets:
+            targets.extend(creation_targets[key])
+            continue
         app = key.split("/")[0]
-        tree = from_bytes(creations[key][1])
+        creation_content = creations[key][1]
+        assert isinstance(creation_content, bytes)
+        tree = from_bytes(creation_content)
         targets.extend((app, str(n.get("name"))) for n in tree.findall("COMPONENT"))
     queue_compilation(root, targets)
     pending_marker = root / ".openroad/push-pending.json"
@@ -327,7 +341,6 @@ def _push_project(
     installing = False
     try:
         for index, key in enumerate(ordered):
-            check_source()
             component, _, sources = creations[key]
             app = key.split("/")[0]
             submitted = operation / f"{index}-submitted.xml"
@@ -356,6 +369,7 @@ def _push_project(
                             f"Component appeared during push: {app}/{component}"
                         )
             check_source()
+            report("Importing prepared applications", index, len(ordered))
             import_component_xml(
                 connection,
                 app,
@@ -368,6 +382,7 @@ def _push_project(
             cache.mkdir(exist_ok=True)
             target = cache / f"{app if component == '-' else component}.xml"
             cache_updates.update(accepted_baseline(target, submitted, operation))
+            report("Importing prepared applications", index + 1, len(ordered))
         for app, name in edits:
             check_source()
             imported = import_component(

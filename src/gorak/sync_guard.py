@@ -114,11 +114,33 @@ def guard_sync(
     lock_held: bool = False,
     force: bool = False,
     capture_dir: Path | None = None,
+    creation_preflight: bool = False,
 ) -> list[Change]:
     status = binding_status(connection, root, recover_pull=force)
     baseline, _ = baseline_inventory(root)
     has_sources = any(root.glob("*/app.json"))
-    if connection.revision_generation and not bind and (has_sources or baseline):
+    fresh_creation = False
+    if (
+        creation_preflight
+        and lock_held
+        and push
+        and not bind
+        and not force
+        and not connection.revision_generation
+        and has_sources
+        and not baseline
+        and not (root / ".openroad/tracked-applications.json").exists()
+        and not any((root / ".openroad").glob("*/*.xml"))
+    ):
+        from .export import read_applications
+
+        fresh_creation = not read_applications(connection)
+    if fresh_creation:
+        # The caller immediately runs push's complete creation preflight. With
+        # neither a baseline nor database source, reconstructing everything for
+        # three-way comparison first provides no additional conflict evidence.
+        changes: list[Change] = []
+    elif connection.revision_generation and not bind and (has_sources or baseline):
         from .revision_checkpoint import revision_plan
 
         changes, _ = revision_plan(connection, root, lock_held=lock_held)

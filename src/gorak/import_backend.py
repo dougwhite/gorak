@@ -7,7 +7,7 @@ from uuid import uuid4
 from . import local, remote
 from .connection import OpenRoadConnection, require_remote_host
 from .project import ProjectError
-from .source_xml import read_tree
+from .source_xml import contains_components
 from .writer_launch import local_writer_command, remote_writer_prefix
 
 
@@ -35,7 +35,7 @@ def import_component_xml(
     from .revision_check import validate_revision_target
 
     validate_revision_target(connection)
-    empty_app = component == "-" and not read_tree(xml_path).findall("COMPONENT")
+    empty_app = component == "-" and not contains_components(xml_path)
     if connection.backend == "local":
         command = local.build_backup_component_command(
             connection.vnode,

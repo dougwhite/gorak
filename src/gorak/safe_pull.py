@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from pathlib import Path
 from shutil import copy2
@@ -105,24 +106,53 @@ def component_source_files(folder: Path, names: set[str]) -> set[Path]:
     return files
 
 
-def fingerprint(root: Path) -> dict[str, str]:
+def _source_digests(files: list[tuple[str, Path]]) -> dict[str, str]:
     result = {}
-    for directory, directories, files in os.walk(root):
-        folder = Path(directory)
-        if folder == root:
-            directories[:] = [
-                name for name in directories if name not in {".git", ".openroad"}
-            ]
-            files = [name for name in files if name not in {".git", ".openroad"}]
-        for name in directories + files:
-            path = folder / name
-            relative = path.relative_to(root)
-            if path.is_symlink():
-                raise ProjectError(
-                    f"Sync does not support symlinked project source: {relative}"
-                )
-            if path.is_file():
-                result[relative.as_posix()] = file_digest(path)
+    for relative, path in files:
+        # Enumeration and hashing may be separated by other files. Recheck the
+        # symlink policy when consuming each source, including in worker threads.
+        if path.is_symlink():
+            raise ProjectError(
+                f"Sync does not support symlinked project source: {relative}"
+            )
+        result[relative] = file_digest(path)
+    return result
+
+
+def fingerprint(root: Path) -> dict[str, str]:
+    files = []
+    pending = [root]
+    while pending:
+        folder = pending.pop()
+        # Windows directory enumeration already supplies file type information.
+        # Reuse it instead of issuing two extra stat calls per source file.
+        # Contents are still read and hashed on every pass, regardless of mtime.
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if folder == root and entry.name in {".git", ".openroad"}:
+                    continue
+                path = Path(entry.path)
+                relative = path.relative_to(root)
+                if entry.is_symlink():
+                    raise ProjectError(
+                        f"Sync does not support symlinked project source: {relative}"
+                    )
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+                elif entry.is_file(follow_symlinks=False):
+                    files.append((relative.as_posix(), path))
+    if len(files) < 512:
+        result = _source_digests(files)
+    else:
+        # Bound both open files and concurrent read buffers. Small batches avoid
+        # one future per file while overlapping Windows file-open/read latency.
+        with ThreadPoolExecutor(max_workers=4) as workers:
+            result = {}
+            for digests in workers.map(
+                _source_digests,
+                (files[index : index + 64] for index in range(0, len(files), 64)),
+            ):
+                result.update(digests)
     for path in (root / ".openroad").glob("*/*"):
         if not path.is_file() or not (
             path.suffix == ".xml" or path.name.endswith(".receipt.json")

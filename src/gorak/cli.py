@@ -840,6 +840,7 @@ def sync_command(args: argparse.Namespace) -> str:
                 dry_run=getattr(args, "dry_run", False),
                 lock_held=True,
                 force=force,
+                creation_preflight=True,
             )
             if (
                 getattr(args, "push", False)

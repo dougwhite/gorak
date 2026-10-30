@@ -187,10 +187,15 @@ def test_xml_verification_falls_back_for_formatting_and_detects_source_drift(
     assert not safe_pull.same_xml(first, second)
 
 
+@pytest.mark.parametrize("file_count", [1, 520])
 def test_fingerprint_hashes_bytes_even_when_size_and_mtime_are_unchanged(
     tmp_path: Path,
+    file_count: int,
 ) -> None:
     import os
+
+    for index in range(file_count - 1):
+        (tmp_path / f"other-{index}.w4gl").write_bytes(b"RETURN 0;")
 
     source = tmp_path / "proc.w4gl"
     source.write_bytes(b"RETURN 1;")
@@ -201,6 +206,23 @@ def test_fingerprint_hashes_bytes_even_when_size_and_mtime_are_unchanged(
     assert source.stat().st_size == stat.st_size
     assert source.stat().st_mtime_ns == stat.st_mtime_ns
     assert safe_pull.fingerprint(tmp_path) != before
+
+
+def test_parallel_fingerprint_propagates_read_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for index in range(520):
+        (tmp_path / f"proc-{index}.w4gl").write_bytes(b"RETURN 0;")
+    digest = safe_pull.file_digest
+
+    def failing(path: Path) -> str:
+        if path.name == "proc-300.w4gl":
+            raise OSError("Source became unreadable")
+        return digest(path)
+
+    monkeypatch.setattr(safe_pull, "file_digest", failing)
+    with pytest.raises(OSError, match="Source became unreadable"):
+        safe_pull.fingerprint(tmp_path)
 
 
 def test_fingerprint_prunes_ignored_trees_but_keeps_baselines(

@@ -26,6 +26,39 @@ def from_bytes(data: bytes) -> etree._Element:
     return parse_stream(BytesIO(data)).getroot()
 
 
+def contains_components(path: Path) -> bool:
+    """Validate the entire document while testing for direct component children."""
+    if path.stat().st_size > MAX_DOCUMENT_BYTES:
+        raise ProjectError("Source XML exceeds the 512 MiB document limit")
+    found = False
+    depth = 0
+    with path.open("rb") as stream:
+        for event, node in etree.iterparse(
+            stream,
+            events=("start", "end"),
+            resolve_entities=False,
+            no_network=True,
+            huge_tree=True,
+        ):
+            if event == "start":
+                depth += 1
+                if depth > MAX_DEPTH:
+                    raise ProjectError("Source XML exceeds the nesting limit")
+                if depth == 1 and node.getroottree().docinfo.doctype:
+                    raise ProjectError(
+                        "Source XML must not contain a document type declaration"
+                    )
+            else:
+                if depth == 2 and node.tag == "COMPONENT":
+                    found = True
+                parent = node.getparent()
+                node.clear()
+                if parent is not None:
+                    parent.remove(node)
+                depth -= 1
+    return found
+
+
 def parse_stream(stream: object) -> etree._ElementTree:
     # huge_tree permits embedded bitmap text larger than libxml2's 10 MB limit.
     parser = etree.XMLParser(

@@ -93,3 +93,68 @@ def test_guard_forwards_optional_planning_capture(
         connection(), tmp_path, push=False, dry_run=True, capture_dir=destination
     )
     assert captures == [destination]
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_empty_database_defers_reconstruction_only_to_locked_creation_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dry_run: bool
+) -> None:
+    from gorak import export
+
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    monkeypatch.setattr(export, "read_applications", lambda c: [])
+    monkeypatch.setattr(
+        sync_guard,
+        "plan_project",
+        lambda *a, **k: pytest.fail("Duplicate reconstruction"),
+    )
+    assert (
+        sync_guard.guard_sync(
+            connection(),
+            tmp_path,
+            push=True,
+            lock_held=True,
+            creation_preflight=True,
+            dry_run=dry_run,
+        )
+        == []
+    )
+    assert (tmp_path / ".openroad/sync-target.json").exists() != dry_run
+
+
+@pytest.mark.parametrize("reason", ["database", "tracked", "unlocked"])
+def test_creation_shortcut_does_not_bypass_existing_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str
+) -> None:
+    from gorak import export
+    from gorak.domain import Application
+
+    folder = tmp_path / "example"
+    folder.mkdir()
+    (folder / "app.json").write_text("{}")
+    if reason == "tracked":
+        cache = tmp_path / ".openroad"
+        cache.mkdir()
+        (cache / "tracked-applications.json").write_text("[]")
+    monkeypatch.setattr(
+        export,
+        "read_applications",
+        lambda c: [Application("other", "", "")] if reason == "database" else [],
+    )
+    planned = []
+
+    def planning(*args: object, **kwargs: object) -> list[Change]:
+        planned.append(True)
+        return []
+
+    monkeypatch.setattr(sync_guard, "plan_project", planning)
+    sync_guard.guard_sync(
+        connection(),
+        tmp_path,
+        push=True,
+        lock_held=reason != "unlocked",
+        creation_preflight=True,
+    )
+    assert planned == [True]

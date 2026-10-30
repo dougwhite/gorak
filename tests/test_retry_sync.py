@@ -457,7 +457,7 @@ def test_retry_adopts_application_created_before_lost_response(
     def apps(c: Any) -> list[Application]:
         return [Application("example", "", "")] if available[0] else []
 
-    for module in (push, push_retry, safe_pull, sync_plan):
+    for module in (push, push_retry, safe_pull, sync_plan, export):
         monkeypatch.setattr(module, "read_applications", apps)
     original = world.import_xml
 

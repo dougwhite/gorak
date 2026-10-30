@@ -271,7 +271,7 @@ def test_new_disk_file_during_preflight_prevents_import(
         "import_component_xml",
         lambda *a, **k: pytest.fail("Imported changed project"),
     )
-    with pytest.raises(ProjectError, match="Local project changed"):
+    with pytest.raises(ProjectError, match="Local project changed|Source changed"):
         push.push_project(connection(), tmp_path)
     assert not (tmp_path / ".openroad/push-pending.json").exists()
 
