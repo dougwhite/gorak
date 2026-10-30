@@ -446,7 +446,7 @@ def test_missing_application_manifest_is_reported(
     assert t.Ledger(tmp_path, connection()).entries["sample"]["database"]["count"] != 99
 
 
-def test_single_edit_only_copies_selected_component(
+def test_single_edit_only_prepares_selected_component(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     edited = source(tmp_path, name="edited")
@@ -457,7 +457,8 @@ def test_single_edit_only_copies_selected_component(
     original = t.prepare
 
     def preparing(folder: Path, *args: Any, **kwargs: Any) -> list[str]:
-        assert sorted(p.stem for p in folder.glob("*.w4gl")) == ["edited"]
+        assert folder == tmp_path / "sample"
+        assert args[1] == ["edited"]
         return original(folder, *args, **kwargs)
 
     monkeypatch.setattr(t, "prepare", preparing)
@@ -479,3 +480,61 @@ def test_pull_preserves_manifest_format(
     manifest = tmp_path / "sample/app.json"
     payload = json.loads(manifest.read_text())
     assert manifest.read_text() == json.dumps(payload, indent=4) + "\n"
+
+
+def test_cold_push_reads_sender_without_copying_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source(tmp_path)
+    Database(monkeypatch)
+    original = t.prepare
+
+    def preparing(folder: Path, *args: Any, **kwargs: Any) -> list[str]:
+        assert folder == tmp_path / "sample"
+        return original(folder, *args, **kwargs)
+
+    monkeypatch.setattr(t, "prepare", preparing)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    assert not t.status(connection(), tmp_path)["push"]
+
+
+def test_pull_indexes_application_directory_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import export
+
+    source(tmp_path, name="one")
+    source(tmp_path, name="two")
+    Database(monkeypatch)
+    t.push(connection(), tmp_path, compile=False)
+    original = export.case_variants
+
+    def variants(path: Path) -> list[Path]:
+        assert path.parent != tmp_path / "sample"
+        return original(path)
+
+    monkeypatch.setattr(export, "case_variants", variants)
+    result = t.pull(connection(), tmp_path, full=True)
+    assert not result.failed
+    assert not list((tmp_path / "sample").glob(".gorak-stage-*"))
+
+
+def test_pull_checkpoints_written_bytes_without_rereading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source(tmp_path)
+    Database(monkeypatch)
+    t.push(connection(), tmp_path, compile=False)
+    original = t.hashes
+
+    def hashing(root: Path, *args: Any, **kwargs: Any) -> dict[str, str]:
+        captured = kwargs.get("captured")
+        assert captured
+        for path in (root / "sample").iterdir():
+            if path.suffix in {".w4gl", ".wml"} or path.name == "app.json":
+                assert captured[path] == t.digest(path.read_bytes())
+        assert original(root, *args) == original(root, *args, **kwargs)
+        return original(root, *args, **kwargs)
+
+    monkeypatch.setattr(t, "hashes", hashing)
+    assert not t.pull(connection(), tmp_path, full=True).failed

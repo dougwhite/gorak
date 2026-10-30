@@ -2,9 +2,9 @@
 
 import hashlib
 import json
-import shutil
 import socket
 import tempfile
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +24,7 @@ from .native_styles import parent_styles, resolution_scope, validation_scope
 from .operation_progress import report
 from .parser import NS, parse_application_xml
 from .project import ProjectError
+from .source_output import write_text
 from .source_xml import MAX_DOCUMENT_BYTES, application_children
 from .transfer_catalog import inventory
 from .xml_writer import document, new_application, new_component, prepare_submission
@@ -61,7 +62,12 @@ def source_files(root: Path, app: str) -> list[Path]:
     )
 
 
-def hashes(root: Path, apps: list[str] | None = None) -> dict[str, str]:
+def hashes(
+    root: Path,
+    apps: list[str] | None = None,
+    *,
+    captured: dict[Path, str] | None = None,
+) -> dict[str, str]:
     apps = (
         apps
         if apps is not None
@@ -72,7 +78,7 @@ def hashes(root: Path, apps: list[str] | None = None) -> dict[str, str]:
         )
     )
     result: dict[str, str] = {}
-    read: dict[Path, str] = {}
+    read: dict[Path, str] = {} if captured is None else dict(captured)
     for index, app in enumerate(apps, 1):
         validate_name(app)
         folder = root / app
@@ -190,22 +196,6 @@ def app_names(root: Path, ledger: Ledger) -> set[str]:
     } | {key.split("/")[0] for key in ledger.entries}
 
 
-def copy_inputs(
-    root: Path, app: str, destination: Path, components: set[str] | None = None
-) -> None:
-    for path in source_files(root, app):
-        if (
-            components is not None
-            and path.parent == root / app
-            and any(path.name.endswith(suffix) for suffix in SUFFIXES)
-            and path.name.split(".", 1)[0] not in components
-        ):
-            continue
-        target_path = destination / path.relative_to(root)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, target_path)
-
-
 def prepare(
     source: Path,
     destination: Path,
@@ -312,7 +302,23 @@ def push(
 ) -> Result:
     ledger = Ledger(root, connection)
     report("Hashing local source")
-    local = hashes(root)
+    cold = full or not ledger.entries
+    if cold:
+        # Every sender object is pending; hash each application before reconstruction.
+        local = {
+            key: ""
+            for manifest in root.glob("*/app.json")
+            if not manifest.parent.name.startswith(".")
+            for key in [
+                manifest.parent.name,
+                *[
+                    f"{manifest.parent.name}/{path.stem}"
+                    for path in manifest.parent.glob("*.w4gl")
+                ],
+            ]
+        }
+    else:
+        local = hashes(root)
     changed = {
         key
         for key, value in local.items()
@@ -386,18 +392,11 @@ def push(
                     )
                 continue
             try:
-                snapshot = work / "source"
                 create = app.casefold() not in {name.casefold() for name in available}
-                copy_inputs(
-                    root,
-                    app,
-                    snapshot,
-                    None
-                    if create or app in selected
-                    else {key.split("/")[1] for key in selected if "/" in key},
-                )
-                captured = hashes(snapshot, [app])
-                folder = snapshot / app
+                # Record sender hashes before reconstruction/import. Later edits stay
+                # pending; no duplicate source tree or post-import reread is needed.
+                captured = hashes(root, [app]) if cold else local
+                folder = root / app
                 names = (
                     sorted(p.stem for p in folder.glob("*.w4gl"))
                     if create
@@ -499,7 +498,6 @@ def push(
                                 compilation.append((app, key.split("/")[1]))
                         except Exception as ex:
                             result.failed[key] = str(ex)
-                shutil.rmtree(folder, ignore_errors=True)
             except Exception as ex:
                 result.failed[app] = str(ex)
                 for key in selected:
@@ -582,7 +580,10 @@ def pull(
 
     from .export_pipeline import prefetched_exports
 
-    with prefetched_exports(names, connection.export_workers, backup) as exports:
+    with (
+        ExitStack() as stages,
+        prefetched_exports(names, connection.export_workers, backup) as exports,
+    ):
         for index, (app, xml) in enumerate(exports, 1):
             if app in export_errors:
                 result.failed[app] = export_errors[app]
@@ -590,6 +591,15 @@ def pull(
             folder = root / app
             folder.mkdir(parents=True, exist_ok=True)
             writer = AssetWriter(folder)
+            output_hashes: dict[Path, str] = {}
+            staging = Path(
+                stages.enter_context(
+                    tempfile.TemporaryDirectory(prefix=".gorak-stage-", dir=folder)
+                )
+            )
+            case_index: dict[str, list[Path]] = {}
+            for path in folder.iterdir():
+                case_index.setdefault(path.name.lower(), []).append(path)
             accepted: list[str] = []
             try:
                 styles = parent_styles(folder)
@@ -619,18 +629,28 @@ def pull(
                                 + "\n"
                             )
                             staged = folder / ".app.json.tmp"
-                            staged.write_text(payload)
+                            write_text(staged, payload, digests=output_hashes)
                             staged.replace(folder / "app.json")
+                            output_hashes[folder / "app.json"] = output_hashes.pop(
+                                staged
+                            )
                         else:
                             project_component_files(
-                                native, folder, writer, None, parent_styles=styles
+                                native,
+                                folder,
+                                writer,
+                                None,
+                                parent_styles=styles,
+                                case_index=case_index,
+                                staging=staging,
+                                digests=output_hashes,
                             )
                         accepted.append(key)
                     except Exception as ex:
                         result.failed[key] = str(ex)
                     converted += 1
                     report(f"Converting {app}", converted, count)
-                local = hashes(root, [app])
+                local = hashes(root, [app], captured=output_hashes)
                 for key in accepted:
                     token = remote[catalog_keys[key.casefold()]]
                     old = identities.get(("/" in key, identity(token)))

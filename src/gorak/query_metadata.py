@@ -8,6 +8,7 @@ from lxml import etree
 
 from .errors import ProjectError
 from .query_values import decode_collection, encode_collection
+from .source_output import write_text
 
 
 def query_path(source: Path) -> Path:
@@ -59,13 +60,18 @@ def read_queries(source: Path) -> etree._Element | None:
         raise ProjectError(f"Invalid query metadata {path}: {ex}") from ex
 
 
-def write_queries(source: Path, value: dict[str, Any] | None) -> None:
+def write_queries(
+    source: Path,
+    value: dict[str, Any] | None,
+    *,
+    digests: dict[Path, str] | None = None,
+) -> None:
     path = query_path(source)
     if value is None:
         path.unlink(missing_ok=True)
     else:
-        path.write_text(
-            json.dumps(value, indent=2, ensure_ascii=True) + "\n", encoding="utf-8"
+        write_text(
+            path, json.dumps(value, indent=2, ensure_ascii=True) + "\n", digests=digests
         )
 
 

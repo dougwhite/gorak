@@ -7,6 +7,7 @@ from pathlib import Path
 from lxml import etree
 
 from .component_defaults import defaults_path
+from .domain import Component
 from .errors import ProjectError
 from .parser import (
     FRAME_COMPONENT_TYPES,
@@ -38,7 +39,13 @@ def validate_attribute_name(value: str) -> None:
         raise ProjectError(f"Invalid OpenROAD attribute name: {value!r}")
 
 
-def overlay_metadata(node: etree._Element, path: Path) -> None:
+def overlay_metadata(
+    node: etree._Element,
+    path: Path,
+    *,
+    source: str | None = None,
+    edited: Component | None = None,
+) -> None:
     from .importer import validate_name
     from .member_declarations import write_member
 
@@ -49,8 +56,8 @@ def overlay_metadata(node: etree._Element, path: Path) -> None:
     ):
         raise ProjectError("Only frames support editable component field-default files")
     original = parse_component_node(node)
-    source = path.read_text(encoding="utf-8")
-    edited = parse_w4gl(source, path.stem)
+    source = path.read_text(encoding="utf-8") if source is None else source
+    edited = parse_w4gl(source, path.stem) if edited is None else edited
     before = tomllib.loads(split_w4gl(encode_w4gl(original))[0])
     after = tomllib.loads(split_w4gl(source)[0])
     after.pop("queries", None)

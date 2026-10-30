@@ -109,9 +109,11 @@ def explicit_shape_dimensions(root: etree._Element) -> None:
     # Opaque metadata may reuse native type names without being layout fields.
     # Preserve it verbatim, as accepted-baseline tracking does.
     for field in list(root.iter()):
+        kind = field.get(f"{{{NS['xsi']}}}type", "")
+        if kind not in ZERO_DIMENSIONS:
+            continue
         if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
             continue
-        kind = field.get(f"{{{NS['xsi']}}}type", "")
         changed = False
         for dimension in ZERO_DIMENSIONS.get(kind, ()):
             if field.find(dimension) is None:

@@ -124,13 +124,14 @@ def decode_component(path: Path) -> etree._Element:
     from .importer import validate_name
 
     validate_name(path.stem)
-    source = parse_w4gl(path.read_text(encoding="utf-8"), path.stem)
+    source_text = path.read_text(encoding="utf-8")
+    source = parse_w4gl(source_text, path.stem)
     kind = source.type
     if kind not in SUPPORTED_TYPES:
         raise ProjectError(f"Unsupported component type: {kind}")
     node = etree.Element("COMPONENT", name=path.stem, nsmap=NS)
     node.set(XSI, kind)
-    overlay_metadata(node, path)
+    overlay_metadata(node, path, source=source_text, edited=source)
     if kind in FRAME_COMPONENT_TYPES:
         if not path.with_suffix(".wml").is_file():
             raise ProjectError("Frame requires a WML source file")
