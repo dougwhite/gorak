@@ -211,7 +211,7 @@ def _validation_key(stylesheet: Json) -> bytes:
     ).digest()
 
 
-def validate(stylesheet: Json) -> None:
+def validate(stylesheet: Json) -> bytes | None:
     cache = _validated.get()
     key = None
     if cache is not None:
@@ -220,12 +220,13 @@ def validate(stylesheet: Json) -> None:
         except (TypeError, ValueError):
             pass  # The native validator supplies the authoritative diagnostic.
         if key in cache:
-            return
+            return key
     decode(stylesheet)
     if cache is not None and key is not None:
         if len(cache) >= 8192:
             cache.clear()
         cache.add(key)
+    return key
 
 
 def complete(stylesheet: Json) -> Json:
@@ -244,8 +245,12 @@ def has_overrides(layer: Json) -> bool:
 
 
 def difference(parent: Json, desired: Json) -> Json:
-    validate(parent)
-    validate(desired)
+    parent_key = validate(parent)
+    desired_key = validate(desired)
+    # Validation already computed an order-sensitive content identity. Equal
+    # sheets need no second recursive walk to discover an empty difference.
+    if parent_key is not None and parent_key == desired_key:
+        return {}
     return property_difference(parent, desired)
 
 
@@ -378,11 +383,18 @@ def _canonical_styles(value: bytes) -> bytes:
     return pickle.dumps(encode(decode(pickle.loads(value))), protocol=5)
 
 
-def baseline() -> Json:
+@lru_cache(maxsize=1)
+def _baseline_layer() -> bytes:
+    # Package data is immutable during an operation. Keep serialized content so
+    # callers never share a mutable stylesheet, even outside resolution_scope.
     data = json.loads(
         files("gorak.templates").joinpath("native_styles.json").read_text()
     )
-    return resolve(None, data)
+    return pickle.dumps(data, protocol=5)
+
+
+def baseline() -> Json:
+    return resolve(None, pickle.loads(_baseline_layer()))
 
 
 def read(path: Path) -> Json:
