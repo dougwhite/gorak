@@ -128,65 +128,78 @@ def _push_project(
         )
         for path in [folder / "app.json", *paths, *auxiliary]:
             snapshots[path] = path.read_bytes()
-        app_cache = root / ".openroad" / app / f"{app}.xml"
-        if app_cache.is_file():
-            previous_app = parse_application_xml(read_tree(str(app_cache)))
-            disk_app = parse_application_xml(
-                from_bytes(document([new_application(folder)]))
-            )
-            if (
-                previous_app.application != disk_app.application
-                or previous_app.included_applications != disk_app.included_applications
-            ):
-                before = operation / f"{app}-before.xml"
-                backup_application_xml(connection, app, before)
-                tree = read_tree(before)
-                original_node = read_tree(app_cache).find("APPLICATION")
-                current_node = tree.find("APPLICATION")
-                if (
-                    original_node is None
-                    or current_node is None
-                    or tracking_signature(original_node)
-                    != tracking_signature(current_node)
-                ):
-                    raise ProjectError(
-                        f"Database application metadata changed since export: {app}"
+        with comparison_inputs.capture(
+            root,
+            folder / "app.json",
+            application=True,
+            verified_digests=source_snapshot,
+        ):
+            app_cache = root / ".openroad" / app / f"{app}.xml"
+            if app_cache.is_file():
+                previous_app = parse_application_xml(read_tree(str(app_cache)))
+                disk_app = parse_application_xml(
+                    from_bytes(
+                        document(
+                            [new_application(comparison_inputs.path_for_read(folder))]
+                        )
                     )
-                replacement = new_application(folder)
-                managed = {
-                    "versshortremarks",
-                    "included_apps",
-                    "procstart",
-                    "databasename",
-                    "database_type",
-                    "windowicon",
-                    "appflags",
-                }
-                for child in list(current_node):
-                    if child.tag in managed:
-                        current_node.remove(child)
-                current_node.extend(replacement)
-                order = [
-                    "versshortremarks",
-                    "extension",
-                    "taggedvalues",
-                    "included_apps",
-                    "procstart",
-                    "databasename",
-                    "database_type",
-                    "commandline",
-                    "windowicon",
-                    "globalsfile",
-                    "appflags",
-                ]
-                if any(child.tag not in order for child in current_node):
-                    raise ProjectError(f"Unknown application XML metadata: {app}")
-                current_node[:] = sorted(
-                    current_node, key=lambda child: order.index(str(child.tag))
                 )
-                app_updates[app] = bytes(
-                    etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
-                )
+                if (
+                    previous_app.application != disk_app.application
+                    or previous_app.included_applications
+                    != disk_app.included_applications
+                ):
+                    before = operation / f"{app}-before.xml"
+                    backup_application_xml(connection, app, before)
+                    tree = read_tree(before)
+                    original_node = read_tree(app_cache).find("APPLICATION")
+                    current_node = tree.find("APPLICATION")
+                    if (
+                        original_node is None
+                        or current_node is None
+                        or tracking_signature(original_node)
+                        != tracking_signature(current_node)
+                    ):
+                        raise ProjectError(
+                            f"Database application metadata changed since export: {app}"
+                        )
+                    replacement = new_application(
+                        comparison_inputs.path_for_read(folder)
+                    )
+                    managed = {
+                        "versshortremarks",
+                        "included_apps",
+                        "procstart",
+                        "databasename",
+                        "database_type",
+                        "windowicon",
+                        "appflags",
+                    }
+                    for child in list(current_node):
+                        if child.tag in managed:
+                            current_node.remove(child)
+                    current_node.extend(replacement)
+                    order = [
+                        "versshortremarks",
+                        "extension",
+                        "taggedvalues",
+                        "included_apps",
+                        "procstart",
+                        "databasename",
+                        "database_type",
+                        "commandline",
+                        "windowicon",
+                        "globalsfile",
+                        "appflags",
+                    ]
+                    if any(child.tag not in order for child in current_node):
+                        raise ProjectError(f"Unknown application XML metadata: {app}")
+                    current_node[:] = sorted(
+                        current_node, key=lambda child: order.index(str(child.tag))
+                    )
+                    app_updates[app] = bytes(
+                        etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
+                    )
         current = {c.name.casefold() for c in read_components(connection, app)}
         for path in paths:
             name = path.stem
@@ -208,35 +221,39 @@ def _push_project(
                     break
                 except ProjectError:
                     continue
-            if name.casefold() not in current:
-                if baseline is not None:
-                    raise ProjectError(
-                        f"Previously exported component is missing from database: {app}/{name}"
+            with comparison_inputs.capture(
+                root, path, verified_digests=source_snapshot
+            ):
+                input_path = comparison_inputs.path_for_read(path)
+                if name.casefold() not in current:
+                    if baseline is not None:
+                        raise ProjectError(
+                            f"Previously exported component is missing from database: {app}/{name}"
+                        )
+                    creations[f"{app}/{name}"] = (
+                        name,
+                        document([new_component(input_path)]),
+                        [path],
                     )
-                creations[f"{app}/{name}"] = (
-                    name,
-                    document([new_component(path)]),
-                    [path],
-                )
-            elif baseline is None:
-                raise ProjectError(
-                    f"Existing component needs an export baseline: {app}/{name}"
-                )
-            else:
-                from copy import deepcopy
+                elif baseline is None:
+                    raise ProjectError(
+                        f"Existing component needs an export baseline: {app}/{name}"
+                    )
+                else:
+                    from copy import deepcopy
 
-                from .portable_source import overlay_component
+                    from .portable_source import overlay_component
 
-                baseline_node = component_tree(candidate, name)
-                overlaid = overlay_component(deepcopy(baseline_node), path)
-                if signature(overlaid) == signature(baseline_node):
-                    continue
-                # The importer validates the overlay and checks database drift.
-                prepared_edits[(app, name)] = (
-                    import_component(connection, root, app, name, dry_run=True)
-                    / "submitted.xml"
-                )
-                edits.append((app, name))
+                    baseline_node = component_tree(candidate, name)
+                    overlaid = overlay_component(deepcopy(baseline_node), input_path)
+                    if signature(overlaid) == signature(baseline_node):
+                        continue
+                    # The importer validates the overlay and checks database drift.
+                    prepared_edits[(app, name)] = (
+                        import_component(connection, root, app, name, dry_run=True)
+                        / "submitted.xml"
+                    )
+                    edits.append((app, name))
     for app, payload in list(app_updates.items()):
         tree_root = from_bytes(payload)
         sources = []

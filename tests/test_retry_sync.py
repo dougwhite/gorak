@@ -651,3 +651,107 @@ def test_prepared_push_rechecks_database_before_each_component(
     assert world.imports == ["caller"]
     assert world.node("dependency").findtext("script") == "independent workbench edit"
     assert (world.root / ".openroad/push-pending.json").exists()
+
+
+def test_existing_preparation_consumes_verified_snapshot_despite_transient_edit(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import portable_source
+
+    world.edit("caller", "new-intended")
+    world.edit("dependency", "new")
+    live = world.folder / "caller.w4gl"
+    intended = live.read_bytes()
+    overlay = portable_source.overlay_component
+    observed: list[Path] = []
+
+    def racing(node: etree._Element, source: Path) -> etree._Element:
+        if source.name != live.name:
+            return overlay(node, source)
+        observed.append(source)
+        live.write_bytes(intended.replace(b"new-intended", b"transient"))
+        try:
+            return overlay(node, source)
+        finally:
+            live.write_bytes(intended)
+
+    monkeypatch.setattr(portable_source, "overlay_component", racing)
+    scans = 0
+    fingerprint = safe_pull.fingerprint
+
+    def scanning(root: Path) -> dict[str, str]:
+        nonlocal scans
+        scans += 1
+        assert not world.imports
+        return fingerprint(root)
+
+    monkeypatch.setattr(push, "fingerprint", scanning)
+    monkeypatch.setattr(safe_pull, "fingerprint", scanning)
+    push.push_project(CONNECTION, world.root)
+    assert "new-intended" in world.node("caller").findtext("script", "")
+    assert scans == 2
+    assert observed and all(source != live for source in observed)
+    assert "transient" not in world.node("caller").findtext("script", "")
+    assert live.read_bytes() == intended
+    assert all(
+        change.action == "unchanged"
+        for change in sync_plan.plan_project(CONNECTION, world.root)
+    )
+
+
+def test_existing_preparation_rejects_inputs_different_from_initial_proof(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import comparison_inputs
+
+    world.edit("caller", "new-intended")
+    original = comparison_inputs.InputSnapshots.copy
+
+    def changed(self: Any, path: Path, root: Path, target: Path) -> None:
+        if path == world.folder / "caller.w4gl":
+            intended = path.read_bytes()
+            path.write_bytes(intended.replace(b"new-intended", b"transient"))
+            try:
+                original(self, path, root, target)
+            finally:
+                path.write_bytes(intended)
+        else:
+            original(self, path, root, target)
+
+    monkeypatch.setattr(comparison_inputs.InputSnapshots, "copy", changed)
+    with pytest.raises(ProjectError, match="Source changed during comparison"):
+        push.push_project(CONNECTION, world.root)
+    assert not world.imports
+    assert not (world.root / ".openroad/push-pending.json").exists()
+
+
+@pytest.mark.parametrize(
+    "relative", ["field_defaults.json", "example/field_defaults.json"]
+)
+def test_existing_preparation_captures_shared_dependencies(
+    world: World, monkeypatch: pytest.MonkeyPatch, relative: str
+) -> None:
+    from gorak import portable_source
+
+    world.edit("caller", "new")
+    world.edit("dependency", "new")
+    dependency = world.root / relative
+    dependency.write_bytes(b"{}")
+    overlay = portable_source.overlay_component
+    observed = []
+
+    def racing(node: etree._Element, source: Path) -> etree._Element:
+        dependency.write_bytes(b'{"transient": true}')
+        try:
+            captured = source.parent.parent / relative
+            assert captured != dependency
+            assert captured.read_bytes() == b"{}"
+            observed.append(captured)
+            return overlay(node, source)
+        finally:
+            dependency.write_bytes(b"{}")
+
+    monkeypatch.setattr(portable_source, "overlay_component", racing)
+    push.push_project(CONNECTION, world.root)
+    assert observed
+    assert world.imports == ["caller", "dependency"]

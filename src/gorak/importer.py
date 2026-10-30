@@ -113,7 +113,7 @@ def import_component(
     validate_name(component)
     from .safe_pull import apply_files, fingerprint
 
-    source_snapshot = fingerprint(root)
+    source_snapshot = None if dry_run else fingerprint(root)
     cache = root / ".openroad" / app
     candidates = [
         p for p in [cache / f"{component}.xml", cache / f"{app}.xml"] if p.is_file()
@@ -121,7 +121,10 @@ def import_component(
     if not candidates:
         raise ProjectError("Import requires cached XML from a previous export")
     baseline_path = max(candidates, key=lambda p: p.stat().st_mtime_ns)
-    source = root / app / f"{component}.w4gl"
+    from .comparison_inputs import path_for_read
+
+    source_root = path_for_read(root)
+    source = source_root / app / f"{component}.w4gl"
     try:
         baseline = component_tree(baseline_path, component)
         source_bytes = source.read_bytes()
@@ -132,7 +135,7 @@ def import_component(
         defaults_files = {
             defaults_path(source): "source.fielddefaults.json",
             source.with_suffix(".queries.json"): "source.queries.json",
-            root / "field_defaults.json": "root-field_defaults.json",
+            source_root / "field_defaults.json": "root-field_defaults.json",
             source.parent / "field_defaults.json": "app-field_defaults.json",
         }
         from .image_assets import source_files
@@ -145,8 +148,8 @@ def import_component(
         )
         defaults_files.update(
             {
-                p: "root-assets/" + p.relative_to(root).as_posix()
-                for p in source_files(root)
+                p: "root-assets/" + p.relative_to(source_root).as_posix()
+                for p in source_files(source_root)
             }
         )
         defaults_bytes = {
