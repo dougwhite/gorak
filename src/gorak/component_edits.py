@@ -16,6 +16,8 @@ from .parser import (
     parse_w4gl,
     split_w4gl,
 )
+from .source_reads import exists as source_exists
+from .source_reads import read_text as read_source_text
 from .xml_shapes import order_children, set_scalar, shape, shapes
 from .xml_text import find_text, set_text, text_value
 
@@ -49,14 +51,12 @@ def overlay_metadata(
     from .importer import validate_name
     from .member_declarations import write_member
 
-    if (
-        node.get("{http://www.w3.org/2001/XMLSchema-instance}type")
-        not in FRAME_COMPONENT_TYPES
-        and defaults_path(path).exists()
-    ):
+    if node.get(
+        "{http://www.w3.org/2001/XMLSchema-instance}type"
+    ) not in FRAME_COMPONENT_TYPES and source_exists(defaults_path(path)):
         raise ProjectError("Only frames support editable component field-default files")
     original = parse_component_node(node)
-    source = path.read_text(encoding="utf-8") if source is None else source
+    source = read_source_text(path) if source is None else source
     edited = parse_w4gl(source, path.stem) if edited is None else edited
     before = tomllib.loads(split_w4gl(encode_w4gl(original))[0])
     after = tomllib.loads(split_w4gl(source)[0])

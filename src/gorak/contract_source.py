@@ -15,6 +15,8 @@ from .parser import (
     MarkupDefaultsIndex,
     parse_w4gl,
 )
+from .source_reads import is_file as source_exists
+from .source_reads import read_text as read_source_text
 from .wml_writer import XSI, parse_markup
 from .xml_shapes import derives, order_children, shape, shapes
 from .xml_text import is_text_node, set_text, text_value
@@ -124,7 +126,7 @@ def decode_component(path: Path) -> etree._Element:
     from .importer import validate_name
 
     validate_name(path.stem)
-    source_text = path.read_text(encoding="utf-8")
+    source_text = read_source_text(path)
     source = parse_w4gl(source_text, path.stem)
     kind = source.type
     if kind not in SUPPORTED_TYPES:
@@ -133,7 +135,7 @@ def decode_component(path: Path) -> etree._Element:
     node.set(XSI, kind)
     overlay_metadata(node, path, source=source_text, edited=source)
     if kind in FRAME_COMPONENT_TYPES:
-        if not path.with_suffix(".wml").is_file():
+        if not source_exists(path.with_suffix(".wml")):
             raise ProjectError("Frame requires a WML source file")
         from . import native_styles
 
@@ -145,7 +147,7 @@ def decode_component(path: Path) -> etree._Element:
         if stylesheet.get("absent") is not True:
             node.append(native_styles.decode(stylesheet))
         index = MarkupDefaultsIndex({}, {}, explicit=True)
-        markup = parse_markup(path.with_suffix(".wml").read_text(encoding="utf-8"))
+        markup = parse_markup(read_source_text(path.with_suffix(".wml")))
         from .image_assets import resolve
 
         resolve(markup, path.parent)

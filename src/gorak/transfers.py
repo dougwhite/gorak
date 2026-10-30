@@ -2,8 +2,10 @@
 
 import hashlib
 import json
+import os
 import socket
 import tempfile
+import tomllib
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +27,7 @@ from .operation_progress import report
 from .parser import NS, parse_application_xml
 from .project import ProjectError
 from .source_output import write_text
+from .source_reads import captured as captured_reads
 from .source_xml import MAX_DOCUMENT_BYTES, application_children
 from .transfer_catalog import inventory
 from .xml_writer import document, new_application, new_component, prepare_submission
@@ -62,11 +65,68 @@ def source_files(root: Path, app: str) -> list[Path]:
     )
 
 
+def check_paths(root: Path) -> None:
+    """Check filesystem boundaries once, without reading file contents."""
+    pending = [root]
+    while pending:
+        folder = pending.pop()
+        if folder.is_symlink() or folder.is_junction():
+            raise ProjectError(f"Symlinked project source is unsupported: {folder}")
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if folder == root and entry.name == ".git":
+                    continue
+                path = Path(entry.path)
+                if entry.is_symlink() or (
+                    entry.is_dir(follow_symlinks=False) and path.is_junction()
+                ):
+                    raise ProjectError(
+                        f"Symlinked project source is unsupported: {path}"
+                    )
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+
+
+def image_dependencies(path: Path, data: bytes) -> set[Path]:
+    # Only parse documents that can contain an external asset reference.
+    if b"images" not in data and b"\\" not in data and b"&" not in data:
+        return set()
+    found: set[Path] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, str) and value.startswith("images/"):
+            from .image_assets import asset_path
+
+            found.add(asset_path(path.parent, value))
+        elif isinstance(value, dict):
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    try:
+        if path.suffix == ".wml":
+            from .source_xml import from_bytes
+
+            for node in from_bytes(data).iter():
+                visit(dict(node.attrib))
+        elif path.suffix == ".w4gl":
+            visit(tomllib.loads(data.decode("utf-8").split("===", 1)[0]))
+        else:
+            visit(json.loads(data))
+    except (ValueError, etree.XMLSyntaxError):
+        pass  # Reconstruction reports invalid source; it cannot be checkpointed.
+    return found
+
+
 def hashes(
     root: Path,
     apps: list[str] | None = None,
     *,
     captured: dict[Path, str] | None = None,
+    inputs: dict[Path, bytes] | None = None,
+    dependency_cache: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     apps = (
         apps
@@ -82,32 +142,74 @@ def hashes(
     for index, app in enumerate(apps, 1):
         validate_name(app)
         folder = root / app
-        values: dict[str, str] = {}
-        for path in source_files(root, app):
+        paths = source_files(root, app) if inputs is None else sorted(inputs)
+        values: dict[Path, str] = {}
+        dependencies: dict[Path, set[Path]] = {}
+        has_images = any("images" in p.relative_to(root).parts for p in paths)
+        for path in paths:
             if path not in read:
-                read[path] = digest(path.read_bytes())
-            values[path.relative_to(root).as_posix()] = read[path]
-        shared = {
-            name: value
-            for name, value in values.items()
-            if Path(name).name == "field_defaults.json" or "/images/" in "/" + name
-        }
-        manifest = f"{app}/app.json"
-        if manifest in values:
-            result[app] = combined(
+                data = path.read_bytes() if inputs is None else inputs[path]
+                read[path] = digest(data)
+            elif has_images and path.suffix in {".w4gl", ".wml", ".json"}:
+                data = path.read_bytes() if inputs is None else inputs[path]
+            else:
+                data = b""
+            values[path] = read[path]
+            if path.suffix in {".w4gl", ".wml", ".json"}:
+                relative = path.relative_to(root).as_posix()
+                cached = (dependency_cache or {}).get(relative)
+                if (
+                    isinstance(cached, dict)
+                    and cached.get("hash") == values[path]
+                    and isinstance(cached.get("paths"), list)
+                    and all(
+                        isinstance(item, str)
+                        and not Path(item).is_absolute()
+                        and ".." not in Path(item).parts
+                        for item in cached["paths"]
+                    )
+                ):
+                    dependencies[path] = {root / item for item in cached["paths"]}
+                else:
+                    dependencies[path] = image_dependencies(path, data)
+                    if dependency_cache is not None:
+                        dependency_cache[relative] = {
+                            "hash": values[path],
+                            "paths": sorted(
+                                p.relative_to(root).as_posix()
+                                for p in dependencies[path]
+                            ),
+                        }
+
+        def fingerprint(
+            paths: list[Path],
+            values: dict[Path, str] = values,
+            dependencies: dict[Path, set[Path]] = dependencies,
+        ) -> str:
+            selected = {path for path in paths if path in values}
+            for path in list(selected):
+                selected.update(dependencies.get(path, set()))
+            return combined(
                 {
-                    manifest: values[manifest],
-                    **{k: v for k, v in shared.items() if "/images/" in "/" + k},
+                    path.relative_to(root).as_posix(): values.get(path, "missing")
+                    for path in selected
                 }
             )
-        for source in folder.glob("*.w4gl"):
+
+        manifest = folder / "app.json"
+        if manifest in values:
+            result[app] = fingerprint([manifest])
+        for source in paths:
+            if source.parent != folder or source.suffix != ".w4gl":
+                continue
             validate_name(source.stem)
-            inputs = dict(shared)
-            for suffix in SUFFIXES:
-                name = source.with_suffix(suffix).relative_to(root).as_posix()
-                if name in values:
-                    inputs[name] = values[name]
-            result[f"{app}/{source.stem}"] = combined(inputs)
+            result[f"{app}/{source.stem}"] = fingerprint(
+                [
+                    root / "field_defaults.json",
+                    folder / "field_defaults.json",
+                    *[source.with_suffix(suffix) for suffix in SUFFIXES],
+                ]
+            )
         report("Hashing local source", index, len(apps))
     return result
 
@@ -127,6 +229,7 @@ class Ledger:
         self.path = root / ".openroad/transfers.json"
         self.target = target(connection)
         self.entries: dict[str, Any] = {}
+        self.asset_dependencies: dict[str, Any] = {}
         if self.path.exists():
             try:
                 data = json.loads(self.path.read_text())
@@ -145,6 +248,8 @@ class Ledger:
                         ):
                             raise ValueError
                     self.entries = data["entries"]
+                    if isinstance(data.get("asset_dependencies"), dict):
+                        self.asset_dependencies = data["asset_dependencies"]
             except (ValueError, KeyError, TypeError) as ex:
                 raise ProjectError(
                     "Invalid transfer ledger; move .openroad/transfers.json aside to start a full transfer"
@@ -155,7 +260,12 @@ class Ledger:
         temporary = self.path.with_suffix(".tmp")
         temporary.write_text(
             json.dumps(
-                {"version": 1, "target": self.target, "entries": self.entries},
+                {
+                    "version": 1,
+                    "target": self.target,
+                    "entries": self.entries,
+                    "asset_dependencies": self.asset_dependencies,
+                },
                 separators=(",", ":"),
             )
             + "\n"
@@ -203,9 +313,13 @@ def prepare(
     *,
     application: bool,
     result: Result,
+    inputs: dict[Path, bytes] | None = None,
 ) -> list[str]:
     accepted: list[str] = []
-    with etree.xmlfile(str(destination), encoding="UTF-8") as output:
+    with ExitStack() as scope:
+        if inputs is not None:
+            scope.enter_context(captured_reads(source.parent, inputs))
+        output = scope.enter_context(etree.xmlfile(str(destination), encoding="UTF-8"))
         output.write_declaration()
         with output.element("OPENROAD", nsmap=NS):
             if application:
@@ -257,7 +371,17 @@ def post_import(
     accepted: list[str],
     local: dict[str, str],
     result: Result,
+    *,
+    compile: bool = False,
 ) -> None:
+    if compile:
+        from .compiler import queue_compilation
+
+        (root / ".openroad").mkdir(exist_ok=True)
+        queue_compilation(
+            root,
+            [(key.split("/")[0], key.split("/")[1]) for key in accepted if "/" in key],
+        )
     for key in accepted:
         ledger.record(key, local[key], None)
         result.succeeded.append(key)
@@ -300,6 +424,7 @@ def push(
     dry_run: bool = False,
     compile: bool = True,
 ) -> Result:
+    check_paths(root)
     ledger = Ledger(root, connection)
     report("Hashing local source")
     cold = full or not ledger.entries
@@ -318,7 +443,7 @@ def push(
             ]
         }
     else:
-        local = hashes(root)
+        local = hashes(root, dependency_cache=ledger.asset_dependencies)
     changed = {
         key
         for key, value in local.items()
@@ -345,10 +470,12 @@ def push(
     if not changed:
         if not dry_run:
             refresh_tokens(connection, ledger, result)
+            if compile:
+                retry_compilation(connection, root, result)
         return result
     remote = inventory(connection)
     pending = sorted({key.split("/")[0] for key in changed})
-    planned = set(pending)
+    planned = {app.casefold() for app in pending}
     # Create included source applications first; independent applications continue after failure.
     from .project import read_json
 
@@ -357,7 +484,7 @@ def push(
         try:
             metadata = read_json(root / app / "app.json")
             dependencies[app] = {
-                item if isinstance(item, str) else item["name"]
+                (item if isinstance(item, str) else item["name"]).casefold()
                 for item in metadata.get("included_applications", [])
                 if isinstance(item, str) or not item.get("image")
             }
@@ -367,15 +494,18 @@ def push(
     ordered: list[str] = []
     remaining = set(pending)
     while remaining:
-        ready = sorted(app for app in remaining if not (dependencies[app] & remaining))
+        ready = sorted(
+            app
+            for app in remaining
+            if not (dependencies[app] & {name.casefold() for name in remaining})
+        )
         if not ready:
             for app in remaining:
                 result.failed[app] = "Cyclic source application includes"
             break
         ordered.extend(ready)
         remaining.difference_update(ready)
-    available = {key for key in remote if "/" not in key}
-    compilation: list[tuple[str, str]] = []
+    available = {key.casefold() for key in remote if "/" not in key}
     with tempfile.TemporaryDirectory(prefix="gorak-push-") as temporary:
         work = Path(temporary)
         for index, app in enumerate(ordered, 1):
@@ -392,25 +522,43 @@ def push(
                     )
                 continue
             try:
-                create = app.casefold() not in {name.casefold() for name in available}
-                # Record sender hashes before reconstruction/import. Later edits stay
-                # pending; no duplicate source tree or post-import reread is needed.
-                captured = hashes(root, [app]) if cold else local
+                create = app.casefold() not in available
+                # Hash and reconstruct the same immutable bytes, one application at a time.
+                inputs = {path: path.read_bytes() for path in source_files(root, app)}
+                captured = hashes(
+                    root,
+                    [app],
+                    inputs=inputs,
+                    dependency_cache=ledger.asset_dependencies,
+                )
                 folder = root / app
                 names = (
-                    sorted(p.stem for p in folder.glob("*.w4gl"))
+                    sorted(
+                        p.stem
+                        for p in inputs
+                        if p.parent == folder and p.suffix == ".w4gl"
+                    )
                     if create
                     else [key.split("/")[1] for key in selected if "/" in key]
                 )
                 if create or app in selected:
-                    names = sorted(p.stem for p in folder.glob("*.w4gl"))
+                    names = sorted(
+                        p.stem
+                        for p in inputs
+                        if p.parent == folder and p.suffix == ".w4gl"
+                    )
                     submitted = work / "application.xml"
                     accepted = prepare(
-                        folder, submitted, names, application=True, result=result
+                        folder,
+                        submitted,
+                        names,
+                        application=True,
+                        result=result,
+                        inputs=inputs,
                     )
                     if dry_run:
                         result.succeeded.extend(accepted)
-                        available.add(app)
+                        available.add(app.casefold())
                         continue
                     if not create and any(
                         key.startswith(app + "/") for key in result.failed
@@ -440,12 +588,13 @@ def push(
                                 result.failed[key] = str(ex)
                         if completed:
                             post_import(
-                                connection, root, ledger, completed, captured, result
-                            )
-                            compilation.extend(
-                                (app, key.split("/")[1])
-                                for key in completed
-                                if key in result.succeeded
+                                connection,
+                                root,
+                                ledger,
+                                completed,
+                                captured,
+                                result,
+                                compile=compile,
                             )
                         continue
                     (work / "import.log").unlink(missing_ok=True)
@@ -457,12 +606,15 @@ def push(
                         work / "import.log",
                         create=create,
                     )
-                    available.add(app)
-                    post_import(connection, root, ledger, accepted, captured, result)
-                    compilation.extend(
-                        (app, key.split("/")[1])
-                        for key in accepted
-                        if "/" in key and key in result.succeeded
+                    available.add(app.casefold())
+                    post_import(
+                        connection,
+                        root,
+                        ledger,
+                        accepted,
+                        captured,
+                        result,
+                        compile=compile,
                     )
                 else:
                     jobs = ([app] if app in selected else []) + [
@@ -477,6 +629,7 @@ def push(
                                 [] if key == app else [key.split("/")[1]],
                                 application=key == app,
                                 result=result,
+                                inputs=inputs,
                             )
                             if not accepted:
                                 continue
@@ -492,10 +645,14 @@ def push(
                                 work / "import.log",
                             )
                             post_import(
-                                connection, root, ledger, accepted, captured, result
+                                connection,
+                                root,
+                                ledger,
+                                accepted,
+                                captured,
+                                result,
+                                compile=compile,
                             )
-                            if key != app and key in result.succeeded:
-                                compilation.append((app, key.split("/")[1]))
                         except Exception as ex:
                             result.failed[key] = str(ex)
             except Exception as ex:
@@ -504,38 +661,47 @@ def push(
                     if key != app and key not in result.failed:
                         result.skipped[key] = "Application import failed"
             report("Uploading applications", index, len(ordered))
-        if compile and compilation and not dry_run:
-            from .compiler import compile_source
-
-            for app, name in compilation:
-                try:
-                    (work / "compile.log").unlink(missing_ok=True)
-                    outcome = compile_source(
-                        connection, app, name, work / "compile.log"
-                    )
-                    if not outcome.success:
-                        raise ProjectError(outcome.diagnostics())
-                except Exception as ex:
-                    result.failed[f"{app}/{name}"] = (
-                        f"Source imported; compilation failed: {ex}"
-                    )
+        if compile and not dry_run:
+            retry_compilation(connection, root, result)
     if not dry_run:
         refresh_tokens(connection, ledger, result)
     return result
 
 
-@validation_scope()
-@resolution_scope()
-def pull(
-    connection: OpenRoadConnection,
-    root: Path,
-    *,
-    full: bool = False,
-    dry_run: bool = False,
-) -> Result:
-    ledger = Ledger(root, connection)
-    report("Reading database change tokens")
-    remote = inventory(connection)
+def retry_compilation(
+    connection: OpenRoadConnection, root: Path, result: Result
+) -> None:
+    from .atomic_json import write_record
+    from .compiler import compile_source, read_compile_queue
+
+    path = root / ".openroad/compile-pending.json"
+    if not path.exists():
+        return
+    try:
+        targets = read_compile_queue(path)
+        failed = []
+        for app, name in targets:
+            log = root / ".openroad/compiles" / app / (name + ".log")
+            try:
+                log.parent.mkdir(parents=True, exist_ok=True)
+                log.unlink(missing_ok=True)
+                outcome = compile_source(connection, app, name, log)
+                if not outcome.success:
+                    raise ProjectError(outcome.diagnostics())
+            except Exception as ex:
+                failed.append((app, name))
+                result.failed[f"{app}/{name}"] = (
+                    f"Source imported; compilation failed: {ex}"
+                )
+        if failed:
+            write_record(path, [list(item) for item in failed])
+        else:
+            path.unlink()
+    except (ValueError, OSError) as ex:
+        result.failed["compilation"] = f"Cannot read pending compilation: {ex}"
+
+
+def pull_scope(root: Path, ledger: Ledger, remote: dict[str, Any]) -> set[str]:
     apps = app_names(root, ledger)
     if not apps:
         apps = {key for key in remote if "/" not in key}
@@ -550,6 +716,23 @@ def pull(
         for key, token in remote.items()
         if "/" not in key and identity(token) in app_ids
     )
+    return apps
+
+
+@validation_scope()
+@resolution_scope()
+def pull(
+    connection: OpenRoadConnection,
+    root: Path,
+    *,
+    full: bool = False,
+    dry_run: bool = False,
+) -> Result:
+    check_paths(root)
+    ledger = Ledger(root, connection)
+    report("Reading database change tokens")
+    remote = inventory(connection)
+    apps = pull_scope(root, ledger, remote)
     prior = {key.casefold(): value for key, value in ledger.entries.items()}
     scoped_apps = {app.casefold() for app in apps}
     changed = {
@@ -588,20 +771,20 @@ def pull(
             if app in export_errors:
                 result.failed[app] = export_errors[app]
                 continue
-            folder = root / app
-            folder.mkdir(parents=True, exist_ok=True)
-            writer = AssetWriter(folder)
-            output_hashes: dict[Path, str] = {}
-            staging = Path(
-                stages.enter_context(
-                    tempfile.TemporaryDirectory(prefix=".gorak-stage-", dir=folder)
-                )
-            )
-            case_index: dict[str, list[Path]] = {}
-            for path in folder.iterdir():
-                case_index.setdefault(path.name.lower(), []).append(path)
-            accepted: list[str] = []
             try:
+                folder = root / app
+                folder.mkdir(parents=True, exist_ok=True)
+                writer = AssetWriter(folder)
+                output_hashes: dict[Path, str] = {}
+                staging = Path(
+                    stages.enter_context(
+                        tempfile.TemporaryDirectory(prefix=".gorak-stage-", dir=folder)
+                    )
+                )
+                case_index: dict[str, list[Path]] = {}
+                for path in folder.iterdir():
+                    case_index.setdefault(path.name.lower(), []).append(path)
+                accepted: list[str] = []
                 styles = parent_styles(folder)
                 count = sum(key == app or key.startswith(app + "/") for key in changed)
                 converted = 0
@@ -650,31 +833,49 @@ def pull(
                         result.failed[key] = str(ex)
                     converted += 1
                     report(f"Converting {app}", converted, count)
-                local = hashes(root, [app], captured=output_hashes)
+                local = hashes(
+                    root,
+                    [app],
+                    captured=output_hashes,
+                    dependency_cache=ledger.asset_dependencies,
+                )
+                replacements = []
                 for key in accepted:
                     token = remote[catalog_keys[key.casefold()]]
                     old = identities.get(("/" in key, identity(token)))
-                    if old == key:
-                        old = None
-                    if old:
-                        if "/" in old:
-                            for suffix in SUFFIXES:
-                                previous = root / (old + suffix)
-                                current = root / (key + suffix)
-                                if previous.exists() and (
-                                    not current.exists()
-                                    or not previous.samefile(current)
-                                ):
-                                    previous.unlink()
-                        else:
-                            previous = root / old / "app.json"
-                            current = root / key / "app.json"
-                            if previous.exists() and not previous.samefile(current):
-                                previous.unlink()
-                        # Leave unrelated files in an old application folder untouched.
+                    if old and old != key:
+                        replacements.append((old, key))
+                # Protect every current catalog destination, including swaps, chains,
+                # and destinations belonging to another application in this batch.
+                protected = set(remote)
+                for old, key in replacements:
+                    if old not in protected:
+                        paths = (
+                            [root / (old + suffix) for suffix in SUFFIXES]
+                            if "/" in old
+                            else [root / old / "app.json"]
+                        )
+                        for previous in paths:
+                            current = (
+                                root / (key + previous.name[len(Path(old).name) :])
+                                if "/" in old
+                                else root / key / "app.json"
+                            )
+                            if not (
+                                previous.exists()
+                                and current.exists()
+                                and previous.samefile(current)
+                            ):
+                                previous.unlink(missing_ok=True)
+                    # Do not discard a replacement checkpoint written by an earlier app.
+                    entry = ledger.entries.get(old)
+                    if entry and identity(entry.get("database") or {}) == identity(
+                        remote[catalog_keys[key.casefold()]]
+                    ):
                         ledger.entries.pop(old)
+                for key in accepted:
+                    token = remote[catalog_keys[key.casefold()]]
                     ledger.record(key, local[key], token)
-                    identities[("/" in key, identity(token))] = key
                     result.succeeded.append(key)
                 accepted_names = {item.casefold() for item in accepted}
                 for key in changed:
@@ -694,14 +895,15 @@ def pull(
 
 
 def status(connection: OpenRoadConnection, root: Path) -> dict[str, object]:
+    check_paths(root)
     ledger = Ledger(root, connection)
     report("Hashing local source")
-    local = hashes(root)
+    local = hashes(root, dependency_cache=ledger.asset_dependencies)
     report("Reading database change tokens")
     remote = inventory(connection)
-    apps = {app.casefold() for app in app_names(root, ledger)}
+    apps = {app.casefold() for app in pull_scope(root, ledger, remote)}
     prior = {key.casefold(): value for key, value in ledger.entries.items()}
-    return {
+    result: dict[str, object] = {
         "push": sorted(
             {
                 key
@@ -717,3 +919,9 @@ def status(connection: OpenRoadConnection, root: Path) -> dict[str, object]:
             and prior.get(key.casefold(), {}).get("database") != value
         ),
     }
+    queue = root / ".openroad/compile-pending.json"
+    if queue.exists():
+        from .compiler import read_compile_queue
+
+        result["compile"] = [f"{app}/{name}" for app, name in read_compile_queue(queue)]
+    return result

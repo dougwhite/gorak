@@ -16,6 +16,8 @@ from urllib.parse import quote
 from lxml import etree
 
 from .errors import ProjectError
+from .source_reads import exists as source_exists
+from .source_reads import read_text as read_source_text
 from .style_values import XSI, decode_value, encode_value, numbered
 from .style_values import difference as property_difference
 from .style_values import merge as merge_properties
@@ -398,10 +400,10 @@ def baseline() -> Json:
 
 
 def read(path: Path) -> Json:
-    if not path.exists():
+    if not source_exists(path):
         return empty_delta()
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(read_source_text(path))
     except (ValueError, OSError) as ex:
         raise ProjectError(f"Cannot read stylesheet: {path}") from ex
     if not is_native_layer(value):

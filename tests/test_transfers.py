@@ -172,7 +172,13 @@ def test_missing_native_component_stays_pending_without_repeating_successes(
 
 
 def test_images_participate_in_local_hashes(tmp_path: Path) -> None:
-    source(tmp_path)
+    path = source(tmp_path)
+    path.write_text(
+        path.read_text().replace(
+            'datatype="integer"',
+            'datatype="integer"\nwindowicon={src="images/example.png"}',
+        )
+    )
     images = tmp_path / "sample/images"
     images.mkdir()
     (images / "example.png").write_bytes(b"first")
@@ -538,3 +544,297 @@ def test_pull_checkpoints_written_bytes_without_rereading(
 
     monkeypatch.setattr(t, "hashes", hashing)
     assert not t.pull(connection(), tmp_path, full=True).failed
+
+
+@pytest.mark.parametrize("cold", [True, False])
+def test_preparation_uses_exact_captured_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cold: bool
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    if not cold:
+        assert not t.push(connection(), tmp_path, compile=False).failed
+    intended = path.read_text().replace("RETURN 1", "RETURN 2")
+    path.write_text(intended)
+    original = new_component
+
+    def transient(p: Path) -> etree._Element:
+        path.write_text(intended.replace("RETURN 2", "RETURN 9"))
+        try:
+            return original(p)
+        finally:
+            path.write_text(intended)
+
+    monkeypatch.setattr(t, "new_component", transient)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    assert b"RETURN 2" in etree.tostring(db.nodes["sample/hello"])
+    assert b"RETURN 9" not in etree.tostring(db.nodes["sample/hello"])
+    assert t.status(connection(), tmp_path)["push"] == []
+
+
+def rename_objects(db: Database, renames: dict[str, str]) -> None:
+    tokens = deepcopy(db.tokens)
+    nodes = deepcopy(db.nodes)
+    for old in renames:
+        del db.tokens[old]
+        del db.nodes[old]
+    for old, new in renames.items():
+        name = new.split("/")[-1]
+        db.tokens[new] = {**tokens[old], "name": name}
+        db.nodes[new] = nodes[old]
+        db.nodes[new].set("name", name)
+
+
+@pytest.mark.parametrize(
+    "renames",
+    [
+        {"sample/a": "sample/b", "sample/b": "sample/a"},
+        {"sample/a": "sample/b", "sample/b": "sample/c"},
+    ],
+)
+def test_pull_rename_batch_preserves_destinations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, renames: dict[str, str]
+) -> None:
+    for n in ["a", "b"]:
+        source(tmp_path, name=n)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    rename_objects(db, renames)
+    result = t.pull(connection(), tmp_path)
+    assert not result.failed
+    for key in renames.values():
+        assert (tmp_path / (key + ".w4gl")).is_file()
+        assert (
+            t.Ledger(tmp_path, connection()).entries[key]["database"] == db.tokens[key]
+        )
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+
+
+def test_component_asset_does_not_replace_unrelated_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PIL import Image
+
+    path = source(tmp_path, name="picture")
+    source(tmp_path, name="other")
+    path.write_text("[framesource]\n===\n")
+    path.with_suffix(".wml").write_text(
+        '<frame><topform><bgbitmap src="images/picture.png"/></topform></frame>'
+    )
+    image = tmp_path / "sample/images/picture.png"
+    image.parent.mkdir()
+    Image.new("RGB", (2, 2), "red").save(image)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    db.imports.clear()
+    Image.new("RGB", (2, 2), "blue").save(image)
+    assert t.status(connection(), tmp_path)["push"] == ["sample/picture"]
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    assert db.imports == ["sample/picture"]
+    Image.new("RGB", (2, 2), "green").save(image.with_name("unused.png"))
+    assert t.status(connection(), tmp_path)["push"] == []
+
+
+@pytest.mark.parametrize(
+    "part", ["sample", "sample/hello.w4gl", "sample/images", ".openroad"]
+)
+@pytest.mark.parametrize("operation", ["push", "pull", "status"])
+def test_transfers_reject_symlink_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, part: str, operation: str
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    source(root)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), root, compile=False).failed
+    path = root / part
+    outside = tmp_path / "outside"
+    if path.exists():
+        path.rename(outside)
+    else:
+        outside.mkdir()
+    try:
+        path.symlink_to(outside, target_is_directory=outside.is_dir())
+    except OSError:
+        pytest.skip("symlink permission unavailable")
+    db.imports.clear()
+    db.exports.clear()
+    with pytest.raises(ProjectError, match="Symlinked"):
+        getattr(t, operation)(connection(), root)
+    assert not db.imports and not db.exports
+
+
+def test_failed_compile_retries_without_reimport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import compiler
+
+    source(tmp_path)
+    db = Database(monkeypatch)
+    calls = []
+
+    def compiling(c: Any, app: str, name: str, log: Path) -> compiler.CompileResult:
+        calls.append(name)
+        log.write_text("error" if len(calls) == 1 else "ok")
+        return compiler.CompileResult(len(calls) > 1, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compiling)
+    assert t.push(connection(), tmp_path).failed
+    assert t.status(connection(), tmp_path)["compile"] == ["sample/hello"]
+    db.imports.clear()
+    assert not t.push(connection(), tmp_path).failed
+    assert calls == ["hello", "hello"]
+    assert db.imports == []
+    assert not (tmp_path / ".openroad/compile-pending.json").exists()
+
+
+@pytest.mark.parametrize("reject", [False, True])
+def test_case_insensitive_includes_order_and_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reject: bool
+) -> None:
+    source(tmp_path, app="aaa")
+    source(tmp_path, app="bbb")
+    (tmp_path / "aaa/app.json").write_text('{"included_applications":["BBB"]}')
+    db = Database(monkeypatch)
+    if reject:
+        db.reject.add("bbb")
+    result = t.push(connection(), tmp_path, compile=False)
+    if reject:
+        assert "bbb" in result.failed and "aaa" in result.skipped
+        assert db.imports == ["bbb"]
+    else:
+        assert not result.failed
+        assert db.imports == ["bbb", "aaa"]
+
+
+def test_status_discovers_application_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source(tmp_path)
+    db = Database(monkeypatch)
+    t.push(connection(), tmp_path, compile=False)
+    rename_objects(db, {"sample": "renamed", "sample/hello": "renamed/hello"})
+    assert t.status(connection(), tmp_path)["pull"] == ["renamed", "renamed/hello"]
+    assert t.pull(connection(), tmp_path, dry_run=True).succeeded == [
+        "renamed",
+        "renamed/hello",
+    ]
+
+
+def test_pull_setup_failure_continues_other_apps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    for app in ["aaa", "bbb"]:
+        source(tmp_path, app=app)
+    db = Database(monkeypatch)
+    t.push(connection(), tmp_path, compile=False)
+    for token in db.tokens.values():
+        token["count"] = 99
+    shutil.rmtree(tmp_path / "aaa")
+    (tmp_path / "aaa").write_text("obstruction")
+    result = t.pull(connection(), tmp_path)
+    assert "aaa" in result.failed
+    assert "bbb/hello" in result.succeeded
+    assert (
+        t.Ledger(tmp_path, connection()).entries["bbb/hello"]["database"]["count"] == 99
+    )
+
+
+def test_application_name_swap_keeps_both_checkpoints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for app in ["aaa", "bbb"]:
+        source(tmp_path, app=app)
+    db = Database(monkeypatch)
+    t.push(connection(), tmp_path, compile=False)
+    rename_objects(
+        db,
+        {
+            "aaa": "bbb",
+            "bbb": "aaa",
+            "aaa/hello": "bbb/hello",
+            "bbb/hello": "aaa/hello",
+        },
+    )
+    assert not t.pull(connection(), tmp_path).failed
+    ledger = t.Ledger(tmp_path, connection())
+    for key in db.tokens:
+        assert ledger.entries[key]["database"] == db.tokens[key]
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+
+
+def test_preparation_captures_markup_assets_and_absent_companions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PIL import Image
+
+    path = source(tmp_path)
+    path.write_text("[framesource]\n===\n")
+    wml = path.with_suffix(".wml")
+    wml.write_text(
+        '<frame><topform><bgbitmap src="images/picture.png"/></topform></frame>'
+    )
+    asset = path.parent / "images/picture.png"
+    asset.parent.mkdir()
+    Image.new("RGB", (2, 2), "red").save(asset)
+    from gorak.xml_writer import prepare_submission
+
+    expected_node = new_component(path)
+    prepare_submission(expected_node)
+    expected = document([expected_node])
+    original_markup, original_png = wml.read_bytes(), asset.read_bytes()
+    db = Database(monkeypatch)
+
+    def transient(p: Path) -> etree._Element:
+        wml.write_text('<frame><topform bgcolor="5"/></frame>')
+        Image.new("RGB", (2, 2), "blue").save(asset)
+        p.with_suffix(".icons.json").write_text("{}")
+        try:
+            return new_component(p)
+        finally:
+            wml.write_bytes(original_markup)
+            asset.write_bytes(original_png)
+            p.with_suffix(".icons.json").unlink()
+
+    monkeypatch.setattr(t, "new_component", transient)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    assert etree.tostring(
+        etree.fromstring(document([db.nodes["sample/hello"]])), method="c14n"
+    ) == etree.tostring(etree.fromstring(expected), method="c14n")
+    assert not t.status(connection(), tmp_path)["push"]
+
+
+def test_persistent_asset_dependencies_skip_reparse_but_detect_content_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PIL import Image
+
+    path = source(tmp_path)
+    path.write_text("[framesource]\n===\n")
+    markup = path.with_suffix(".wml")
+    markup.write_text(
+        '<frame><topform><bgbitmap src="images/one.png"/></topform></frame>'
+    )
+    assets = path.parent / "images"
+    assets.mkdir()
+    for name in ["one", "two"]:
+        Image.new("RGB", (2, 2), "red").save(assets / (name + ".png"))
+    Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    # Each call reloads metadata from disk, as a new command would.
+    original = t.image_dependencies
+    monkeypatch.setattr(
+        t, "image_dependencies", lambda *a: pytest.fail("unchanged source reparsed")
+    )
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    Image.new("RGB", (2, 2), "blue").save(assets / "one.png")
+    assert t.status(connection(), tmp_path)["push"] == ["sample/hello"]
+    monkeypatch.setattr(t, "image_dependencies", original)
+    markup.write_text(markup.read_text().replace("one.png", "two.png"))
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    Image.new("RGB", (2, 2), "green").save(assets / "one.png")
+    assert t.status(connection(), tmp_path)["push"] == []
+    Image.new("RGB", (2, 2), "blue").save(assets / "two.png")
+    assert t.status(connection(), tmp_path)["push"] == ["sample/hello"]
