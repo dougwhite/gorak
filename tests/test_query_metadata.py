@@ -10,11 +10,11 @@ from lxml import etree
 
 from gorak.contract_source import decode_component, equivalent
 from gorak.errors import ProjectError
+from gorak.file_updates import apply_files, fingerprint
 from gorak.importer import signature
 from gorak.parser import NS, parse_component_node
 from gorak.portable_source import comparison_component, overlay_component
 from gorak.query_metadata import encode_queries, query_path, read_queries, write_queries
-from gorak.safe_pull import apply_files, fingerprint
 from gorak.sync_plan import compare
 from tests.native_source import write_component
 

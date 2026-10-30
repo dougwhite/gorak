@@ -5,6 +5,8 @@ from pathlib import Path
 from lxml import etree
 
 from .errors import ProjectError
+from .source_reads import is_file as source_exists
+from .source_reads import read_text as read_source_text
 from .xml_text import find_text, is_text_node
 
 
@@ -84,9 +86,9 @@ def decode_layout(path: Path) -> list[etree._Element]:
     from .wml_writer import parse_markup
 
     wml = path.with_suffix(".wml")
-    if not wml.is_file():
+    if not source_exists(wml):
         raise ProjectError("Field template requires a WML source file")
-    root = parse_markup(wml.read_text(encoding="utf-8"))
+    root = parse_markup(read_source_text(wml))
     if root.tag != "fieldtemplate" or root.attrib or (root.text or "").strip():
         raise ProjectError(
             "Field template markup requires a plain <fieldtemplate> root"

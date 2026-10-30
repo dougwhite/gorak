@@ -11,6 +11,7 @@ from uuid import uuid4
 from lxml import etree
 
 from .connection import OpenRoadConnection, require_odbc_settings
+from .file_updates import fingerprint
 from .installation_check import check_installation
 from .journal import acknowledgment_store, bind_store, poll_journal
 from .journal_ancestry import load_ancestry, read_ancestry, write_ancestry
@@ -23,7 +24,6 @@ from .journal_server import consumer_identity
 from .portable_source import read_document
 from .project import ProjectError
 from .project_lock import project_lock
-from .safe_pull import fingerprint
 from .sync_guard import binding_status, target
 from .sync_plan import baseline_inventory, format_plan, plan_project, xml_inventory
 

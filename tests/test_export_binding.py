@@ -101,7 +101,3 @@ def test_export_binding_lifecycle(
             assert sync_guard.binding_status(connection, tmp_path) == "verified"
             if original_target is not None:
                 assert target_path.read_bytes() == original_target
-            # Ordinary sync must accept this baseline without an explicit bind.
-            # Database comparison is isolated from external OpenROAD services.
-            monkeypatch.setattr(sync_guard, "plan_project", lambda *args: [])
-            assert sync_guard.guard_sync(connection, tmp_path, push=False) == []

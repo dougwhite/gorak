@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from lxml import etree
 
-from gorak import cli, export, push, sync_plan
+from gorak import cli, export, transfers
 from gorak.domain import Application
 from gorak.run_backend import RunResult
 
@@ -74,10 +74,21 @@ def test_untouched_compact_project_cli_round_trip(
         tree = etree.fromstring(database[0])
         assert tree.findtext("COMPONENT[@name='panel']/topform/bgcolor") == "2"
 
-    for module in (export, push, sync_plan):
-        monkeypatch.setattr(module, "read_applications", applications)
-        monkeypatch.setattr(module, "backup_application_xml", backup)
-    monkeypatch.setattr(push, "import_component_xml", importing)
+    monkeypatch.setattr(export, "read_applications", applications)
+    monkeypatch.setattr(export, "backup_application_xml", backup)
+    monkeypatch.setattr(transfers, "import_component_xml", importing)
+
+    def inventory(*args: Any) -> dict[str, dict[str, object]]:
+        if not database:
+            return {}
+        return {
+            key: {"id": index, "name": key, "count": 1}
+            for index, key in enumerate(
+                ["example", "example/panel", "example/widget"], 1
+            )
+        }
+
+    monkeypatch.setattr(transfers, "inventory", inventory)
     from gorak import compiler
 
     def compile_source(c: Any, a: str, n: str, log: Path) -> compiler.CompileResult:
@@ -100,7 +111,7 @@ def test_untouched_compact_project_cli_round_trip(
 
     monkeypatch.setattr(cli, "execute_application", run)
     cli.main(["status"])
-    assert json.loads(capsys.readouterr().out)["changes"]
+    assert json.loads(capsys.readouterr().out)["push"]
     cli.main(["sync", "--push"])
     assert imports == ["example"]
     capsys.readouterr()
@@ -114,7 +125,7 @@ def test_untouched_compact_project_cli_round_trip(
         capsys.readouterr()
         assert {p: p.read_bytes() for p in sources} == before
         cli.main(["status"])
-        assert json.loads(capsys.readouterr().out)["changes"] == []
+        assert json.loads(capsys.readouterr().out)["push"] == []
         cli.main(["sync", "--push"])
         capsys.readouterr()
         assert imports == ["example"]

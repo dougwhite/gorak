@@ -57,6 +57,48 @@ def signature(node: etree._Element) -> object:
     )
 
 
+def import_prepared_component(
+    connection: OpenRoadConnection,
+    root: Path,
+    app: str,
+    component: str,
+    operation: Path,
+) -> Path:
+    """Import preflight XML after rechecking the database, independent of live edits."""
+    validate_name(app)
+    validate_name(component)
+    lock = root / ".openroad/imports/import.lock"
+    try:
+        handle = open_lock(lock, "prepared component import")
+    except FileExistsError as ex:
+        raise ProjectError(f"Another import may be active; inspect {lock}") from ex
+    try:
+        with handle:
+            latest = operation / "pre-import.xml"
+            backup_component_xml(connection, app, component, latest)
+            from .native_normalization import signature as tracking_signature
+
+            if tracking_signature(
+                component_tree(latest, component)
+            ) != tracking_signature(
+                component_tree(operation / "before.xml", component)
+            ):
+                raise ProjectError("Database component changed during push")
+            import_component_xml(
+                connection,
+                app,
+                component,
+                operation / "submitted.xml",
+                operation / "import.log",
+            )
+            (operation / "accepted").write_text(
+                "OpenROAD accepted prepared import; submitted baseline retained\n"
+            )
+            return operation
+    finally:
+        lock.unlink()
+
+
 def import_component(
     connection: OpenRoadConnection,
     root: Path,
@@ -69,9 +111,9 @@ def import_component(
     """Validate, compare and import one component; retain accepted source and recovery artifacts."""
     validate_name(app)
     validate_name(component)
-    from .safe_pull import apply_files, fingerprint
+    from .file_updates import apply_files, fingerprint
 
-    source_snapshot = fingerprint(root)
+    source_snapshot = None if dry_run else fingerprint(root)
     cache = root / ".openroad" / app
     candidates = [
         p for p in [cache / f"{component}.xml", cache / f"{app}.xml"] if p.is_file()
@@ -79,7 +121,10 @@ def import_component(
     if not candidates:
         raise ProjectError("Import requires cached XML from a previous export")
     baseline_path = max(candidates, key=lambda p: p.stat().st_mtime_ns)
-    source = root / app / f"{component}.w4gl"
+    from .comparison_inputs import path_for_read
+
+    source_root = path_for_read(root)
+    source = source_root / app / f"{component}.w4gl"
     try:
         baseline = component_tree(baseline_path, component)
         source_bytes = source.read_bytes()
@@ -90,7 +135,7 @@ def import_component(
         defaults_files = {
             defaults_path(source): "source.fielddefaults.json",
             source.with_suffix(".queries.json"): "source.queries.json",
-            root / "field_defaults.json": "root-field_defaults.json",
+            source_root / "field_defaults.json": "root-field_defaults.json",
             source.parent / "field_defaults.json": "app-field_defaults.json",
         }
         from .image_assets import source_files
@@ -103,8 +148,8 @@ def import_component(
         )
         defaults_files.update(
             {
-                p: "root-assets/" + p.relative_to(root).as_posix()
-                for p in source_files(root)
+                p: "root-assets/" + p.relative_to(source_root).as_posix()
+                for p in source_files(source_root)
             }
         )
         defaults_bytes = {

@@ -52,12 +52,17 @@ def set_scalar(node: etree._Element, kind: str, key: str, value: str | None) -> 
         order_children(node, kind)
 
 
+@lru_cache(maxsize=256)
+def _property_order(kind: str) -> dict[str, int]:
+    return {name: position for position, name in enumerate(shape(kind))}
+
+
 def order_children(node: etree._Element, kind: str) -> None:
-    order = list(shape(kind))
+    order = _property_order(kind)
     # Existing unknown fields must never be silently moved across known fields.
     if any(c.tag not in order for c in node):
         raise ProjectError(f"Cannot order unknown XML properties for {kind}")
-    node[:] = sorted(node, key=lambda c: order.index(str(c.tag)))
+    node[:] = sorted(node, key=lambda c: order[str(c.tag)])
 
 
 @lru_cache(maxsize=1)

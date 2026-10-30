@@ -128,7 +128,7 @@ def compile_command(
 
 def queue_compilation(root: Path, targets: list[tuple[str, str]]) -> None:
     """Keep compilation work across interrupted source pushes, separately from recovery."""
-    from .push_retry import write_record
+    from .atomic_json import write_record
 
     path = root / ".openroad/compile-pending.json"
     existing: list[tuple[str, str]] = []
@@ -191,7 +191,7 @@ def compile_pending(
             diagnostics.append(
                 f"Compilation could not run for {name}.w4gl: {ex}. Run `gorak compile {app} {name}`. Source sync is complete."
             )
-    from .push_retry import write_record
+    from .atomic_json import write_record
 
     if failed:
         write_record(path, [list(t) for t in failed])

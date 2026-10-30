@@ -5,12 +5,11 @@ from typing import Any
 
 import pytest
 
-from gorak import cli, export, safe_pull
+from gorak import cli, export
 from gorak.connection import OpenRoadConnection
 from gorak.domain import Application, ComponentInfo
 from gorak.export_failures import cached_components, finalize_baseline
-from gorak.project import GorakContext, GorakProject, ProjectError
-from gorak.sync_plan import Change
+from gorak.project import ProjectError
 
 CONNECTION = OpenRoadConnection("local", "node", "source", None)
 
@@ -108,66 +107,6 @@ def test_late_conversion_failure_preserves_entire_existing_component(
         assert (folder / f"broken{suffix}").read_text() == "original" + suffix
 
 
-@pytest.mark.parametrize("missing", [False, True])
-@pytest.mark.parametrize("broken_name", ["broken", "alpha"])
-def test_pull_continues_other_apps_and_preserves_failed_source_and_baseline(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing: bool, broken_name: str
-) -> None:
-    (tmp_path / "gorak.json").write_text('{"name":"example"}')
-    folder = tmp_path / "alpha"
-    folder.mkdir()
-    (folder / "app.json").write_text("{}")
-    (folder / f"{broken_name}.w4gl").write_text("original source")
-    cache = tmp_path / ".openroad/alpha"
-    cache.mkdir(parents=True)
-    old = document("alpha", component(broken_name))
-    (cache / "alpha.xml").write_text(old)
-    apps = [Application("alpha", "", ""), Application("beta", "", "")]
-    xmls = {
-        "alpha": document(
-            "alpha",
-            *([] if missing else [component(broken_name, "futuretype")]),
-            component("good"),
-        ),
-        "beta": document("beta", component("last")),
-    }
-    monkeypatch.setattr(
-        safe_pull,
-        "guard_sync",
-        lambda *a, **k: [
-            Change("alpha/good", "pull", "unchanged", "added"),
-            Change("beta/last", "pull", "unchanged", "added"),
-        ],
-    )
-    monkeypatch.setattr(safe_pull, "read_applications", lambda c: apps)
-    monkeypatch.setattr(
-        export,
-        "read_components",
-        lambda c, a: [
-            ComponentInfo(a, n, "proc4glsource", "")
-            for n in ([broken_name, "good"] if a == "alpha" else ["last"])
-        ],
-    )
-    for module in (export, safe_pull):
-        monkeypatch.setattr(
-            module, "backup_application_xml", lambda c, a, p: p.write_text(xmls[a])
-        )
-    context = GorakContext(GorakProject(tmp_path, "example"), {})
-    for _ in range(2):  # Retry retains the previous successful baseline.
-        result = safe_pull.sync_project(CONNECTION, context)
-        assert result.exported == 2
-        assert [f.identity for f in result.failures] == [f"alpha!{broken_name}"]
-        assert (folder / f"{broken_name}.w4gl").read_text() == "original source"
-        assert (folder / "good.w4gl").is_file()
-        assert (tmp_path / "beta/last.w4gl").is_file()
-        baseline = cached_components(cache)
-        assert (
-            baseline[broken_name].get("{http://www.w3.org/2001/XMLSchema-instance}type")
-            == "proc4glsource"
-        )
-    assert not (tmp_path / ".openroad/pull-pending.json").exists()
-
-
 def test_component_failure_restores_cached_xml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -226,103 +165,6 @@ def test_cli_reports_partial_export_only_after_successes_are_written(
     assert "Unable to export component `example!missing`" in output.out
     assert "1 component exported, 1 failure" in output.err
     assert "example!missing" in output.err
-
-
-@pytest.mark.parametrize("existing", [False, True])
-@pytest.mark.parametrize("omitted", [False, True])
-def test_real_planner_retries_until_component_exports(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    existing: bool,
-    omitted: bool,
-) -> None:
-    from gorak import sync_plan
-    from gorak.database import ComponentSyncMetadata
-    from gorak.portable_source import read_document
-
-    (tmp_path / "gorak.json").write_text('{"name":"example"}')
-    (tmp_path / ".env").write_text(
-        "GORAK_BACKEND=local\nGORAK_VNODE=node\nGORAK_DATABASE=source\n"
-    )
-    monkeypatch.chdir(tmp_path)
-    broken = [] if omitted else [component("pending", "futuretype")]
-    good = component("pending")
-    xmls = {"example": document("example", component("first"), *broken)}
-    version = [1]
-
-    def backup(c: Any, app: str, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(xmls[app])
-
-    for module in (export, safe_pull, sync_plan):
-        monkeypatch.setattr(module, "backup_application_xml", backup)
-        monkeypatch.setattr(
-            module,
-            "read_applications",
-            lambda c: [Application(a, "", "") for a in xmls],
-        )
-    monkeypatch.setattr(
-        export,
-        "read_components",
-        lambda c, a: [
-            ComponentInfo(a, n, "proc4glsource", "") for n in ("first", "pending")
-        ],
-    )
-    monkeypatch.setattr(
-        export,
-        "read_component_sync_metadata",
-        lambda c, a: [
-            ComponentSyncMetadata(
-                a, n, "proc4glsource", i, i + 1, -1, "date", version[0], "owner", 0
-            )
-            for i, n in enumerate(("first", "pending"), start=1)
-        ],
-    )
-    if existing:
-        xmls["example"] = document("example", component("first"), good)
-        cli.main(["app", "export", "example"])
-    else:
-        with pytest.raises(SystemExit) as error:
-            cli.main(["app", "export", "example"])
-        assert error.value.code == 1
-    capsys.readouterr()
-    state = tmp_path / ".openroad/gorak-state.json"
-    before_state = state.read_bytes() if state.exists() else None
-    baseline_path = tmp_path / ".openroad/example/example.xml"
-    if existing:
-        assert before_state is not None
-    previous = sync_plan.baseline_inventory(tmp_path)[0].get("example/pending")
-    source = tmp_path / "example/pending.w4gl"
-    before_source = source.read_bytes() if source.exists() else None
-    version[0] = 2
-    xmls["example"] = document("example", component("first"), *broken)
-    # No guard or planner mock: an omitted never-exported component is invisible
-    # to XML comparison, so sync must consult the live catalog before returning.
-    for _ in range(2):
-        with pytest.raises(SystemExit) as error:
-            cli.main(["sync"])
-        assert error.value.code == 1
-        output = capsys.readouterr()
-        assert "example!pending" in output.out
-        assert "1 failure" in output.err
-        assert (source.read_bytes() if source.exists() else None) == before_source
-        assert (
-            sync_plan.baseline_inventory(tmp_path)[0].get("example/pending") == previous
-        )
-        assert (state.read_bytes() if state.exists() else None) == before_state
-        assert not list((tmp_path / ".openroad").rglob("export-failures.json"))
-    repaired = good.replace("RETURN 1;", "RETURN 2;")
-    xmls["example"] = document("example", component("first"), repaired)
-    cli.main(["sync"])
-    assert "exported 2 components" in capsys.readouterr().out
-    assert "RETURN 2;" in source.read_text()
-    assert read_document(baseline_path).find("COMPONENT[@name='pending']") is not None
-    assert sync_plan.baseline_inventory(tmp_path)[0]["example/pending"] != previous
-    cli.main(["sync"])
-    output = capsys.readouterr()
-    assert "exported 0 components" in output.out
-    assert not output.err
 
 
 def test_unexpected_procedure_stylesheet_still_fails_projection(

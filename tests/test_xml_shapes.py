@@ -22,3 +22,21 @@ def test_unknown_structured_properties_are_not_flattened() -> None:
     node.append(etree.Element("unknown"))
     with pytest.raises(ProjectError):
         order_children(node, "classsource")
+
+
+def test_ordering_preserves_equal_property_order_and_rejects_before_mutating() -> None:
+    node = etree.fromstring(
+        b"<row><height>10</height><name>first</name><name>second</name><width>20</width></row>"
+    )
+    order_children(node, "entryfield")
+    assert [(child.tag, child.text) for child in node] == [
+        ("name", "first"),
+        ("name", "second"),
+        ("width", "20"),
+        ("height", "10"),
+    ]
+    node.insert(1, etree.Element("unknown"))
+    before = etree.tostring(node)
+    with pytest.raises(ProjectError, match="unknown XML properties"):
+        order_children(node, "entryfield")
+    assert etree.tostring(node) == before

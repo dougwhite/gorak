@@ -212,7 +212,7 @@ def test_projection_export_preserves_wml_and_is_atomic(
 
 
 def test_wml_flow_edit_changes_fingerprint_and_semantic_state(tmp_path: Path) -> None:
-    from gorak.safe_pull import fingerprint
+    from gorak.file_updates import fingerprint
 
     original = native()
     path = source(tmp_path, original)

@@ -421,3 +421,32 @@ def test_native_source_has_no_version_markers(tmp_path: Path) -> None:
     assert "schema" not in layer
     assert "schema" not in styles.complete(stylesheet())
     assert styles.encode(decode_component(source).find("fielddefaults")) == stylesheet()
+
+
+def test_comparison_resolution_cache_is_scoped_content_based_and_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = stylesheet()
+    layer = styles.empty_delta()
+    expected = styles.resolve(parent, layer)
+    calls = []
+    original = styles._resolve_uncached
+
+    def resolving(parent: Any, layer: Any) -> Any:
+        calls.append(1)
+        return original(parent, layer)
+
+    monkeypatch.setattr(styles, "_resolve_uncached", resolving)
+    with styles.resolution_scope():
+        result = styles.resolve(parent, layer)
+        result.clear()
+        assert styles.resolve(parent, layer) == expected
+        assert len(calls) == 1
+        changed = deepcopy(parent)
+        changed["groups"]["entryfield"]["styles"]["style1"]["width"] = "17"
+        assert styles.resolve(changed, layer) != expected
+        assert len(calls) == 2
+        with pytest.raises(ProjectError):
+            styles.resolve(parent, {"unsupported": True})
+    assert styles.resolve(parent, layer) == expected
+    assert len(calls) == 4

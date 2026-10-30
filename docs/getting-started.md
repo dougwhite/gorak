@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers the simplest Gorak setup: OpenROAD and Gorak running on the
+This guide covers the simplest gorak setup: OpenROAD and gorak running on the
 same development machine, using OpenROAD's normal command-line tools.
 
 > **Early alpha.** Start with a disposable OpenROAD source database and keep a
@@ -14,13 +14,13 @@ same development machine, using OpenROAD's normal command-line tools.
 - [`uv`](https://docs.astral.sh/uv/).
 - Git.
 
-Gorak can also run OpenROAD on another Windows machine over
+gorak can also run OpenROAD on another Windows machine over
 [SSH](remote.md). Direct [ODBC metadata access](config.md#optional-odbc-metadata-access)
 is available but is not required for this guide or the normal workflow.
 
-## Install Gorak
+## Install gorak
 
-Clone the Gorak repository and install the command:
+Clone the gorak repository and install the command:
 
 ```sh
 git clone https://github.com/dougwhite/gorak.git
@@ -30,7 +30,7 @@ uv tool install --editable .
 gorak --help
 ```
 
-Run Gorak from a shell initialized for your OpenROAD and Ingres installation.
+Run gorak from a shell initialized for your OpenROAD and Ingres installation.
 In PowerShell, with `II_SYSTEM` set to the selected installation root:
 
 ```powershell
@@ -44,7 +44,7 @@ gorak new myproject
 cd myproject
 ```
 
-Gorak creates a Git repository, project metadata, connection examples, agent
+gorak creates a Git repository, project metadata, connection examples, agent
 instructions, shared field defaults, and a small starter application called
 `myproject`.
 
@@ -93,14 +93,14 @@ List the source components if you want to inspect the application first:
 gorak component list myapplication
 ```
 
-Export it into readable Gorak source:
+Export it into readable gorak source:
 
 ```sh
 gorak app export myapplication
 ```
 
 The new application directory contains `app.json`, readable `.w4gl` source,
-frame `.wml`, and any application field defaults. Gorak keeps local
+frame `.wml`, and any application field defaults. gorak keeps local
 synchronization state under the ignored `.openroad/` directory.
 
 ## Make the initial Git commit
@@ -118,13 +118,10 @@ The tracked project is now a normal Git repository. Do not add `.env` or
 
 ## Push a change back to OpenROAD
 
-Start by pulling any newer Workbench changes:
+Use this workflow when readable source is authoritative. When working in Workbench,
+use `gorak pull` to overwrite changed local components with database source.
 
-```sh
-gorak sync
-```
-
-Edit a supported `.w4gl` or `.wml` file, then inspect Gorak's planned changes:
+Edit a supported `.w4gl` or `.wml` file, then inspect gorak's planned changes:
 
 ```sh
 gorak status
@@ -133,7 +130,7 @@ gorak status
 Push the disk change into the OpenROAD source database:
 
 ```sh
-gorak sync --push
+gorak push
 ```
 
 gorak imports and compiles the changed source. If the application has
@@ -150,14 +147,20 @@ changes automatically.
 The normal loop is:
 
 ```sh
-gorak sync
 # edit readable source
 gorak status
-gorak sync --push
+gorak push
 gorak test
 git diff
 ```
 
-If Gorak reports a conflict or refuses an operation, stop and preserve both sides.
-Do not resolve it by deleting `.openroad/`. See [Push and recovery](push.md) for
-safe retry and recovery commands.
+Failed items remain pending; correct the reported failure and retry the same command.
+Pending compilation is retried by `gorak push` without repeating successful imports.
+
+## Upgrading existing projects
+
+Old `.openroad` baselines do not initialize the new transfer ledger. The first
+`gorak pull` (including its `gorak sync` alias) is a full authoritative download:
+it can overwrite pending local edits, without conflict detection or recovery copies.
+Commit or copy pending work first. Choose `gorak push` when disk is the sender,
+or `gorak pull` when Workbench is the sender; use `--dry-run` to preview the scope.

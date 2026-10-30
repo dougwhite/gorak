@@ -168,6 +168,7 @@ class TestRemoteInstallCommand:
             "compile-source.bat",
             "create-source.bat",
             "get-app-list.bat",
+            "get-app-sync-metadata.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
             "get-include-list.bat",

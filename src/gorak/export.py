@@ -2,6 +2,7 @@
 
 import tempfile
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy2, rmtree
@@ -62,6 +63,7 @@ from .remote import (
     get_include_list,
 )
 from .revision_route import validate_source_route
+from .source_output import write_text as write_source_text
 from .sync_state import update_component_entries
 from .writer_launch import local_writer_command
 
@@ -420,21 +422,29 @@ def project_component_files(
     progress: Callable[[str], None] | None,
     *,
     parent_styles: dict[str, Any] | None = None,
+    case_index: dict[str, list[Path]] | None = None,
+    staging: Path | None = None,
+    digests: dict[Path, str] | None = None,
 ) -> Component:
     from .image_assets import externalize
 
     name = str(native.get("name"))
+    staged_digests: dict[Path, str] | None = {} if digests is not None else None
     # Prepare all component files before replacing any existing source. A
     # malformed query, stylesheet or bitmap must not leave a half-written frame.
-    with tempfile.TemporaryDirectory(prefix="gorak-component-") as temporary:
+    with (
+        nullcontext(str(staging))
+        if staging is not None
+        else tempfile.TemporaryDirectory(prefix=".gorak-component-", dir=source_dir)
+    ) as temporary:
         stage = Path(temporary) / source_dir.name
-        stage.mkdir()
+        stage.mkdir(exist_ok=True)
         for parent, target in (
             (source_dir.parent, stage.parent),
             (source_dir, stage),
         ):
             defaults = parent / "field_defaults.json"
-            if defaults.exists():
+            if defaults.exists() and not (target / defaults.name).exists():
                 copy2(defaults, target / defaults.name)
         from .component_edits import SUPPORTED_TYPES
         from .importer import validate_name
@@ -442,6 +452,15 @@ def project_component_files(
 
         try:
             validate_name(name)
+            # A failed projection may have left some companions in the shared stage.
+            for suffix in (
+                ".w4gl",
+                ".wml",
+                ".fielddefaults.json",
+                ".queries.json",
+                ".icons.json",
+            ):
+                (stage / f"{name}{suffix}").unlink(missing_ok=True)
             kind = native.get(f"{{{NS['xsi']}}}type")
             if kind not in SUPPORTED_TYPES:
                 raise ProjectError(f"Unsupported component type: {kind}")
@@ -457,16 +476,22 @@ def project_component_files(
             from .class_icons import extract_icons
 
             extract_icons(node)
-            write_queries(stage / f"{name}.w4gl", component.queries)
-            write_component_w4gl(stage, name, encode_source_w4gl(component))
-            write_component_wml(stage, name, component.markup)
+            write_queries(
+                stage / f"{name}.w4gl", component.queries, digests=staged_digests
+            )
+            write_component_w4gl(
+                stage, name, encode_source_w4gl(component), digests=staged_digests
+            )
+            write_component_wml(stage, name, component.markup, digests=staged_digests)
             overrides = component.props.get("fielddefaults", {})
             write_defaults = (
                 write_projected_defaults
                 if component.type in FRAME_COMPONENT_TYPES or not overrides
                 else write_component_defaults
             )
-            write_defaults(stage / f"{name}.w4gl", overrides, writer=writer)
+            write_defaults(
+                stage / f"{name}.w4gl", overrides, writer=writer, digests=staged_digests
+            )
         except (
             ProjectError,
             ValueError,
@@ -485,8 +510,14 @@ def project_component_files(
             target = source_dir / f"{name}{suffix}"
             source = stage / target.name
             if source.exists():
-                normalize_case_path(target, progress=progress, label="component")
-                copy2(source, target)
+                normalize_case_path(
+                    target, progress=progress, label="component", case_index=case_index
+                )
+                source.replace(target)
+                if digests is not None and staged_digests is not None:
+                    digests[target] = staged_digests[source]
+                if case_index is not None:
+                    case_index[target.name.lower()] = [target]
             else:
                 target.unlink(missing_ok=True)
         defaults = stage.parent / "field_defaults.json"
@@ -901,11 +932,16 @@ def normalize_case_path(
     disposable: bool = False,
     progress: Callable[[str], None] | None = None,
     label: str = "path",
+    case_index: dict[str, list[Path]] | None = None,
 ) -> Path:
     """Rename a same-name-different-case path to `path` when present."""
 
     source = fallback if fallback is not None and fallback.exists() else None
-    variants = case_variants(path)
+    variants = (
+        case_variants(path)
+        if case_index is None
+        else [p for p in case_index.get(path.name.lower(), []) if p.exists()]
+    )
     exact = [child for child in variants if child.name == path.name]
     others = [child for child in variants if child.name != path.name]
 
@@ -977,13 +1013,15 @@ def write_component_w4gl(
     component_name: str,
     content: str,
     progress: Callable[[str], None] | None = None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Path:
     """Write a component using the OpenROAD XML name as the source filename."""
 
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.w4gl"
     normalize_case_path(path, progress=progress, label="component")
-    path.write_text(content, encoding="utf-8", newline="\n")
+    write_source_text(path, content, newline="\n", digests=digests)
     return path
 
 
@@ -992,6 +1030,8 @@ def write_component_wml(
     component_name: str,
     content: str | None,
     progress: Callable[[str], None] | None = None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Path | None:
     """Write frame markup when a component has a visual source tree."""
 
@@ -1001,5 +1041,5 @@ def write_component_wml(
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.wml"
     normalize_case_path(path, progress=progress, label="component")
-    path.write_text(content.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
+    write_source_text(path, content.rstrip("\n") + "\n", newline="\n", digests=digests)
     return path

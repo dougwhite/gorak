@@ -17,6 +17,8 @@ from PIL import Image
 
 from .bitmap_codec import MAX_BYTES, MAX_PIXELS, Bitmap, decode, encode, is_empty
 from .errors import ProjectError
+from .source_reads import exists as source_exists
+from .source_reads import read_bytes as source_bytes
 
 
 def asset_path(folder: Path, name: str) -> Path:
@@ -69,9 +71,10 @@ def project_image(bitmap: Bitmap) -> Image.Image:
 
 def read_png(path: Path) -> Image.Image:
     try:
-        if path.stat().st_size > MAX_BYTES:
+        data = source_bytes(path)
+        if len(data) > MAX_BYTES:
             raise ProjectError("Image file exceeds supported bounds")
-        with Image.open(path) as image:
+        with Image.open(BytesIO(data)) as image:
             if (
                 image.format != "PNG"
                 or image.width * image.height > MAX_PIXELS
@@ -201,7 +204,7 @@ def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
             image = source.copy()
     else:
         path = asset_path(folder, ref["src"])
-        if path.with_suffix(path.suffix + ".bitmap.json").exists():
+        if source_exists(path.with_suffix(path.suffix + ".bitmap.json")):
             raise ProjectError(
                 "Obsolete bitmap sidecar; re-export this application before using bitmap references"
             )

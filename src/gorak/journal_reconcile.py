@@ -7,11 +7,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from .connection import OpenRoadConnection, require_odbc_settings
+from .file_updates import fingerprint
 from .installation_check import check_installation
 from .journal import JournalEvent, acknowledgment_store, consume_journal
 from .project import ProjectError
 from .project_lock import project_lock
-from .safe_pull import fingerprint
 from .sync_guard import binding_status
 from .sync_plan import plan_project
 

@@ -53,7 +53,7 @@ def setup(
     return OpenRoadConnection("local", "node", "db", None)
 
 
-def test_status_is_read_only_and_detects_conflicting_scripts(
+def test_status_preserves_source_and_detects_conflicting_scripts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     connection = setup(tmp_path, monkeypatch, xml("RETURN 3;"))
@@ -64,12 +64,22 @@ def test_status_is_read_only_and_detects_conflicting_scripts(
         for p in tmp_path.rglob("*")
         if p.is_file()
     }
-    changes = sync_plan.plan_project(connection, tmp_path)
+    from gorak.operation_progress import progress_scope
+
+    messages: list[str] = []
+    with progress_scope("Status", messages.append):
+        changes = sync_plan.plan_project(connection, tmp_path)
+    assert any("Comparing local source: 100%" in message for message in messages)
+    assert any(
+        "Exporting and comparing database applications: 100%" in message
+        for message in messages
+    )
+    assert any("Waiting for native export" in message for message in messages)
     assert next(c for c in changes if c.key == "example/proc").action == "conflict"
     assert before == {
         p.relative_to(tmp_path): p.read_bytes()
         for p in tmp_path.rglob("*")
-        if p.is_file()
+        if p.is_file() and p != tmp_path / ".openroad/comparison-cache.json"
     }
 
 
@@ -163,3 +173,83 @@ def test_compact_signatures_preserve_xml_comment_and_processing_instruction_cont
     assert digest("<!--one-->") != digest("<!--two-->")
     assert digest("<?test one?>") != digest("<?test two?>")
     assert digest("<!--one-->") != digest("<comment>one</comment>")
+
+
+def test_inventory_retains_compact_signatures_with_compatible_checkpoint_hashes() -> (
+    None
+):
+    from lxml import etree
+
+    from gorak.native_normalization import signature as native_signature
+
+    root = etree.fromstring(xml().encode())
+    component = root.find("COMPONENT")
+    assert component is not None
+    # Many nested values previously remained expanded in each project inventory.
+    for index in range(2000):
+        etree.SubElement(component, "property", name=str(index)).text = "value"
+    expected = sync_plan.semantic_hashes(
+        {"example/proc": native_signature(component, pixel_geometry=True)}
+    )["example/proc"]
+    inventory = sync_plan.xml_inventory(root, "example")
+    digest = inventory["example/proc"]
+    assert isinstance(digest, sync_plan.SemanticDigest)
+    assert len(digest) == 64
+    assert digest == expected
+    assert sync_plan.semantic_hashes(inventory)["example/proc"] == expected
+    component.find("script").text = "RETURN 2;"
+    assert sync_plan.signature(component) != digest
+
+
+def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    import gorak.cli as cli
+
+    setup(tmp_path, monkeypatch, xml())
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    (tmp_path / ".env").write_text(
+        "GORAK_BACKEND=local\nGORAK_SQL_BACKEND=local\n"
+        "GORAK_VNODE=node\nGORAK_DATABASE=db\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    from gorak import transfers
+
+    monkeypatch.setattr(transfers, "status", lambda *a: {"push": [], "pull": []})
+    cli.main(["status"])
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {"push": [], "pull": []}
+    assert "Status: starting" in output.err
+
+
+def test_reused_local_comparison_still_exports_database_and_detects_remote_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak.comparison_cache import scope
+
+    connection = setup(tmp_path, monkeypatch, xml())
+
+    calls: list[str] = []
+
+    def exporting(connection: object, app: str, path: Path) -> None:
+        calls.append(app)
+        path.write_text(xml("RETURN 3;"))
+
+    def reconstructing(path: Path) -> object:
+        raise AssertionError("Unchanged local source should reuse its comparison")
+
+    with scope():
+        assert all(
+            change.action == "unchanged"
+            for change in sync_plan.plan_project(connection, tmp_path)
+        )
+        monkeypatch.setattr(sync_plan, "backup_application_xml", exporting)
+        monkeypatch.setattr(sync_plan, "comparison_component", reconstructing)
+        changes = sync_plan.plan_project(connection, tmp_path)
+    assert calls == ["example"]
+    assert (
+        next(change for change in changes if change.key == "example/proc").action
+        == "pull"
+    )
