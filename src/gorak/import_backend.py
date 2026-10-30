@@ -35,7 +35,6 @@ def import_component_xml(
     from .revision_check import validate_revision_target
 
     validate_revision_target(connection)
-    empty_app = component == "-" and not contains_components(xml_path)
     if connection.backend == "local":
         command = local.build_backup_component_command(
             connection.vnode,
@@ -89,6 +88,7 @@ def import_component_xml(
     remote.run_subprocess(remote.build_upload_command(host, str(xml_path), destination))
     args = [f"{connection.vnode}::{connection.database}", app, component, destination]
     if create:
+        empty_app = component == "-" and not contains_components(xml_path)
         args.append("create-empty" if empty_app else "create")
     helper = (
         "create-source.bat"

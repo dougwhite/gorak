@@ -1,111 +1,24 @@
-# Push and recovery
+# Push and pull
 
-For normal work, inspect and push readable disk changes with:
+`gorak push` sends changed readable source to the configured database. Local
+source wins. `gorak pull` sends changed database source to the checkout. Database
+source wins. Neither command compares receiver content or reconciles conflicts.
 
-```sh
-gorak status
-gorak sync --push
-```
+`gorak sync` aliases pull; `gorak sync --push` aliases push. Use `--full` to
+transfer everything, `--dry-run` to preview, and `push --no-compile` for source
+imports without compilation. Keep Workbench editors closed during imports.
 
-Use a dry run when you want gorak to prepare and validate the import without
-changing OpenROAD:
+The transfer ledger in `.openroad/transfers.json` records successful file hashes
+and database IDs, names, and alteration tokens. A missing ledger or changed target
+starts a full transfer. A receiver-only edit is left alone until the sender changes
+or a full transfer is requested. The source format is unchanged.
+Deletions are not propagated. Local renames/deletions require a native database
+operation; database renames are detected by identity and name when pulling.
 
-```sh
-gorak sync --push --dry-run
-```
+A failed component or application is reported while independent items continue.
+Successful items are recorded; failed items remain pending. The command exits
+nonzero if any item failed or was skipped. Retry after correcting the failure.
+Source import success does not establish successful compilation or execution.
 
-Keep Workbench source editors closed while gorak imports source.
-
-## What a push does
-
-gorak:
-
-1. compares disk, baseline, and current OpenROAD source;
-2. refuses conflicts or unexpected database changes;
-3. reconstructs and imports the planned source;
-4. records the exact source accepted by OpenROAD as the synchronization baseline; and
-5. compiles the affected database source.
-
-Applications included in the same push are imported in dependency order. Missing
-external includes do not block source restoration; compilation reports unresolved
-dependencies. Cyclic includes among new applications remain a preflight error.
-
-A compiler error makes `gorak sync --push` exit nonzero, but it does not undo a
-source import accepted by OpenROAD. Use the printed command to see full compiler
-diagnostics:
-
-```sh
-gorak compile example_app component_name
-gorak compile example_app
-```
-
-These commands compile source already stored in OpenROAD, not unpushed disk files.
-
-gorak does not currently perform ordinary database-side component deletion.
-Removing a tracked component on disk, or finding a tracked component missing from
-OpenROAD, is treated as a conflict unless you deliberately choose an authoritative
-side during recovery.
-
-## Retry an interrupted push
-
-An interrupted command can normally be retried:
-
-```sh
-gorak sync --push
-```
-
-gorak keeps the submitted source and before-images under `.openroad/`. On retry
-it compares that evidence with a fresh OpenROAD export, recognizes source that
-OpenROAD already accepted, and continues safely.
-
-Do not delete `.openroad/`, baselines, locks, or pending-operation files to make
-an error disappear. They are the evidence gorak uses to avoid overwriting work.
-
-## Resolve a recovery state
-
-First inspect the current state:
-
-```sh
-gorak status
-gorak recover push
-```
-
-A plain `gorak recover push` completes recovery only when disk and database
-already agree.
-
-If they differ, choose an authoritative side only after inspecting both versions:
-
-```sh
-gorak recover push --take disk
-gorak recover push --take database
-```
-
-The choice applies to the entire tracked project, not only the first component
-named in the error. Before replacing anything, gorak retains displaced readable
-source, baselines, and database exports under `.openroad/pushes/`.
-
-`--take disk` imports local source but does not delete database-only components.
-`--take database` replaces tracked readable source while leaving unrelated
-project files alone.
-
-```sh
-gorak sync --push --force
-```
-
-This uses the same disk-authority policy and can rebuild damaged baselines. It
-still requires the project to be bound to the configured source target and does
-not bypass source validation, conflict checks, or OpenROAD import errors.
-
-If you cannot establish which side is authoritative, stop and preserve both. Do
-not guess merely to clear the recovery state.
-
-## Artifacts
-
-Push evidence and compiler logs are stored under `.openroad/`, including:
-
-- `.openroad/pushes/` for submitted source, before-images, and recovery evidence;
-- `.openroad/imports/` for individual component-import artifacts; and
-- `.openroad/compiles/` for explicit compiler logs.
-
-These files can contain source and connection identities. Keep them private and
-out of Git.
+Git provides source history. No three-way baselines or recovery snapshots are
+created by push/pull. Never commit `.env` or `.openroad/`.

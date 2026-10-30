@@ -151,3 +151,17 @@ def test_parse_component_sync_metadata_output() -> None:
             current_make=2,
         )
     ]
+
+
+def test_metadata_query_error_is_not_an_empty_catalog() -> None:
+    import pytest
+
+    from gorak.project import ProjectError
+
+    with pytest.raises(ProjectError, match="component change metadata"):
+        parse_component_sync_metadata_output("E_AD1012 Null value cannot be assigned")
+
+
+def test_metadata_identifier_is_not_mistaken_for_query_error() -> None:
+    output = COMPONENT_SYNC_METADATA_OUTPUT.replace("fm_start", "E_SAMPLE")
+    assert parse_component_sync_metadata_output(output)[0].component_name == "E_SAMPLE"

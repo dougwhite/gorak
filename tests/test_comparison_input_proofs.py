@@ -1,83 +1,19 @@
 """Persist comparison results only for the exact bytes reconstruction consumed."""
 
-import json
 import os
-import subprocess
-import sys
 from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
 from lxml import etree
 
-from gorak import comparison_cache, push_retry, source_xml, sync_plan
+from gorak import comparison_cache, source_xml, sync_plan
 from gorak.portable_source import (
     cached_source_scope,
-    comparison_component,
     read_document,
 )
 from gorak.project import ProjectError
-from gorak.safe_pull import apply_files
-from gorak.sync_guard import save_binding
-from tests.test_retry_sync import World
 from tests.test_sync_plan import setup, xml
-
-
-def test_transient_source_edit_cannot_certify_pending_local_edit_in_next_process(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    connection = setup(tmp_path, monkeypatch, xml("RETURN 3;"))
-    save_binding(connection, tmp_path)
-    (tmp_path / "gorak.json").write_text('{"name":"example"}')
-    source = tmp_path / "example/proc.w4gl"
-    pending = source.read_bytes().replace(b"RETURN 1;", b"RETURN 2;")
-    source.write_bytes(pending)
-
-    def racing(path: Path) -> etree._Element:
-        source.write_bytes(pending.replace(b"RETURN 2;", b"RETURN 1;"))
-        try:
-            return comparison_component(path)
-        finally:
-            source.write_bytes(pending)
-
-    child_script = tmp_path / "check_pull.py"
-    child_script.write_text(
-        """
-import json
-import sys
-from pathlib import Path
-from gorak import export, safe_pull, sync_plan
-from gorak.connection import OpenRoadConnection
-from gorak.domain import Application, ComponentInfo
-from gorak.project import ProjectError, load_context
-root = Path(sys.argv[1])
-current = (root / ".openroad/example/example.xml").read_text().replace("RETURN 1;", "RETURN 3;")
-for module in (safe_pull, sync_plan):
-    module.read_applications = lambda c: [Application('example', '', '')]
-    module.backup_application_xml = lambda c, a, p: p.write_text(current)
-export.read_components = lambda c, a: [ComponentInfo(a, 'proc', 'proc4glsource', '')]
-try:
-    safe_pull.sync_project(OpenRoadConnection('local', 'node', 'db', None), load_context(root))
-except ProjectError as error:
-    print(json.dumps({'refused': True, 'error': str(error)}))
-else:
-    print(json.dumps({'refused': False}))
-"""
-    )
-    monkeypatch.setattr(sync_plan, "comparison_component", racing)
-    sync_plan.local_inventory(tmp_path)
-    assert source.read_bytes() == pending
-
-    child = subprocess.run(
-        [sys.executable, str(child_script), str(tmp_path)],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    result = json.loads(child.stdout)
-    assert result["refused"], result
-    assert "Sync stopped before writes" in result["error"]
-    assert source.read_bytes() == pending
 
 
 def test_native_inventory_digest_describes_bytes_actually_parsed(
@@ -223,44 +159,6 @@ def test_equal_baseline_times_accept_order_independent_overlaps(
             if kind == "partial-partial"
             else {"example", "example/proc"}
         )
-
-
-@pytest.mark.parametrize("edit_after_loss", [False, True])
-def test_retry_accepts_matching_full_and_partial_exports_with_identical_times(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edit_after_loss: bool
-) -> None:
-    world = World(tmp_path, monkeypatch)
-    world.edit("caller", "new")
-    world.edit("dependency", "new")
-    world.lose_response = True
-    with pytest.raises(ProjectError, match="Connection lost"):
-        world.push()
-    if edit_after_loss:
-        world.edit("caller", "newer")
-    tied = False
-
-    def same_timestamp(
-        root: Path,
-        changes: dict[Path, bytes | None],
-        recovery: Path,
-        expected: dict[str, str] | None = None,
-    ) -> None:
-        nonlocal tied
-        apply_files(root, changes, recovery, expected)
-        for path in (world.cache, world.cache.with_name("caller.xml")):
-            assert path in changes and path.is_file()
-            os.utime(path, ns=(1_000_000_000, 1_000_000_000))
-        tied = True
-
-    monkeypatch.setattr(push_retry, "apply_files", same_timestamp)
-    world.push()
-    assert tied
-    assert world.imports == (
-        ["caller", "caller", "dependency"]
-        if edit_after_loss
-        else ["caller", "dependency"]
-    )
-    assert not (tmp_path / ".openroad/push-pending.json").exists()
 
 
 @pytest.mark.parametrize("partial_name", ["a.xml", "z.xml"])

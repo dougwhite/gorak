@@ -55,7 +55,7 @@ def test_create_project_creates_default_project_skeleton(
     assert (project.root / ".gitattributes").read_text() == (
         "*.w4gl text eol=lf\n*.wml text eol=lf\n"
     )
-    assert "gorak sync --push && gorak test" in (project.root / "AGENTS.md").read_text()
+    assert "gorak push && gorak test" in (project.root / "AGENTS.md").read_text()
     assert calls == [(["git", "init"], project.root)]
     assert capsys.readouterr().err == ""
 

@@ -57,7 +57,6 @@ from .remote import (
 )
 from .run_backend import execute_application
 from .runner import TestApplication, report_summary, test_applications
-from .safe_pull import sync_project
 
 REMOTE_SCRIPT_PACKAGE = "gorak.remote_scripts"
 
@@ -141,15 +140,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compare source and acknowledge verified events",
     )
     add_openroad_connection_args(journal_parser)
-
-    recovery_parser = subparsers.add_parser("recover")
-    recovery_parser.add_argument("operation", choices=["push"])
-    recovery_parser.add_argument(
-        "--take",
-        choices=["disk", "database"],
-        help="Choose authoritative source for the tracked project",
-    )
-    add_openroad_connection_args(recovery_parser)
 
     compile_parser = subparsers.add_parser(
         "compile", help="Compile database source and display full diagnostics"
@@ -254,22 +244,24 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status")
     add_openroad_connection_args(status_parser)
 
-    sync_parser = subparsers.add_parser("sync")
-    add_openroad_connection_args(sync_parser)
-    sync_parser.add_argument(
-        "--bind",
-        action="store_true",
-        help="Verify and bind an existing cache to its configured target",
-    )
-    sync_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Make disk authoritative; retain displaced source and rebuild tracking",
-    )
-    sync_parser.add_argument("--push", action="store_true", help="Import disk changes")
-    sync_parser.add_argument(
-        "--dry-run", action="store_true", help="Prepare push XML without importing"
-    )
+    for name in ("pull", "push", "sync"):
+        transfer_parser = subparsers.add_parser(name)
+        add_openroad_connection_args(transfer_parser)
+        if name == "sync":
+            transfer_parser.add_argument(
+                "--push", action="store_true", help="Alias for gorak push"
+            )
+        transfer_parser.add_argument(
+            "--full", action="store_true", help="Transfer all sender content"
+        )
+        transfer_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="List sender changes without transferring",
+        )
+        transfer_parser.add_argument(
+            "--no-compile", action="store_true", help="Import source without compiling"
+        )
 
     debug_parser = subparsers.add_parser("debug")
     debug_subparsers = debug_parser.add_subparsers(dest="debug_command")
@@ -798,100 +790,39 @@ def includes_list_command(args: argparse.Namespace) -> str:
     return includes_to_json(read_includes(connection, cast(str, args.app)))
 
 
-@locked_command
 def sync_command(args: argparse.Namespace) -> str:
-    """Export locally tracked components that changed in OpenROAD."""
+    """Compatibility entry point for sender-authoritative push and pull."""
+    from .project_lock import project_lock
+    from .transfers import pull, push
 
     context = load_context(Path.cwd())
-    connection = resolve_openroad_connection(args, context)
-    from .sync_guard import guard_sync
-
-    force = getattr(args, "force", False)
-    if force and (
-        not getattr(args, "push", False)
-        or getattr(args, "dry_run", False)
-        or getattr(args, "bind", False)
-    ):
-        raise ProjectError(
-            "--force requires --push and cannot be combined with --bind or --dry-run"
-        )
-    if context.project is not None:
-        if getattr(args, "bind", False) and (
-            getattr(args, "push", False) or getattr(args, "dry_run", False)
-        ):
-            raise ProjectError(
-                "Use --bind on its own; it verifies the baseline without syncing"
-            )
-        from .push_retry import prepare_tracking
-
-        if (context.project.root / ".openroad/push-pending.json").exists() and getattr(
-            args, "dry_run", False
-        ):
-            raise ProjectError(
-                "An interrupted push needs a fresh comparison; run sync --push to retry, or status to inspect"
-            )
-        reconciliation = prepare_tracking(connection, context.project.root, force=force)
-        if getattr(args, "push", False) or getattr(args, "bind", False):
-            plan = guard_sync(
-                connection,
-                context.project.root,
-                push=getattr(args, "push", False),
-                bind=getattr(args, "bind", False),
-                dry_run=getattr(args, "dry_run", False),
-                lock_held=True,
-                force=force,
-                creation_preflight=True,
-            )
-            if (
-                getattr(args, "push", False)
-                and not force
-                and plan
-                and all(change.action == "unchanged" for change in plan)
-            ):
-                label = (
-                    "Push dry run"
-                    if getattr(args, "dry_run", False)
-                    else "Push complete"
-                )
-                summary = f"{label}: no changes (verified comparison)"
-                if not getattr(args, "dry_run", False):
-                    from uuid import uuid4
-
-                    from .compiler import finish_push_compilation
-
-                    return finish_push_compilation(
-                        connection,
-                        context.project.root,
-                        context.project.root / ".openroad/compiles" / uuid4().hex,
-                        summary,
-                    )
-                return summary
-        if getattr(args, "bind", False):
-            return "Sync baseline verified and bound to the configured target"
-    if getattr(args, "push", False):
-        from .push import push_project
-
-        if context.project is None:
-            raise ProjectError("Push requires a gorak project")
-        if force:
-            from .push_retry import finish_forced_push
-
-            assert reconciliation is not None
-            return finish_forced_push(connection, context.project.root, reconciliation)
-        return push_project(connection, context.project.root, args.dry_run)
-    if getattr(args, "dry_run", False):
-        raise ProjectError("--dry-run requires --push")
-    print(f"Syncing from {connection_source(connection)}")
-    result = sync_project(connection, context, progress=print, lock_held=True)
-    if result.failures:
-        from .export_failures import failure_summary
-
-        raise ProjectError(failure_summary(result.exported, result.failures))
-    component_label = "component" if result.exported == 1 else "components"
-    return (
-        f"Sync complete: checked {result.checked}, "
-        f"changed {result.changed}, exported {result.exported} {component_label}"
+    if context.project is None:
+        raise ProjectError("Transfer requires a gorak project")
+    root = context.project.root
+    direction = (
+        "push"
+        if getattr(args, "command", "sync") == "push" or getattr(args, "push", False)
+        else "pull"
     )
+    with project_lock(root, direction, recover_push=True, recover_pull=True):
+        connection = resolve_openroad_connection(args, context)
+        options = {
+            "full": getattr(args, "full", False),
+            "dry_run": getattr(args, "dry_run", False),
+        }
+        result = (
+            push(
+                connection,
+                root,
+                compile=not getattr(args, "no_compile", False),
+                **options,
+            )
+            if direction == "push"
+            else pull(connection, root, **options)
+        )
+    if result.failed or result.skipped:
+        raise ProjectError(result.summary())
+    return result.summary()
 
 
 def debug_audit_command(args: argparse.Namespace) -> str:
@@ -1133,20 +1064,6 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
                 )
             )
             return
-        if parsed.command == "recover":
-            from .recovery import recover_push
-
-            context = load_context(Path.cwd())
-            if context.project is None:
-                raise ProjectError("Recovery requires a gorak project")
-            print(
-                recover_push(
-                    resolve_openroad_connection(parsed, context),
-                    context.project.root,
-                    **({"take": parsed.take} if parsed.take else {}),
-                )
-            )
-            return
         if parsed.command == "new":
             print(new_command(parsed))
             return
@@ -1210,69 +1127,17 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             )
             return
         if parsed.command == "status":
+            from .transfers import status
+
             with progress_scope("Status"):
-                from lxml import etree
-
-                from .sync_guard import binding_status
-                from .sync_plan import format_plan, plan_project
-
                 context = load_context(Path.cwd())
                 if context.project is None:
                     raise ProjectError("Status requires a gorak project")
                 connection = resolve_openroad_connection(parsed, context)
-                baseline_target = binding_status(
-                    connection, context.project.root, recover_pull=True
-                )
-                status_diagnostics: dict[str, object] = {}
-                pending = context.project.root / ".openroad/push-pending.json"
-                sync_state: object = None
-                if pending.exists():
-                    try:
-                        sync_state = json.loads(pending.read_text())
-                    except (ValueError, OSError):
-                        sync_state = {
-                            "state": "recovery_required",
-                            "reason": "unreadable pending push record",
-                        }
-                try:
-                    if connection.revision_generation:
-                        from .revision_checkpoint import revision_plan
-
-                        changes, status_diagnostics = revision_plan(
-                            connection, context.project.root
-                        )
-                    else:
-                        changes = plan_project(connection, context.project.root)
-                except (ProjectError, ValueError, OSError, etree.XMLSyntaxError) as ex:
-                    if sync_state is None:
-                        raise
-                    changes = []
-                    status_diagnostics = {
-                        "comparison_error": str(ex),
-                        "comparison_available": False,
-                    }
-                print(
-                    json.dumps(
-                        {
-                            "baseline_target": baseline_target,
-                            **(
-                                {"source_operation": sync_state}
-                                if sync_state is not None
-                                else {}
-                            ),
-                            "changes": format_plan(changes),
-                            **(
-                                {"observation": status_diagnostics}
-                                if status_diagnostics
-                                else {}
-                            ),
-                        },
-                        indent=2,
-                    )
-                )
-                return
-        if parsed.command == "sync":
-            with progress_scope("Sync"):
+                print(json.dumps(status(connection, context.project.root), indent=2))
+            return
+        if parsed.command in {"sync", "pull", "push"}:
+            with progress_scope(parsed.command.capitalize()):
                 print(sync_command(parsed))
             return
         if parsed.command == "component" and parsed.component_command == "import":

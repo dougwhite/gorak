@@ -111,7 +111,7 @@ def import_component(
     """Validate, compare and import one component; retain accepted source and recovery artifacts."""
     validate_name(app)
     validate_name(component)
-    from .safe_pull import apply_files, fingerprint
+    from .file_updates import apply_files, fingerprint
 
     source_snapshot = None if dry_run else fingerprint(root)
     cache = root / ".openroad" / app

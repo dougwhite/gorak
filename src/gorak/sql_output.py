@@ -1,7 +1,10 @@
 """Parse Ingres terminal monitor table output used by the current backends."""
 
+import re
+
 from .database import ComponentSyncMetadata
 from .domain import Application, ComponentInfo, IncludedApplication
+from .project import ProjectError
 
 
 def table_rows(output: str, expected_cells: int, header: str) -> list[list[str]]:
@@ -67,6 +70,8 @@ def parse_include_list_output(output: str) -> list[IncludedApplication]:
 def parse_component_sync_metadata_output(output: str) -> list[ComponentSyncMetadata]:
     """Parse Ingres output into component change metadata."""
 
+    if re.search(r"(?m)^\s*(?:\*\s*)?E_[A-Z0-9]+\b", output):
+        raise ProjectError("Unable to read component change metadata")
     return [
         ComponentSyncMetadata(
             application_name=cells[0],

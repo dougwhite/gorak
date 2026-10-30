@@ -105,8 +105,9 @@ def _normalize_streamed_text(root: etree._Element) -> etree._Element:
 def application_children(path: Path) -> Generator[etree._Element, None, None]:
     """Read a native application a component at a time, retaining XML text/PI.
 
-    Callers must exhaust a validation pass before installing any projected source.
     Each yielded subtree is detached, so retaining it never retains the application.
+    Document errors are raised as the stream is consumed; callers decide whether
+    to retain successfully projected components or stage the entire application.
     """
     if path.stat().st_size > MAX_DOCUMENT_BYTES:
         raise ProjectError("Source XML exceeds the 512 MiB document limit")

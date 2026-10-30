@@ -9,8 +9,8 @@ from uuid import uuid4
 
 from . import native_styles as styles
 from .errors import ProjectError
+from .file_updates import apply_files, fingerprint
 from .project_lock import project_lock
-from .safe_pull import apply_files, fingerprint
 
 
 def encoded(value: styles.Json) -> bytes:

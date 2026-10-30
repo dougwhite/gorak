@@ -1,5 +1,5 @@
 {
-  "version": "9",
+  "version": "10",
   "files": [
     "applist.sql",
     "revision-generation.sql",
@@ -16,6 +16,7 @@
     "get-app-list.bat",
     "get-component-list.bat",
     "get-component-sync-metadata.bat",
+    "get-app-sync-metadata.bat",
     "get-include-list.bat",
     "gorak-helpers.json"
   ]

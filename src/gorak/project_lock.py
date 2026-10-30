@@ -92,7 +92,11 @@ def project_lock(
         ) from ex
     try:
         with handle:
-            for name in ("pull.lock", "pull-pending.json", "push-pending.json"):
+            for name in (
+                ()
+                if operation in {"push", "pull"}
+                else ("pull.lock", "pull-pending.json", "push-pending.json")
+            ):
                 if (name == "push-pending.json" and recover_push) or (
                     name == "pull-pending.json" and recover_pull
                 ):

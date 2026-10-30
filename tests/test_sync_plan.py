@@ -215,10 +215,13 @@ def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
         "GORAK_VNODE=node\nGORAK_DATABASE=db\n"
     )
     monkeypatch.chdir(tmp_path)
+    from gorak import transfers
+
+    monkeypatch.setattr(transfers, "status", lambda *a: {"push": [], "pull": []})
     cli.main(["status"])
     output = capsys.readouterr()
-    assert json.loads(output.out)["changes"] == []
-    assert "Comparing local source: 100%" in output.err
+    assert json.loads(output.out) == {"push": [], "pull": []}
+    assert "Status: starting" in output.err
 
 
 def test_reused_local_comparison_still_exports_database_and_detects_remote_edits(
