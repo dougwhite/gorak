@@ -114,7 +114,12 @@ def image_dependencies(path: Path, data: bytes) -> set[Path]:
         elif path.suffix == ".w4gl":
             visit(tomllib.loads(data.decode("utf-8").split("===", 1)[0]))
         else:
-            visit(json.loads(data))
+            value = json.loads(data)
+            visit(
+                value.get("window_icon")
+                if path.name == "app.json" and isinstance(value, dict)
+                else value
+            )
     except (ValueError, etree.XMLSyntaxError):
         pass  # Reconstruction reports invalid source; it cannot be checkpointed.
     return found

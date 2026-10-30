@@ -621,6 +621,7 @@ def test_component_asset_does_not_replace_unrelated_source(
     path.with_suffix(".wml").write_text(
         '<frame><topform><bgbitmap src="images/picture.png"/></topform></frame>'
     )
+    (path.parent / "app.json").write_text('{"description":"images/picture.png"}')
     image = tmp_path / "sample/images/picture.png"
     image.parent.mkdir()
     Image.new("RGB", (2, 2), "red").save(image)
