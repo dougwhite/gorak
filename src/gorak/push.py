@@ -15,7 +15,13 @@ from .export import (
     read_components,
 )
 from .import_backend import import_component_xml
-from .importer import component_tree, import_component, signature, validate_name
+from .importer import (
+    component_tree,
+    import_component,
+    import_prepared_component,
+    signature,
+    validate_name,
+)
 from .native_normalization import signature as tracking_signature
 from .native_styles import resolution_scope, validation_scope
 from .operation_progress import report
@@ -368,7 +374,6 @@ def _push_project(
                         raise ProjectError(
                             f"Component appeared during push: {app}/{component}"
                         )
-            check_source()
             report("Importing prepared applications", index, len(ordered))
             import_component_xml(
                 connection,
@@ -384,9 +389,8 @@ def _push_project(
             cache_updates.update(accepted_baseline(target, submitted, operation))
             report("Importing prepared applications", index + 1, len(ordered))
         for app, name in edits:
-            check_source()
-            imported = import_component(
-                connection, root, app, name, advance_cache=False
+            imported = import_prepared_component(
+                connection, root, app, name, prepared_edits[(app, name)].parent
             )
             cache_updates.update(
                 accepted_baseline(
@@ -395,9 +399,8 @@ def _push_project(
                     imported,
                 )
             )
-        check_source()
         installing = True
-        apply_files(root, dict(cache_updates), operation, initial)
+        apply_files(root, dict(cache_updates), operation, initial, baseline_only=True)
         installing = False
         (operation / "accepted").write_text(
             "OpenROAD accepted imports; submitted baselines retained\n"

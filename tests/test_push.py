@@ -291,7 +291,7 @@ def test_application_appearing_after_preflight_prevents_creation(
         push.push_project(connection(), tmp_path)
 
 
-def test_late_disk_edit_keeps_cache_unadvanced_and_blocks_retry(
+def test_late_disk_edit_preserves_source_and_advances_submitted_baseline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     folder = app(tmp_path, "example")
@@ -305,16 +305,13 @@ def test_late_disk_edit_keeps_cache_unadvanced_and_blocks_retry(
     monkeypatch.setattr(
         push, "backup_application_xml", lambda c, a, p: p.write_bytes(original)
     )
-    with pytest.raises(ProjectError, match="Local project changed"):
-        push.push_project(connection(), tmp_path)
-    assert not (tmp_path / ".openroad/example/example.xml").exists()
-    marker = tmp_path / ".openroad/push-pending.json"
-    operation = Path(json.loads(marker.read_text())["operation"])
-    assert (operation / "plan.json").exists()
-    assert (operation / "0-submitted.xml").exists()
-    assert not (operation / "0-after.xml").exists()
-    with pytest.raises(ProjectError, match="interrupted push"):
-        push.push_project(connection(), tmp_path)
+    push.push_project(connection(), tmp_path)
+    baseline = tmp_path / ".openroad/example/example.xml"
+    assert baseline.exists()
+    assert not (tmp_path / ".openroad/push-pending.json").exists()
+    operation = next(p for p in (tmp_path / ".openroad/pushes").iterdir() if p.is_dir())
+    assert baseline.read_bytes() == (operation / "0-submitted.xml").read_bytes()
+    assert (operation / "accepted").exists()
     assert (folder / "notes.txt").read_text() == "concurrent edit"
 
 

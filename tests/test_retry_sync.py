@@ -601,3 +601,53 @@ def test_recovery_partial_export_retains_pending_marker(world: World) -> None:
     assert (world.root / ".openroad/push-pending.json").exists()
     assert not (world.folder / "broken.w4gl").exists()
     assert not world.imports
+
+
+def test_snapshot_push_keeps_later_edits_pending(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.edit("caller", "new")
+    world.edit("dependency", "new")
+    importing = world.import_xml
+
+    def import_and_edit(*args: Any, **kwargs: Any) -> None:
+        importing(*args, **kwargs)
+        world.edit("caller", "later")
+        world.edit("dependency", "later")
+
+    monkeypatch.setattr(importer, "import_component_xml", import_and_edit)
+    world.push()
+    assert world.imports == ["caller", "dependency"]
+    for name in world.imports:
+        assert "new" in world.node(name).findtext("script", "")
+        assert "later" not in world.node(name).findtext("script", "")
+        assert "later" in (world.folder / f"{name}.w4gl").read_text()
+    plan = sync_plan.plan_project(CONNECTION, world.root)
+    changed = [change for change in plan if change.action != "unchanged"]
+    assert {change.key for change in changed} == {
+        "example/caller",
+        "example/dependency",
+    }
+    assert all(
+        change.action == "push" and change.database == "unchanged" for change in changed
+    )
+    assert not (world.root / ".openroad/push-pending.json").exists()
+
+
+def test_prepared_push_rechecks_database_before_each_component(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.edit("caller", "new")
+    world.edit("dependency", "new")
+    importing = world.import_xml
+
+    def import_and_change_database(*args: Any, **kwargs: Any) -> None:
+        importing(*args, **kwargs)
+        world.node("dependency").find("script").text = "independent workbench edit"
+
+    monkeypatch.setattr(importer, "import_component_xml", import_and_change_database)
+    with pytest.raises(ProjectError, match="Database component changed during push"):
+        world.push()
+    assert world.imports == ["caller"]
+    assert world.node("dependency").findtext("script") == "independent workbench edit"
+    assert (world.root / ".openroad/push-pending.json").exists()

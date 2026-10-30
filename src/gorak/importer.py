@@ -57,6 +57,48 @@ def signature(node: etree._Element) -> object:
     )
 
 
+def import_prepared_component(
+    connection: OpenRoadConnection,
+    root: Path,
+    app: str,
+    component: str,
+    operation: Path,
+) -> Path:
+    """Import preflight XML after rechecking the database, independent of live edits."""
+    validate_name(app)
+    validate_name(component)
+    lock = root / ".openroad/imports/import.lock"
+    try:
+        handle = open_lock(lock, "prepared component import")
+    except FileExistsError as ex:
+        raise ProjectError(f"Another import may be active; inspect {lock}") from ex
+    try:
+        with handle:
+            latest = operation / "pre-import.xml"
+            backup_component_xml(connection, app, component, latest)
+            from .native_normalization import signature as tracking_signature
+
+            if tracking_signature(
+                component_tree(latest, component)
+            ) != tracking_signature(
+                component_tree(operation / "before.xml", component)
+            ):
+                raise ProjectError("Database component changed during push")
+            import_component_xml(
+                connection,
+                app,
+                component,
+                operation / "submitted.xml",
+                operation / "import.log",
+            )
+            (operation / "accepted").write_text(
+                "OpenROAD accepted prepared import; submitted baseline retained\n"
+            )
+            return operation
+    finally:
+        lock.unlink()
+
+
 def import_component(
     connection: OpenRoadConnection,
     root: Path,

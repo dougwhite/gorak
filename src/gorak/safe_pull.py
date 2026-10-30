@@ -153,6 +153,13 @@ def fingerprint(root: Path) -> dict[str, str]:
                 (files[index : index + 64] for index in range(0, len(files), 64)),
             ):
                 result.update(digests)
+    result.update(baseline_fingerprint(root))
+    return result
+
+
+def baseline_fingerprint(root: Path) -> dict[str, str]:
+    """Hash tracking state without rereading the editable checkout."""
+    result = {}
     for path in (root / ".openroad").glob("*/*"):
         if not path.is_file() or not (
             path.suffix == ".xml" or path.name.endswith(".receipt.json")
@@ -277,9 +284,18 @@ def apply_files(
     changes: dict[Path, bytes | None],
     recovery: Path,
     expected: dict[str, str] | None = None,
+    *,
+    baseline_only: bool = False,
 ) -> None:
     """Keep before-images and roll back only files still matching our own writes."""
-    if expected is not None and fingerprint(root) != expected:
+    if baseline_only:
+        if expected is None or any(
+            path.relative_to(root).parts[0] != ".openroad" for path in changes
+        ):
+            raise ProjectError("Baseline installation requires tracking-only changes")
+        expected = {k: v for k, v in expected.items() if k.startswith(".openroad/")}
+    current = baseline_fingerprint if baseline_only else fingerprint
+    if expected is not None and current(root) != expected:
         raise ProjectError("File changed before pull installation; retry")
     originals = {path: path.read_bytes() if path.exists() else None for path in changes}
     if expected is not None:

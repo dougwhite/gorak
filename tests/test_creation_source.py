@@ -125,7 +125,7 @@ def test_transient_live_edit_cannot_change_prepared_snapshot(
     assert source.read_bytes() == before
 
 
-def test_catalog_check_edit_is_detected_immediately_before_import(
+def test_catalog_check_edit_remains_pending_after_snapshot_import(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import os
@@ -145,10 +145,11 @@ def test_catalog_check_edit_is_detected_immediately_before_import(
         return []
 
     monkeypatch.setattr(push, "read_applications", inventory)
-    with pytest.raises(ProjectError, match="Local project changed"):
-        push.push_project(connection(), tmp_path)
-    assert not submitted
-    assert (tmp_path / ".openroad/push-pending.json").exists()
+    push.push_project(connection(), tmp_path)
+    assert b"old" in submitted[0] and b"new" not in submitted[0]
+    assert b"new" in source.read_bytes()
+    assert (tmp_path / ".openroad/example/example.xml").read_bytes() == submitted[0]
+    assert not (tmp_path / ".openroad/push-pending.json").exists()
 
 
 def test_streamed_document_keeps_size_limit(
@@ -164,3 +165,45 @@ def test_streamed_document_keeps_size_limit(
             tmp_path / "output.xml",
             fingerprint(tmp_path),
         )
+
+
+def test_cold_push_does_not_rescan_sources_during_imports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project(tmp_path)
+    shutil.copytree(tmp_path / "example", tmp_path / "second")
+    submitted = mock_backend(monkeypatch)
+    scans = 0
+
+    def scanning(root: Path) -> dict[str, str]:
+        nonlocal scans
+        assert not submitted, "Source scan after imports started"
+        scans += 1
+        return fingerprint(root)
+
+    from gorak import safe_pull
+
+    monkeypatch.setattr(push, "fingerprint", scanning)
+    monkeypatch.setattr(safe_pull, "fingerprint", scanning)
+    push.push_project(connection(), tmp_path)
+    assert len(submitted) == 2
+    assert scans == 2
+
+
+@pytest.mark.parametrize("tracking", ["sync-target.json", "example/example.xml"])
+def test_tracking_edits_during_upload_are_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tracking: str
+) -> None:
+    project(tmp_path)
+    mock_backend(monkeypatch)
+    target = tmp_path / ".openroad" / tracking
+
+    def importing(*args: Any, **kwargs: Any) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"independent tracking edit")
+
+    monkeypatch.setattr(push, "import_component_xml", importing)
+    with pytest.raises(ProjectError, match="File changed before pull installation"):
+        push.push_project(connection(), tmp_path)
+    assert target.read_bytes() == b"independent tracking edit"
+    assert (tmp_path / ".openroad/push-pending.json").exists()
