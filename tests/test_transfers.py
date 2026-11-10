@@ -592,12 +592,34 @@ def rename_objects(db: Database, renames: dict[str, str]) -> None:
         {"sample/a": "sample/b", "sample/b": "sample/c"},
     ],
 )
+@pytest.mark.parametrize("lowercase_catalog", [False, True])
 def test_pull_rename_batch_preserves_destinations(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, renames: dict[str, str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    renames: dict[str, str],
+    lowercase_catalog: bool,
 ) -> None:
-    for n in ["a", "b"]:
-        source(tmp_path, name=n)
+    if lowercase_catalog:
+        renames = {
+            old.rsplit("/", 1)[0] + "/" + old.rsplit("/", 1)[1].upper(): new.rsplit(
+                "/", 1
+            )[0]
+            + "/"
+            + new.rsplit("/", 1)[1].upper()
+            for old, new in renames.items()
+        }
+    for key in renames:
+        source(tmp_path, name=key.split("/")[1])
     db = Database(monkeypatch)
+    if lowercase_catalog:
+        original = db.inventory
+
+        def inventory(*args: Any, **kwargs: Any) -> dict[str, dict[str, object]]:
+            return {
+                key.lower(): value for key, value in original(*args, **kwargs).items()
+            }
+
+        monkeypatch.setattr(t, "inventory", inventory)
     assert not t.push(connection(), tmp_path, compile=False).failed
     rename_objects(db, renames)
     result = t.pull(connection(), tmp_path)
@@ -839,3 +861,69 @@ def test_persistent_asset_dependencies_skip_reparse_but_detect_content_changes(
     assert t.status(connection(), tmp_path)["push"] == []
     Image.new("RGB", (2, 2), "blue").save(assets / "two.png")
     assert t.status(connection(), tmp_path)["push"] == ["sample/hello"]
+
+
+@pytest.mark.parametrize("value", ["images/", "images/../a"])
+def test_image_like_constant_text_pushes_normally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    path = source(tmp_path)
+    path.write_text(
+        '[constsource]\ndatatype="varchar(20)"\n'
+        f'defaultstring="{value}"\nversshortremarks="{value}"\n===\n'
+    )
+    Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert not t.push(connection(), tmp_path, compile=False).succeeded
+
+
+@pytest.mark.parametrize(
+    "name,content",
+    [
+        (
+            "frame.wml",
+            '<frame remark="images/../a"><bitmap src="images/a.png"/></frame>',
+        ),
+        (
+            "frame.w4gl",
+            '[framesource]\nwindowicon="images/a.png"\nversshortremarks="images/../a"\n===',
+        ),
+        (
+            "class.w4gl",
+            '[icons]\nentries=[{id="1",src="images/a.png",path="images/../a"}]\n===',
+        ),
+        (
+            "app.json",
+            '{"window_icon":{"src":"images/a.png","path":"images/../a"},"description":"images/"}',
+        ),
+        (
+            "field_defaults.json",
+            '{"styles":[{"bitmap":{"src":"images/a.png"},"remark":"images/"}]}',
+        ),
+        ("frame.fielddefaults.json", '{"bitmap":{"src":"images/a.png"}}'),
+    ],
+)
+def test_dependencies_follow_only_image_fields(
+    tmp_path: Path, name: str, content: str
+) -> None:
+    assert t.image_dependencies(tmp_path / name, content.encode()) == {
+        tmp_path / "images/a.png"
+    }
+    with pytest.raises(ProjectError):
+        t.image_dependencies(
+            tmp_path / name, content.replace("images/a.png", "images/../a").encode()
+        )
+
+
+def test_old_dependency_cache_is_refreshed(tmp_path: Path) -> None:
+    path = source(tmp_path)
+    cache: dict[str, Any] = {
+        "sample/hello.w4gl": {
+            "hash": t.digest(path.read_bytes()),
+            "paths": ["sample/images/incorrect.png"],
+        }
+    }
+    assert t.hashes(tmp_path, dependency_cache=cache) == t.hashes(tmp_path)
+    assert cache["sample/hello.w4gl"]["paths"] == []
+    assert cache["sample/hello.w4gl"]["version"] == 2

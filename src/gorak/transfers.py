@@ -93,33 +93,51 @@ def image_dependencies(path: Path, data: bytes) -> set[Path]:
         return set()
     found: set[Path] = set()
 
-    def visit(value: Any) -> None:
+    def reference(value: Any) -> None:
+        if isinstance(value, dict):
+            value = value.get("src")
         if isinstance(value, str) and value.startswith("images/"):
             from .image_assets import asset_path
 
             found.add(asset_path(path.parent, value))
-        elif isinstance(value, dict):
-            for child in value.values():
-                visit(child)
+
+    def stylesheet(value: Any) -> None:
+        if isinstance(value, dict):
+            if "src" in value:
+                reference(value)
+            else:
+                for child in value.values():
+                    stylesheet(child)
         elif isinstance(value, list):
             for child in value:
-                visit(child)
+                stylesheet(child)
 
     try:
         if path.suffix == ".wml":
             from .source_xml import from_bytes
 
             for node in from_bytes(data).iter():
-                visit(dict(node.attrib))
+                reference(node.get("src"))
         elif path.suffix == ".w4gl":
-            visit(tomllib.loads(data.decode("utf-8").split("===", 1)[0]))
-        else:
+            from .component_edits import SUPPORTED_TYPES
+
+            metadata = tomllib.loads(data.decode("utf-8").split("===", 1)[0])
+            for kind in SUPPORTED_TYPES:
+                fields = metadata.get(kind)
+                if isinstance(fields, dict):
+                    reference(fields.get("windowicon"))
+            icons = metadata.get("icons")
+            if isinstance(icons, dict) and isinstance(icons.get("entries"), list):
+                for entry in icons["entries"]:
+                    reference(entry)
+        elif path.name == "app.json":
             value = json.loads(data)
-            visit(
-                value.get("window_icon")
-                if path.name == "app.json" and isinstance(value, dict)
-                else value
-            )
+            if isinstance(value, dict):
+                reference(value.get("window_icon"))
+        elif path.name == "field_defaults.json" or path.name.endswith(
+            ".fielddefaults.json"
+        ):
+            stylesheet(json.loads(data))
     except (ValueError, etree.XMLSyntaxError):
         pass  # Reconstruction reports invalid source; it cannot be checkpointed.
     return found
@@ -165,6 +183,7 @@ def hashes(
                 cached = (dependency_cache or {}).get(relative)
                 if (
                     isinstance(cached, dict)
+                    and cached.get("version") == 2
                     and cached.get("hash") == values[path]
                     and isinstance(cached.get("paths"), list)
                     and all(
@@ -179,6 +198,7 @@ def hashes(
                     dependencies[path] = image_dependencies(path, data)
                     if dependency_cache is not None:
                         dependency_cache[relative] = {
+                            "version": 2,
                             "hash": values[path],
                             "paths": sorted(
                                 p.relative_to(root).as_posix()
@@ -852,9 +872,12 @@ def pull(
                         replacements.append((old, key))
                 # Protect every current catalog destination, including swaps, chains,
                 # and destinations belonging to another application in this batch.
-                protected = set(remote)
+                protected = {key.casefold() for key in remote}
                 for old, key in replacements:
-                    if old not in protected:
+                    if (
+                        old.casefold() not in protected
+                        or old.casefold() == key.casefold()
+                    ):
                         paths = (
                             [root / (old + suffix) for suffix in SUFFIXES]
                             if "/" in old
