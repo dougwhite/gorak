@@ -926,4 +926,38 @@ def test_old_dependency_cache_is_refreshed(tmp_path: Path) -> None:
     }
     assert t.hashes(tmp_path, dependency_cache=cache) == t.hashes(tmp_path)
     assert cache["sample/hello.w4gl"]["paths"] == []
-    assert cache["sample/hello.w4gl"]["version"] == 2
+    assert cache["sample/hello.w4gl"]["version"] == 3
+
+
+@pytest.mark.parametrize("old_cache", [False, True])
+def test_separator_in_metadata_preserves_icon_dependency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_cache: bool
+) -> None:
+    from PIL import Image
+
+    path = source(tmp_path)
+    path.write_text(
+        '[framesource]\nversshortremarks="before === after"\n'
+        'windowicon={src="images/icon.png"}\n===\n'
+    )
+    path.with_suffix(".wml").write_text("<frame><topform/></frame>")
+    icon = path.parent / "images/icon.png"
+    icon.parent.mkdir()
+    Image.new("RGB", (2, 2), "red").save(icon)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    db.imports.clear()
+    if old_cache:
+        ledger = t.Ledger(tmp_path, connection())
+        ledger.asset_dependencies["sample/hello.w4gl"] = {
+            "version": 2,
+            "hash": t.digest(path.read_bytes()),
+            "paths": [],
+        }
+        ledger.save()
+    Image.new("RGB", (2, 2), "blue").save(icon)
+    # Both commands reload the ledger, including any old cached empty list.
+    assert t.status(connection(), tmp_path)["push"] == ["sample/hello"]
+    assert t.push(connection(), tmp_path, compile=False).succeeded == ["sample/hello"]
+    assert db.imports == ["sample/hello"]
+    assert t.status(connection(), tmp_path)["push"] == []

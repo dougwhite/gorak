@@ -120,8 +120,9 @@ def image_dependencies(path: Path, data: bytes) -> set[Path]:
                 reference(node.get("src"))
         elif path.suffix == ".w4gl":
             from .component_edits import SUPPORTED_TYPES
+            from .parser import split_w4gl
 
-            metadata = tomllib.loads(data.decode("utf-8").split("===", 1)[0])
+            metadata = tomllib.loads(split_w4gl(data.decode("utf-8"))[0])
             for kind in SUPPORTED_TYPES:
                 fields = metadata.get(kind)
                 if isinstance(fields, dict):
@@ -183,7 +184,7 @@ def hashes(
                 cached = (dependency_cache or {}).get(relative)
                 if (
                     isinstance(cached, dict)
-                    and cached.get("version") == 2
+                    and cached.get("version") == 3
                     and cached.get("hash") == values[path]
                     and isinstance(cached.get("paths"), list)
                     and all(
@@ -198,7 +199,7 @@ def hashes(
                     dependencies[path] = image_dependencies(path, data)
                     if dependency_cache is not None:
                         dependency_cache[relative] = {
-                            "version": 2,
+                            "version": 3,
                             "hash": values[path],
                             "paths": sorted(
                                 p.relative_to(root).as_posix()
