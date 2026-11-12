@@ -88,24 +88,26 @@ List the applications available in the configured OpenROAD source database:
 gorak app list
 ```
 
-Pull an existing application into the project:
+Export an existing application into the project:
 
 ```bash
-gorak pull myapplication
+gorak app export myapplication
 ```
+
+For a new application on disk, use `gorak app import myapplication` or `gorak push myapplication`.
 
 When editing readable source, use:
 
 ```bash
 # edit .w4gl / .wml files in your editor
-gorak push myapplication
+gorak push myapplication --compile
 gorak test                       # run configured OpenROAD tests
 git diff                         # review the result
 ```
 
 `gorak test` runs database source. Use `gorak status` to see pending pushes,
 pulls, and conflicts. Use `gorak sync` to transfer changes in both directions.
-See [upgrade guidance](docs/getting-started.md#upgrading-existing-projects) for projects with existing source on both sides.
+See [conflict resolution](docs/push.md#two-way) when both sides changed.
 
 New projects include an `AGENTS.md` describing this workflow for coding agents such
 as Codex, so an agent can pull source, make a change, synchronize it, run the tests,

@@ -13,12 +13,12 @@ until they are pushed.
 3. Edit the requested `.w4gl`, `.wml`, application metadata, or field-default
    files.
 4. Run `gorak status` to check pending transfers and conflicts.
-5. Run `gorak push` and require success.
+5. Run `gorak push --compile` and require success.
 6. Run `gorak test`. Tests execute database source and never synchronize disk
    changes automatically.
 7. Inspect `git status --short` and `git diff`. Commit only the intended files.
 
-Use `gorak push && gorak test` for the routine push-and-test loop.
+Use `gorak push --compile && gorak test` for the routine push-and-test loop.
 `gorak test --app APP --component COMPONENT` selects one test entry point.
 `gorak run APP --component COMPONENT` runs an application already stored in the
 database.

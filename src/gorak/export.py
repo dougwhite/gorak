@@ -1,5 +1,6 @@
 """Coordinate OpenROAD XML export and .w4gl source file writing."""
 
+import json
 import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import nullcontext
@@ -136,15 +137,21 @@ def write_app_metadata(
     root: Path,
     application: Application,
     included_applications: list[IncludedApplication] | None = None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Path:
     """Write app.json while preserving local-only fields not yet exported."""
 
     path = root / application.name / "app.json"
     existing = read_json(path) if path.is_file() else {}
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_json(
+    write_source_text(
         path,
-        application_metadata(application, existing, included_applications),
+        json.dumps(
+            application_metadata(application, existing, included_applications), indent=4
+        )
+        + "\n",
+        digests=digests,
     )
     return path
 
@@ -157,6 +164,7 @@ def export_application(
     progress: Callable[[str], None] | None,
     *,
     native_xml: Path | None = None,
+    digests: dict[Path, str] | None = None,
 ) -> ApplicationExport:
     """Export one OpenROAD application into a Gorak project or output directory."""
 
@@ -179,6 +187,7 @@ def export_application(
             paths=paths,
             progress=progress,
             native_xml=native_xml,
+            digests=digests,
         )
         previous = (
             cached_components(
@@ -193,6 +202,7 @@ def export_application(
         root,
         merged_application,
         exported.included_applications,
+        digests=digests,
     )
     if bind_after_export:
         save_binding(connection, root)
@@ -217,6 +227,8 @@ def export_applications(
     apps: Sequence[str],
     output_path: str | None,
     progress: Callable[[str], None] | None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Iterator[ApplicationExport]:
     """Export an ordered batch, prefetching native XML into a bounded disk queue."""
     from .export_pipeline import prefetched_exports
@@ -238,7 +250,13 @@ def export_applications(
                 progress, f"Exporting application {index}/{len(apps)}: {app}"
             )
             yield export_application(
-                connection, context, app, output_path, progress, native_xml=xml
+                connection,
+                context,
+                app,
+                output_path,
+                progress,
+                native_xml=xml,
+                digests=digests,
             )
 
 
@@ -316,6 +334,7 @@ def export_application_to_paths(
     *,
     asset_origins: Path | None = None,
     native_xml: Path | None = None,
+    digests: dict[Path, str] | None = None,
 ) -> ApplicationExport:
     """Export one full application XML and encode all top-level components."""
 
@@ -391,7 +410,12 @@ def export_application_to_paths(
                 parent = native_styles.parent_styles(paths.source_dir)
             components.append(
                 project_component_files(
-                    native, paths.source_dir, writer, progress, parent_styles=parent
+                    native,
+                    paths.source_dir,
+                    writer,
+                    progress,
+                    parent_styles=parent,
+                    digests=digests,
                 )
             )
         except (

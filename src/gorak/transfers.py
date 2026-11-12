@@ -11,7 +11,7 @@ import tomllib
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from lxml import etree
 
@@ -31,7 +31,7 @@ from .project import ProjectError
 from .source_output import write_text
 from .source_reads import captured as captured_reads
 from .source_xml import MAX_DOCUMENT_BYTES, application_children
-from .transfer_catalog import inventory
+from .transfer_catalog import inventory as inventory
 from .xml_writer import document, new_application, new_component, prepare_submission
 
 SUFFIXES = (".w4gl", ".wml", ".fielddefaults.json", ".queries.json", ".icons.json")
@@ -304,6 +304,29 @@ class Ledger:
         self.entries[key] = {"hash": local, "database": remote}
 
 
+def record_export_checkpoint(
+    connection: OpenRoadConnection,
+    root: Path,
+    app: str,
+    components: set[str],
+    remote: dict[str, Any],
+    output_hashes: dict[Path, str],
+) -> None:
+    tokens = {key.casefold(): token for key, token in remote.items()}
+    exported = {app.casefold(), *(f"{app}/{name}".casefold() for name in components)}
+    ledger = Ledger(root, connection)
+    changed = False
+    for key, fingerprint in hashes(
+        root, [app], captured=output_hashes, dependency_cache=ledger.asset_dependencies
+    ).items():
+        slot = key.casefold()
+        if slot in exported and slot in tokens:
+            ledger.record(key, fingerprint, tokens[slot])
+            changed = True
+    if changed:
+        ledger.save()
+
+
 @dataclass
 class Result:
     direction: str
@@ -457,6 +480,7 @@ def push(
     dry_run: bool = False,
     compile: bool = True,
     plan: TransferPlan | None = None,
+    pulled_for_compile: set[str] | None = None,
 ) -> Result:
     if plan is None:
         check_paths(root)
@@ -514,7 +538,11 @@ def push(
             refresh_tokens(connection, ledger, result, plan.scope if plan else None)
             if compile:
                 retry_compilation(
-                    connection, root, result, plan.scope if plan else None
+                    connection,
+                    root,
+                    result,
+                    plan.scope if plan else None,
+                    additional=pulled_for_compile,
                 )
         return result
     remote = inventory(connection) if plan is None else plan.remote
@@ -724,14 +752,25 @@ def push(
                         result.skipped[key] = "Application import failed"
             report("Uploading applications", index, len(ordered))
         if compile and not dry_run:
-            retry_compilation(connection, root, result, plan.scope if plan else None)
+            retry_compilation(
+                connection,
+                root,
+                result,
+                plan.scope if plan else None,
+                additional=pulled_for_compile,
+            )
     if not dry_run:
         refresh_tokens(connection, ledger, result, plan.scope if plan else None)
     return result
 
 
 def retry_compilation(
-    connection: OpenRoadConnection, root: Path, result: Result, scope: str | None = None
+    connection: OpenRoadConnection,
+    root: Path,
+    result: Result,
+    scope: str | None = None,
+    *,
+    additional: set[str] | None = None,
 ) -> None:
     from .atomic_json import write_record
     from .compiler import compile_source, read_compile_queue
@@ -743,7 +782,10 @@ def retry_compilation(
         targets = read_compile_queue(path)
         failed = []
         for app, name in targets:
-            if not in_scope(f"{app}/{name}", scope):
+            key = f"{app}/{name}"
+            if not in_scope(key, scope) and (
+                additional is None or key not in additional
+            ):
                 failed.append((app, name))
                 continue
             log = root / ".openroad/compiles" / app / (name + ".log")
@@ -755,9 +797,7 @@ def retry_compilation(
                     raise ProjectError(outcome.diagnostics())
             except Exception as ex:
                 failed.append((app, name))
-                result.failed[f"{app}/{name}"] = (
-                    f"Source imported; compilation failed: {ex}"
-                )
+                result.failed[f"{app}/{name}"] = f"Database compilation failed: {ex}"
         if failed:
             write_record(path, [list(item) for item in failed])
         else:
@@ -1010,9 +1050,11 @@ class TransferPlan:
     conflicts: list[Conflict]
     renamed: dict[str, str]
     missing_local: set[str]
+    database_deletions: set[str]
+    acknowledged_deletions: set[str]
 
     def preview(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "push": sorted(self.push),
             "pull": sorted(self.pull),
             "conflicts": [
@@ -1020,6 +1062,9 @@ class TransferPlan:
                 for item in self.conflicts
             ],
         }
+        if self.database_deletions:
+            result["database_deletions"] = sorted(self.database_deletions)
+        return result
 
 
 def local_names(root: Path, apps: list[str]) -> dict[str, str]:
@@ -1031,6 +1076,13 @@ def local_names(root: Path, apps: list[str]) -> dict[str, str]:
             *(f"{app}/{path.stem}" for path in (root / app).glob("*.w4gl")),
         ]
     }
+
+
+def local_source_absent(root: Path, key: str) -> bool:
+    path = root / key
+    if "/" not in key:
+        return not path.exists()
+    return not any(path.with_suffix(suffix).exists() for suffix in SUFFIXES)
 
 
 def plan_transfer(
@@ -1095,12 +1147,51 @@ def plan_transfer(
         in_scope(key, scope) for key in {*local, *remote, *ledger.entries}
     ):
         raise ProjectError(f"Unknown transfer target: {scope}")
-    pull_apps = {app.casefold() for app in pull_scope(root, ledger, remote)}
+    pull_apps = {app.casefold() for app in apps}
+    pull_apps.update(
+        new.casefold()
+        for old, new in renamed.items()
+        if "/" not in old and old.casefold() in pull_apps
+    )
+    if (
+        app_scope
+        and app_scope.casefold() not in pull_apps
+        and (
+            direction == "pull"
+            or (direction == "sync" and app_scope.casefold() in remote_keys)
+        )
+    ):
+        raise ProjectError(
+            f"{app_scope} is not in this project. Use gorak app export {app_scope} to add it."
+        )
     missing_local = {
         key
         for key in ledger.entries
         if (not scoped_apps or key.split("/", 1)[0].casefold() in scoped_apps)
         and key.casefold() not in local_keys
+    }
+    deleted = {
+        key
+        for key, entry in ledger.entries.items()
+        if isinstance(entry.get("database"), dict)
+        and key.casefold() not in remote_keys
+        and key not in renamed
+    }
+    acknowledged = {
+        key
+        for key in deleted & missing_local
+        if in_scope(key, scope) and local_source_absent(root, key)
+    }
+    missing_local -= acknowledged
+    deleted -= acknowledged
+    pending_deletions = {
+        key for key in deleted if direction != "push" and in_scope(key, scope)
+    }
+    # A removed application represents the whole namespace in the report.
+    database_deletions = {
+        key
+        for key in pending_deletions
+        if "/" not in key or key.split("/", 1)[0] not in pending_deletions
     }
     local_changes = missing_local | {
         key
@@ -1122,7 +1213,7 @@ def plan_transfer(
         for key in (remote if full else database_changes)
         if selected(key, old_names, remote_keys)
         and direction != "push"
-        and (scope is not None or key.split("/", 1)[0].casefold() in pull_apps)
+        and key.split("/", 1)[0].casefold() in pull_apps
     }
 
     # Workbench renames occupy both the previous and the current local slots.
@@ -1136,13 +1227,6 @@ def plan_transfer(
                 whole_apps.setdefault(app.casefold(), app)
     changed_local_by_slot = {key.casefold(): key for key in local_changes}
     conflicts: dict[tuple[str, str], Conflict] = {}
-    deleted = {
-        key
-        for key, entry in ledger.entries.items()
-        if isinstance(entry.get("database"), dict)
-        and key.casefold() not in remote_keys
-        and key not in renamed
-    }
     moved_or_deleted = set(old_names) | deleted
     for key in sorted(database_changes | pull | deleted):
         slots = {key.casefold(), old_names.get(key, key).casefold()}
@@ -1152,7 +1236,9 @@ def plan_transfer(
             for sender in (
                 push_by_slot.get(slot),
                 whole_apps.get(slot.split("/", 1)[0]),
-                changed_local_by_slot.get(slot) if key in pull else None,
+                changed_local_by_slot.get(slot)
+                if key in pull or key in pending_deletions
+                else None,
             )
             if sender is not None
         }
@@ -1164,8 +1250,14 @@ def plan_transfer(
                 for slot, sender in push_by_slot.items()
                 if slot.split("/", 1)[0] in slots
             )
+            if key in pending_deletions:
+                senders.update(
+                    sender
+                    for slot, sender in changed_local_by_slot.items()
+                    if slot.split("/", 1)[0] in slots
+                )
         for sender in sorted(senders):
-            if sender not in push and key not in pull:
+            if sender not in push and key not in pull and key not in pending_deletions:
                 continue
             prior = previous.get(sender.casefold())
             if key in deleted:
@@ -1189,6 +1281,8 @@ def plan_transfer(
         list(conflicts.values()),
         renamed,
         missing_local,
+        database_deletions,
+        acknowledged,
     )
 
 
@@ -1200,7 +1294,7 @@ def execute_transfer(
     scope: str | None = None,
     full: bool = False,
     dry_run: bool = False,
-    compile: bool = True,
+    compile: bool = False,
     prefer: str | None = None,
 ) -> str:
     if full and direction == "sync":
@@ -1211,6 +1305,9 @@ def execute_transfer(
     deferred_apps: set[str] = set()
     if prefer == "push":
         plan.pull.difference_update(
+            item.database for item in plan.conflicts if item.local in plan.push
+        )
+        plan.database_deletions.difference_update(
             item.database for item in plan.conflicts if item.local in plan.push
         )
     elif prefer == "pull":
@@ -1269,17 +1366,54 @@ def execute_transfer(
         remote_apps = {key.casefold() for key in plan.remote if "/" not in key}
         if any(key.split("/", 1)[0].casefold() not in local_apps for key in plan.pull):
             raise ProjectError(
-                "Pull the application before pulling an individual component"
+                "Export the application before pulling an individual component"
             )
         if any(key.split("/", 1)[0].casefold() not in remote_apps for key in plan.push):
             raise ProjectError(
                 "Push the application before pushing an individual component"
             )
     results = []
+    pulled_for_compile: set[str] = set()
+    if plan.acknowledged_deletions:
+        for key in plan.acknowledged_deletions:
+            plan.ledger.entries.pop(key)
+        plan.ledger.save()
     if direction != "push":
-        results.append(pull(connection, root, plan=plan))
+        pulled = pull(connection, root, plan=plan)
+        results.append(pulled)
+        for key in sorted(plan.database_deletions):
+            pulled.failed[key] = (
+                "Deleted in Workbench. Remove the local source to accept the deletion."
+            )
+        if compile:
+            from .compiler import queue_compilation
+
+            targets = [
+                (app, component)
+                for app, _, component in (
+                    key.partition("/") for key in pulled.succeeded
+                )
+                if component
+            ]
+            if targets:
+                queue_compilation(root, targets)
+                pulled_for_compile = {
+                    f"{app}/{component}" for app, component in targets
+                }
+            if direction == "pull":
+                retry_compilation(
+                    connection, root, pulled, scope, additional=pulled_for_compile
+                )
     if direction != "pull":
-        results.append(push(connection, root, compile=compile, plan=plan))
+        results.append(
+            push(
+                connection,
+                root,
+                compile=compile,
+                plan=plan,
+                pulled_for_compile=pulled_for_compile,
+            )
+        )
     summary = "\n".join(result.summary() for result in results)
     if deferred_apps:
         summary += (
@@ -1299,3 +1433,32 @@ def status(connection: OpenRoadConnection, root: Path) -> dict[str, object]:
 
         result["compile"] = [f"{app}/{name}" for app, name in read_compile_queue(queue)]
     return result
+
+
+def format_status(state: dict[str, object]) -> str:
+    sections = []
+    for key, marker, label in (
+        ("push", "->", "Pending push"),
+        ("pull", "<-", "Pending pull"),
+        ("database_deletions", "--", "Deleted in Workbench"),
+        ("compile", "**", "Pending compilation"),
+    ):
+        items = cast(list[str], state.get(key, []))
+        if items:
+            sections.append(
+                "\n".join(
+                    [
+                        f"{label} ({len(items)}):",
+                        *(f"{marker} {item}" for item in items),
+                    ]
+                )
+            )
+    conflicts = cast(list[dict[str, str]], state["conflicts"])
+    if conflicts:
+        lines = [f"Conflicts ({len(conflicts)}):"]
+        for conflict in conflicts:
+            local, database = conflict["local"], conflict["database"]
+            target = local if local == database else f"{local} <> {database}"
+            lines.append(f"!! {target} ({conflict['reason']})")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections) or "No pending transfers."

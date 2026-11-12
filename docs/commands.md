@@ -89,6 +89,11 @@ gorak app export salesapp
 
 `--output` selects an explicit destination when running outside a project.
 
+### `gorak app import APP [--force] [--compile]`
+
+Imports a local application into OpenROAD. `gorak push APP` also creates a
+new application in the database.
+
 ### `gorak component list APP [--format json|csv]`
 
 Lists an application's components.
@@ -125,31 +130,39 @@ Lists the applications included by `APP`.
 
 ### `gorak status`
 
-Lists pending pushes, pulls, and conflicts across the project as JSON.
+Lists pending pushes (`->`), pulls (`<-`), and conflicts (`!!`) across the project.
 
-### `gorak pull [TARGET] [--force] [--full] [--dry-run]`
+### `gorak pull [TARGET] [--force] [--full] [--dry-run] [--compile]`
 
-Updates local source from Workbench.
+Updates local source from Workbench. Use `gorak app export APP` to add an application.
 
-### `gorak push [TARGET] [--force] [--full] [--dry-run] [--no-compile]`
+### `gorak push [TARGET] [--force] [--full] [--dry-run] [--compile]`
 
-Imports local source and compiles successful imports by default.
-`gorak sync --push` also runs the push direction.
+Sends local changes to OpenROAD.
 
-### `gorak sync [TARGET] [--force-push | --force-pull] [--dry-run] [--no-compile]`
+### `gorak sync [TARGET] [--force-push | --force-pull] [--dry-run] [--compile]`
 
-Transfers pending changes in both directions. The force options choose which
-side wins on conflicts. See [transfer scope and conflict resolution](push.md).
+Transfers changes in both directions. The force options choose which side wins
+on conflicts. See [transfer workflows](push.md).
+
+At the project root, omit `TARGET` for project scope or use `APP` or
+`APP/COMPONENT`. Inside an application, omit it for that app or use a bare
+component name. Quote `'APP!COMPONENT'` in Bash.
+
+`--dry-run` previews transfers. `push --full` and `pull --full` include
+unchanged source in scope. Transfers compile only with `--compile`.
+
+To accept a deletion, remove the object in Workbench and the matching source
+files locally, then run `gorak sync`.
 
 ## Compile, run, and test
 
-### `gorak compile APP [COMPONENT]`
+### `gorak compile [TARGET]`
 
-Compiles source already stored in the OpenROAD database and prints full
-diagnostics. Omitting `COMPONENT` force-compiles the application.
+Compiles database source using the same target rules as push and pull.
 
 ```sh
-gorak compile salesapp calculate_totals
+gorak compile salesapp/calculate_totals
 gorak compile salesapp
 ```
 

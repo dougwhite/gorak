@@ -42,6 +42,9 @@ def write_remote_project(root: Path) -> None:
 
 @pytest.fixture(autouse=True)
 def skip_sync_metadata_recording(monkeypatch: MonkeyPatch) -> None:
+    from gorak import transfers
+
+    monkeypatch.setattr(transfers, "inventory", lambda *_: {})
     monkeypatch.setattr(export_module, "read_components", lambda *a: [])
     monkeypatch.setattr(
         export_module,

@@ -144,8 +144,10 @@ def build_parser() -> argparse.ArgumentParser:
     compile_parser = subparsers.add_parser(
         "compile", help="Compile database source and display full diagnostics"
     )
-    compile_parser.add_argument("app")
-    compile_parser.add_argument("component", nargs="?")
+    compile_parser.add_argument(
+        "target", nargs="?", help="APP, APP/COMPONENT, or quoted 'APP!COMPONENT'"
+    )
+    compile_parser.add_argument("component", nargs="?", help=argparse.SUPPRESS)
     add_openroad_connection_args(compile_parser)
 
     new_parser = subparsers.add_parser("new")
@@ -193,6 +195,14 @@ def build_parser() -> argparse.ArgumentParser:
     add_openroad_connection_args(app_export)
     app_export.add_argument("app", nargs="+")
     app_export.add_argument("--output")
+
+    app_import = app_subparsers.add_parser(
+        "import", help="Import an application from local source"
+    )
+    add_openroad_connection_args(app_import)
+    app_import.add_argument("app")
+    app_import.add_argument("--force", action="store_true")
+    app_import.add_argument("--compile", action="store_true")
 
     component_parser = subparsers.add_parser("component")
     component_subparsers = component_parser.add_subparsers(dest="component_command")
@@ -253,9 +263,6 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "sync":
             resolution = transfer_parser.add_mutually_exclusive_group()
             resolution.add_argument(
-                "--push", action="store_true", help="Run only the push direction"
-            )
-            resolution.add_argument(
                 "--force-push",
                 action="store_true",
                 help="Keep local source on conflicts",
@@ -280,7 +287,7 @@ def build_parser() -> argparse.ArgumentParser:
             help="List sender changes without transferring",
         )
         transfer_parser.add_argument(
-            "--no-compile", action="store_true", help="Import source without compiling"
+            "--compile", action="store_true", help="Compile transferred components"
         )
 
     debug_parser = subparsers.add_parser("debug")
@@ -553,6 +560,30 @@ def app_export_command(args: argparse.Namespace) -> str:
         binding_status(connection, context.project.root)
     apps = [args.app] if isinstance(args.app, str) else args.app
     root = export_root(context, cast(str | None, args.output))
+    from . import transfers
+
+    snapshot = None
+    if context.project is not None and root.resolve() == context.project.root:
+        try:
+            snapshot = transfers.inventory(connection)
+        except odbc_error_types(
+            ProjectError, LocalCommandError, RemoteCommandError, OSError
+        ) as ex:
+            print(f"Could not read transfer inventory: {ex}", file=sys.stderr)
+    output_hashes: dict[Path, str] | None = {} if snapshot else None
+
+    def record_export(exported: ApplicationExport) -> None:
+        if snapshot and output_hashes is not None:
+            transfers.record_export_checkpoint(
+                connection,
+                root,
+                exported.application.name,
+                {component.name for component in exported.components},
+                snapshot,
+                output_hashes,
+            )
+            output_hashes.clear()
+
     if len(apps) == 1:
         app = apps[0]
         print(f"Exporting application {app} from {connection_source(connection)}")
@@ -562,7 +593,9 @@ def app_export_command(args: argparse.Namespace) -> str:
             app=app,
             output_path=cast(str | None, args.output),
             progress=print,
+            digests=output_hashes,
         )
+        record_export(exported)
         summary = application_export_summary(root, exported)
         if exported.failures:
             raise ProjectError(summary)
@@ -571,13 +604,41 @@ def app_export_command(args: argparse.Namespace) -> str:
 
     count = 0
     failures = []
-    for exported in export_applications(connection, context, apps, args.output, print):
+    for exported in export_applications(
+        connection, context, apps, args.output, print, digests=output_hashes
+    ):
+        record_export(exported)
         count += len(exported.components)
         failures.extend(exported.failures)
     summary = failure_summary(count, failures)
     if failures:
         raise ProjectError(summary)
     return summary
+
+
+@locked_command
+def app_import_command(args: argparse.Namespace) -> str:
+    from .importer import validate_name
+    from .transfers import execute_transfer
+
+    context = load_context(Path.cwd())
+    if context.project is None:
+        raise ProjectError("Application import requires a gorak project")
+    validate_name(args.app)
+    root = context.project.root
+    if not any(
+        p.parent.name.casefold() == args.app.casefold() for p in root.glob("*/app.json")
+    ):
+        raise ProjectError(f"No local application named {args.app}")
+    return execute_transfer(
+        resolve_openroad_connection(args, context),
+        root,
+        direction="push",
+        scope=args.app,
+        full=True,
+        compile=args.compile,
+        prefer="push" if args.force else None,
+    )
 
 
 def component_export_summary(path: Path, root: Path | None) -> str:
@@ -820,9 +881,7 @@ def sync_command(args: argparse.Namespace) -> str:
     if context.project is None:
         raise ProjectError("Transfer requires a gorak project")
     root = context.project.root
-    direction = (
-        "push" if getattr(args, "push", False) else getattr(args, "command", "sync")
-    )
+    direction = getattr(args, "command", "sync")
     prefer = None
     if getattr(args, "force", False):
         prefer = direction
@@ -840,7 +899,7 @@ def sync_command(args: argparse.Namespace) -> str:
             scope=scope,
             full=getattr(args, "full", False),
             dry_run=getattr(args, "dry_run", False),
-            compile=not getattr(args, "no_compile", False),
+            compile=getattr(args, "compile", False),
             prefer=prefer,
         )
 
@@ -1071,16 +1130,25 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             return
         if parsed.command == "compile":
             from .compiler import compile_command
+            from .transfers import transfer_scope
 
-            context = load_context(Path.cwd())
+            cwd = Path.cwd()
+            context = load_context(cwd)
             if context.project is None:
                 raise ProjectError("Compile requires a gorak project")
+            target = (
+                f"{parsed.target}/{parsed.component}"
+                if parsed.component
+                else parsed.target
+            )
+            scope = transfer_scope(context.project.root, cwd, target)
+            app, _, component = (scope or "").partition("/")
             print(
                 compile_command(
                     resolve_openroad_connection(parsed, context),
                     context.project.root,
-                    parsed.app,
-                    parsed.component,
+                    app or None,
+                    component or None,
                 )
             )
             return
@@ -1110,6 +1178,9 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
 
         if parsed.command == "app" and parsed.app_command == "export":
             print(app_export_command(parsed))
+            return
+        if parsed.command == "app" and parsed.app_command == "import":
+            print(app_import_command(parsed))
             return
 
         if parsed.command == "component" and parsed.component_command == "list":
@@ -1147,14 +1218,14 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
             )
             return
         if parsed.command == "status":
-            from .transfers import status
+            from .transfers import format_status, status
 
             with progress_scope("Status"):
                 context = load_context(Path.cwd())
                 if context.project is None:
                     raise ProjectError("Status requires a gorak project")
                 connection = resolve_openroad_connection(parsed, context)
-                print(json.dumps(status(connection, context.project.root), indent=2))
+                print(format_status(status(connection, context.project.root)))
             return
         if parsed.command in {"sync", "pull", "push"}:
             with progress_scope(parsed.command.capitalize()):

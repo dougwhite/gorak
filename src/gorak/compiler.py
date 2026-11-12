@@ -102,7 +102,7 @@ def compile_source(
 
 
 def compile_command(
-    connection: OpenRoadConnection, root: Path, app: str, component: str | None
+    connection: OpenRoadConnection, root: Path, app: str | None, component: str | None
 ) -> str:
     from .project_lock import project_lock
     from .sync_guard import binding_status, validate_tracking_health
@@ -110,20 +110,56 @@ def compile_command(
     with project_lock(root, "compile", recover_push=True):
         binding_status(connection, root, recover_push=True)
         validate_tracking_health(connection, root)
-        result = compile_source(
-            connection,
-            app,
-            component,
-            root / ".openroad/compiles" / uuid4().hex / "compile.log",
+        apps = (
+            [app]
+            if app
+            else sorted(
+                path.parent.name
+                for path in root.glob("*/app.json")
+                if not path.parent.name.startswith(".")
+            )
         )
-        message = (
-            f"Compiling database source: {app}"
-            + (f"/{component}" if component else "")
-            + f"\n{result.diagnostics()}\nFull log: {result.log}"
-        )
-        if not result.success:
+        if not apps:
+            raise ProjectError("No applications in this project to compile")
+        messages = []
+        failed = False
+        for name in apps:
+            result = compile_source(
+                connection,
+                name,
+                component,
+                root / ".openroad/compiles" / uuid4().hex / "compile.log",
+            )
+            target = f"{name}/{component}" if component else name
+            messages.append(
+                f"Compiling database source: {target}\n{result.diagnostics()}\nFull log: {result.log}"
+            )
+            failed |= not result.success
+            if result.success:
+                clear_compiled_targets(root, name, component)
+        message = "\n".join(messages)
+        if failed:
             raise ProjectError(message)
         return message
+
+
+def clear_compiled_targets(root: Path, app: str, component: str | None) -> None:
+    from .atomic_json import write_record
+
+    queue = root / ".openroad/compile-pending.json"
+    if not queue.exists():
+        return
+    targets = read_compile_queue(queue)
+    remaining = [
+        (name, target)
+        for name, target in targets
+        if name.casefold() != app.casefold()
+        or (component is not None and target.casefold() != component.casefold())
+    ]
+    if remaining:
+        write_record(queue, [list(item) for item in remaining])
+    else:
+        queue.unlink()
 
 
 def queue_compilation(root: Path, targets: list[tuple[str, str]]) -> None:
@@ -184,12 +220,12 @@ def compile_pending(
             if not result.success:
                 failed.append((app, name))
                 diagnostics.append(
-                    f"{name}.w4gl failed compilation; run `gorak compile {app} {name}` to see the full error log. Saved log: {result.log}"
+                    f"{name}.w4gl failed compilation; run `gorak compile {app}/{name}` to see the full error log. Saved log: {result.log}"
                 )
         except Exception as ex:
             failed.append((app, name))
             diagnostics.append(
-                f"Compilation could not run for {name}.w4gl: {ex}. Run `gorak compile {app} {name}`. Source sync is complete."
+                f"Compilation could not run for {name}.w4gl: {ex}. Run `gorak compile {app}/{name}`. Source sync is complete."
             )
     from .atomic_json import write_record
 

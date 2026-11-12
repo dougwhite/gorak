@@ -157,10 +157,25 @@ def test_cli_reports_partial_export_only_after_successes_are_written(
         monkeypatch, document("example", component("last")), ["missing", "last"]
     )
     monkeypatch.setattr(export, "read_application", lambda c, a: Application(a, "", ""))
+    from gorak import transfers
+
+    monkeypatch.setattr(
+        transfers,
+        "inventory",
+        lambda *_: {
+            "example": {"id": 1},
+            "example/last": {"id": 2},
+            "example/missing": {"id": 3},
+        },
+    )
     with pytest.raises(SystemExit) as error:
         cli.main(["app", "export", "example"])
     assert error.value.code == 1
     assert (tmp_path / "example/last.w4gl").is_file()
+    assert set(transfers.Ledger(tmp_path, CONNECTION).entries) == {
+        "example",
+        "example/last",
+    }
     output = capsys.readouterr()
     assert "Unable to export component `example!missing`" in output.out
     assert "1 component exported, 1 failure" in output.err

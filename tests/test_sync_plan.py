@@ -201,11 +201,9 @@ def test_inventory_retains_compact_signatures_with_compatible_checkpoint_hashes(
     assert sync_plan.signature(component) != digest
 
 
-def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
+def test_status_cli_keeps_status_on_stdout_and_progress_on_stderr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    import json
-
     import gorak.cli as cli
 
     setup(tmp_path, monkeypatch, xml())
@@ -217,10 +215,12 @@ def test_status_cli_keeps_json_on_stdout_and_progress_on_stderr(
     monkeypatch.chdir(tmp_path)
     from gorak import transfers
 
-    monkeypatch.setattr(transfers, "status", lambda *a: {"push": [], "pull": []})
+    monkeypatch.setattr(
+        transfers, "status", lambda *a: {"push": [], "pull": [], "conflicts": []}
+    )
     cli.main(["status"])
     output = capsys.readouterr()
-    assert json.loads(output.out) == {"push": [], "pull": []}
+    assert output.out == "No pending transfers.\n"
     assert "Status: starting" in output.err
 
 

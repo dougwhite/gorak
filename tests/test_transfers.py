@@ -1013,7 +1013,7 @@ def test_cli_conflict_aborts_before_any_transfer(
     before = ledger.read_bytes()
     monkeypatch.chdir(path.parent if inside_app else tmp_path)
     monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *_: connection())
-    args = [direction, "--no-compile", *([target] if target else [])]
+    args = [direction, *([target] if target else [])]
     with pytest.raises(SystemExit) as error:
         cli.main(args)
     assert error.value.code == 1
@@ -1147,7 +1147,7 @@ def test_application_scope_excludes_conflicts_in_other_apps(
     edit_database(db, "other/hello", 4)
     monkeypatch.chdir(selected.parent)
     monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *_: connection())
-    cli.main(["push", "--no-compile"])
+    cli.main(["push"])
     assert db.imports == ["selected/hello"]
     assert t.status(connection(), tmp_path)["conflicts"] == [
         {
@@ -1176,3 +1176,83 @@ def test_component_scope_preserves_local_rename_protection(
         )
     assert db.imports == []
     assert "sample/renamed" not in db.nodes
+
+
+def test_pull_requires_a_local_application(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    source(origin)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), origin, compile=False).failed
+    project = tmp_path / "project"
+    project.mkdir()
+    source(project, app="other")
+    with pytest.raises(ProjectError, match="gorak app export sample"):
+        t.execute_transfer(
+            connection(), project, direction="pull", scope="sample", prefer="pull"
+        )
+    t.execute_transfer(connection(), project, direction="pull")
+    assert db.exports == []
+    assert not (project / "sample").exists()
+
+
+def test_deleted_database_component_requires_manual_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    db.tokens.pop("sample/hello")
+    db.nodes.pop("sample/hello")
+    assert t.status(connection(), tmp_path)["database_deletions"] == ["sample/hello"]
+    edit_local(path, 2)
+    with pytest.raises(ProjectError, match="Database object was deleted"):
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert "RETURN 2" in path.read_text()
+    with pytest.raises(ProjectError, match="Remove the local source"):
+        t.execute_transfer(connection(), tmp_path, direction="pull", prefer="pull")
+    assert path.exists()
+    path.unlink()
+    t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert "sample/hello" not in t.Ledger(tmp_path, connection()).entries
+
+
+def test_app_export_initializes_transfer_history_and_app_import_creates_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from gorak import cli, export
+    from gorak.domain import Application
+
+    database = Database(monkeypatch)
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "gorak.json").write_text('{"name":"example"}')
+    source(origin)
+    monkeypatch.chdir(origin)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *_: connection())
+    cli.main(["app", "import", "sample"])
+    assert database.imports == ["sample"]
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "gorak.json").write_text('{"name":"example"}')
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(
+        export, "read_applications", lambda *_: [Application("sample", "hello", "")]
+    )
+    monkeypatch.setattr(export, "read_components", lambda *_: [])
+    monkeypatch.setattr(export, "backup_application_xml", database.exporting)
+    monkeypatch.setattr(export, "record_component_sync_metadata", lambda *_: None)
+    cli.main(["app", "export", "sample"])
+    capsys.readouterr()
+    cli.main(["status"])
+    assert capsys.readouterr().out.strip() == "No pending transfers."
+    edit_local(project / "sample/hello.w4gl", 2)
+    cli.main(["push", "sample/hello"])
+    assert database.imports == ["sample", "sample/hello"]

@@ -1,6 +1,5 @@
 """Explicit native source exercises the CLI without preview codecs or caches."""
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -111,8 +110,8 @@ def test_untouched_compact_project_cli_round_trip(
 
     monkeypatch.setattr(cli, "execute_application", run)
     cli.main(["status"])
-    assert json.loads(capsys.readouterr().out)["push"]
-    cli.main(["sync", "--push"])
+    assert "-> example/panel" in capsys.readouterr().out
+    cli.main(["push"])
     assert imports == ["example"]
     capsys.readouterr()
     with pytest.raises(SystemExit) as result:
@@ -125,8 +124,8 @@ def test_untouched_compact_project_cli_round_trip(
         capsys.readouterr()
         assert {p: p.read_bytes() for p in sources} == before
         cli.main(["status"])
-        assert json.loads(capsys.readouterr().out)["push"] == []
-        cli.main(["sync", "--push"])
+        assert capsys.readouterr().out.strip() == "No pending transfers."
+        cli.main(["push"])
         capsys.readouterr()
         assert imports == ["example"]
     assert not list(folder.rglob("*.xml"))

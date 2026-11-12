@@ -95,10 +95,10 @@ List the source components if you want to inspect the application first:
 gorak component list myapplication
 ```
 
-Pull it into the project and record its transfer checkpoint:
+Export the application into the project:
 
 ```sh
-gorak pull myapplication
+gorak app export myapplication
 ```
 
 The new application directory contains `app.json`, readable `.w4gl` source,
@@ -120,38 +120,16 @@ The tracked project is now a normal Git repository. Do not add `.env` or
 
 ## Push a change back to OpenROAD
 
-Use `gorak pull` to retrieve Workbench changes or `gorak sync` to transfer
-changes in both directions. See [conflict resolution](push.md) if both sides changed.
-
-Edit a supported `.w4gl` or `.wml` file, then inspect gorak's planned changes:
+Use `gorak push` to send local changes. To push one component:
 
 ```sh
-gorak status
+gorak push myapplication/mycomponent
 ```
 
-Push the disk change into the OpenROAD source database:
+Run `gorak compile` and `gorak test` as needed. To compile during a push,
+use `gorak push --compile`.
 
-```sh
-gorak push myapplication
-```
-
-gorak imports and compiles the changed source. If the application has
-configured tests, run them after a successful push:
-
-```sh
-gorak test
-git diff
-```
-
-`gorak test` runs the source already stored in OpenROAD; it never pushes disk
-changes automatically.
-
-Failed items remain pending; correct the reported failure and retry the same command.
-Pending compilation is retried by `gorak push` without repeating successful imports.
-
-## Upgrading existing projects
-
-Old baselines and fresh Git clones have no shared transfer checkpoint. When
-source exists on both sides, gorak reports a conflict. Save pending work and
-preview with `gorak sync --dry-run`. Use `gorak pull APP --force` to start from
-Workbench or `gorak push APP --force` to start from the checkout.
+> If an alpha upgrade breaks transfers, save local edits and move `.openroad/`
+> aside. To start from Workbench again, run `gorak pull APP --full --force`
+> for each local application you want to replace. For a clean copy, use
+> `gorak app export APP` in a fresh project.
