@@ -1040,6 +1040,11 @@ def pull(
                 path
             )
 
+    def check_asset_destination(path: Path) -> None:
+        # Recreating an observed asset could hide its deletion from the hash check.
+        if (path.parent, path.name.casefold()) in observed_by_name:
+            raise ProjectError("Local source changed since planning; rerun the command")
+
     # Keep the plan's asset relationships while preparing replacement files.
     dependencies = dict(ledger.asset_dependencies)
     root_defaults = root / "field_defaults.json"
@@ -1137,7 +1142,9 @@ def pull(
                 folder = root / app
                 folder.mkdir(parents=True, exist_ok=True)
                 asset_digests: dict[Path, str] = {}
-                writer = AssetWriter(folder, digests=asset_digests)
+                writer = AssetWriter(
+                    folder, digests=asset_digests, before_create=check_asset_destination
+                )
                 staging = Path(
                     stages.enter_context(
                         tempfile.TemporaryDirectory(prefix=".gorak-stage-", dir=folder)

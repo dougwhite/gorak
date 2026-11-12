@@ -1632,6 +1632,47 @@ def test_pull_does_not_hide_receiver_image_edits(
     assert t.status(connection(), tmp_path)["push"] == ["sample/picture"]
 
 
+def test_pull_does_not_recreate_image_deleted_during_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PIL import Image
+
+    from gorak.image_assets import png_bytes
+
+    path = source(tmp_path, name="picture")
+    path.write_text("[framesource]\n===\n")
+    markup = path.with_suffix(".wml")
+    markup.write_text(
+        '<frame><topform><bgbitmap src="images/icon.png"/></topform></frame>'
+    )
+    image = path.parent / "images/icon.png"
+    image.parent.mkdir()
+    image.write_bytes(png_bytes(Image.new("RGB", (2, 2), "red")))
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    db.tokens["sample/picture"]["count"] = 20
+    ledger = t.Ledger(tmp_path, connection())
+    before = ledger.entries["sample/picture"]
+    original_markup = markup.read_bytes()
+
+    def exporting(*args: Any) -> None:
+        db.exporting(*args)
+        image.unlink()
+
+    monkeypatch.setattr(t, "backup_application_xml", exporting)
+    with pytest.raises(ProjectError, match="Local source changed since planning"):
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert list(image.parent.iterdir()) == []
+    assert markup.read_bytes() == original_markup
+    assert t.Ledger(tmp_path, connection()).entries["sample/picture"] == before
+    assert t.status(connection(), tmp_path)["conflicts"]
+
+    monkeypatch.setattr(t, "backup_application_xml", db.exporting)
+    t.execute_transfer(connection(), tmp_path, direction="pull", prefer="pull")
+    assert image.is_file()
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
 @pytest.mark.parametrize("level", ["root", "application"])
 @pytest.mark.parametrize("when", ["before_install", "after_install"])
 def test_pull_does_not_hide_shared_stylesheet_edits(

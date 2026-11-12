@@ -7,6 +7,7 @@ import json
 import re
 import tomllib
 import zlib
+from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO
 from pathlib import Path, PureWindowsPath
@@ -359,9 +360,11 @@ class AssetWriter:
         *,
         origins_from: Path | None = None,
         digests: dict[Path, str] | None = None,
+        before_create: Callable[[Path], None] | None = None,
     ):
         self.folder = folder
         self.digests = digests
+        self.before_create = before_create
         self.created: set[Path] = set()
         self.origins: dict[str, set[str]] = {}
         self._candidates: dict[str, set[str]] | None = None
@@ -501,17 +504,20 @@ class AssetWriter:
         while True:
             name = base + (f"-{index:02d}" if index else "") + ".png"
             if name.casefold() not in occupied:
+                destination = directory / name
+                if self.before_create is not None:
+                    self.before_create(destination)
                 try:
-                    with (directory / name).open("xb") as output:
+                    with destination.open("xb") as output:
                         output.write(data)
                     break
                 except FileExistsError:
                     pass
             index += 1
         occupied.add(name.casefold())
-        self.created.add(directory / name)
+        self.created.add(destination)
         if self.digests is not None:
-            self.digests[directory / name] = hashlib.sha256(data).hexdigest()
+            self.digests[destination] = hashlib.sha256(data).hexdigest()
         name = "images/" + name
         self.origins.setdefault(name, set()).add(origin)
         self._candidates.setdefault(origin, set()).add(name)
