@@ -26,8 +26,11 @@ def local_writer_command(
         raise ProjectError("Writer wrapper accepts only OpenROAD commands")
     return [
         sys.executable,
-        "-m",
-        "gorak.writer_worker",
+        *(
+            ["--_writer"]
+            if getattr(sys, "frozen", False)
+            else ["-m", "gorak.writer_worker"]
+        ),
         "--database",
         database,
         "--encoding",
