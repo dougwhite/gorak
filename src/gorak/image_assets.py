@@ -69,7 +69,7 @@ def project_image(bitmap: Bitmap) -> Image.Image:
     return image
 
 
-def read_png(path: Path) -> Image.Image:
+def read_png(path: Path, *, digests: dict[Path, str] | None = None) -> Image.Image:
     try:
         data = source_bytes(path)
         if len(data) > MAX_BYTES:
@@ -82,6 +82,8 @@ def read_png(path: Path) -> Image.Image:
             ):
                 raise ProjectError("Expected a bounded, single-image PNG")
             image.load()
+            if digests is not None:
+                digests[path] = hashlib.sha256(data).hexdigest()
             return image.copy()
     except (OSError, ValueError, Image.DecompressionBombError) as ex:
         raise ProjectError(f"Cannot read image {path}: {ex}") from ex
@@ -192,7 +194,12 @@ def encode_icon(folder: Path, reference: str | dict[str, str]) -> str:
     return encode(read_bitmap(folder, reference))
 
 
-def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
+def read_bitmap(
+    folder: Path,
+    reference: str | dict[str, str],
+    *,
+    digests: dict[Path, str] | None = None,
+) -> Bitmap:
     ref = validate_reference(reference)
     if ref["src"].startswith("builtin:"):
         from . import builtin_images
@@ -208,7 +215,7 @@ def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
             raise ProjectError(
                 "Obsolete bitmap sidecar; re-export this application before using bitmap references"
             )
-        image = read_png(path)
+        image = read_png(path, digests=digests)
     if image.mode not in {"1", "P", "RGB", "RGBA"} or "transparency" in image.info:
         image = image.convert("RGBA")
     w, h = image.size
@@ -346,8 +353,16 @@ def read_bitmap(folder: Path, reference: str | dict[str, str]) -> Bitmap:
 class AssetWriter:
     """Allocate names within one export, consulting existing source references."""
 
-    def __init__(self, folder: Path, *, origins_from: Path | None = None):
+    def __init__(
+        self,
+        folder: Path,
+        *,
+        origins_from: Path | None = None,
+        digests: dict[Path, str] | None = None,
+    ):
         self.folder = folder
+        self.digests = digests
+        self.created: set[Path] = set()
         self.origins: dict[str, set[str]] = {}
         self._candidates: dict[str, set[str]] | None = None
         self._occupied: set[str] = set()
@@ -470,8 +485,13 @@ class AssetWriter:
                 # Reconstruct with this reference's native fields; pixel assets
                 # may be shared while the references retain distinct metadata.
                 ref = {"src": name, **fields}
-                restored = read_bitmap(self.folder, ref)
+                candidate_digests: dict[Path, str] | None = (
+                    {} if self.digests is not None else None
+                )
+                restored = read_bitmap(self.folder, ref, digests=candidate_digests)
                 if restored == bitmap:
+                    if self.digests is not None and candidate_digests is not None:
+                        self.digests.update(candidate_digests)
                     self.origins.setdefault(name, set()).add(origin)
                     return self._remember(key, ref)
             except ProjectError:
@@ -489,6 +509,9 @@ class AssetWriter:
                     pass
             index += 1
         occupied.add(name.casefold())
+        self.created.add(directory / name)
+        if self.digests is not None:
+            self.digests[directory / name] = hashlib.sha256(data).hexdigest()
         name = "images/" + name
         self.origins.setdefault(name, set()).add(origin)
         self._candidates.setdefault(origin, set()).add(name)

@@ -9,10 +9,11 @@ import socket
 import subprocess
 import tempfile
 import tomllib
+from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
-from functools import partial
 from pathlib import Path
+from shutil import copy2, rmtree
 from typing import Any, cast
 from uuid import uuid4
 
@@ -879,6 +880,107 @@ def pull_scope(root: Path, ledger: Ledger, remote: dict[str, Any]) -> set[str]:
     return apps
 
 
+def rename_groups(
+    renames: dict[str, str], remote: dict[str, Any]
+) -> set[frozenset[str]]:
+    """Find live destinations sharing a slot with another member's rename."""
+    by_slot: dict[str, set[str]] = {}
+    for old, new in renames.items():
+        old, new = old.casefold(), new.casefold()
+        group = by_slot.get(old, {old}) | by_slot.get(new, {new})
+        for slot in group:
+            by_slot[slot] = group
+    live = {key.casefold() for key in remote}
+    return {
+        frozenset(group & live) for group in by_slot.values() if len(group & live) > 1
+    }
+
+
+def observed_digest(path: Path) -> str | None:
+    try:
+        return digest(path.read_bytes())
+    except FileNotFoundError:
+        return None
+
+
+def stylesheet_inputs(root: Path, folder: Path) -> tuple[dict[Path, bytes], set[Path]]:
+    paths: dict[Path, bytes] = {}
+    assets: set[Path] = set()
+    for path in (root / "field_defaults.json", folder / "field_defaults.json"):
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        paths[path] = data
+        referenced = image_dependencies(path, data)
+        assets.update(referenced)
+        for asset in referenced:
+            if asset.is_file():
+                paths[asset] = asset.read_bytes()
+            obsolete = asset.with_suffix(asset.suffix + ".bitmap.json")
+            if obsolete.is_file():
+                paths[obsolete] = b""
+    return paths, assets
+
+
+@dataclass
+class PullProjection:
+    key: str
+    catalog_key: str
+    old: str | None
+    writes: set[Path]
+    inputs: dict[Path, str | None]
+    verify: Callable[[], None]
+    install: Callable[[], bool]
+    staged_defaults: str | None
+
+
+def install_rename_group(
+    root: Path,
+    projections: list[PullProjection],
+    install: Callable[[PullProjection], None],
+    checkpoint: Callable[[list[PullProjection]], None],
+) -> None:
+    # Keep a before-image on the same filesystem so an installation error
+    # cannot leave the group with only one side of a swap on disk.
+    writes = sorted({path for item in projections for path in item.writes})
+    backup_root = Path(tempfile.mkdtemp(prefix="rename-", dir=root / ".openroad"))
+    keep_backup = False
+    try:
+        backups: dict[Path, Path | None] = {}
+        for path in writes:
+            backup = backup_root / path.relative_to(root)
+            if path.exists():
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                copy2(path, backup)
+                backups[path] = backup
+            else:
+                backups[path] = None
+        for item in projections:
+            item.verify()
+        try:
+            for item in projections:
+                install(item)
+            checkpoint(projections)
+        except Exception as ex:
+            for path, before_image in backups.items():
+                try:
+                    if before_image is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        copy2(before_image, path)
+                except OSError:
+                    keep_backup = True
+            if keep_backup:
+                raise ProjectError(
+                    f"Rename failed and could not be rolled back completely. "
+                    f"Original files are saved in {backup_root.relative_to(root)}: {ex}"
+                ) from ex
+            raise
+    finally:
+        if not keep_backup:
+            rmtree(backup_root, ignore_errors=True)
+
+
 @validation_scope()
 @resolution_scope()
 def pull(
@@ -938,6 +1040,91 @@ def pull(
                 path
             )
 
+    # Keep the plan's asset relationships while preparing replacement files.
+    dependencies = dict(ledger.asset_dependencies)
+    root_defaults = root / "field_defaults.json"
+    generated_defaults: str | None = None
+    renames = {
+        old: key
+        for key, token in remote.items()
+        if (old := identities.get(("/" in key, identity(token)))) is not None
+        and old.casefold() != key.casefold()
+    }
+    groups: dict[frozenset[str], list[PullProjection]] = {
+        group: [] for group in rename_groups(renames, remote)
+    }
+    group_by_key = {key: group for group in groups for key in group}
+    changed_by_app: dict[str, set[str]] = {}
+    for key in changed:
+        changed_by_app.setdefault(key.split("/", 1)[0], set()).add(key)
+
+    def checkpoint(items: list[PullProjection]) -> None:
+        if not items:
+            return
+        previous = ledger.entries.copy()
+        for item in items:
+            if item.old is not None and item.old != item.key:
+                entry = ledger.entries.get(item.old)
+                if entry and identity(entry.get("database") or {}) == identity(
+                    remote[item.catalog_key]
+                ):
+                    ledger.entries.pop(item.old)
+        for item in items:
+            inputs = item.inputs.copy()
+            if (
+                "/" in item.key
+                and root_defaults not in inputs
+                and generated_defaults is not None
+            ):
+                inputs[root_defaults] = generated_defaults
+            fingerprint = combined(
+                {
+                    path.relative_to(root).as_posix(): value or "missing"
+                    for path, value in inputs.items()
+                }
+            )
+            ledger.record(item.key, fingerprint, remote[item.catalog_key])
+        try:
+            ledger.save()
+        except OSError:
+            ledger.entries = previous
+            raise
+        result.succeeded.extend(item.key for item in items)
+
+    def install(item: PullProjection) -> None:
+        nonlocal generated_defaults
+        if item.install():
+            generated_defaults = item.staged_defaults
+
+    def receiver_files(
+        target: Path, case_index: dict[str, list[Path]], folder: Path
+    ) -> set[Path]:
+        paths = {target} | observed_by_name.get(
+            (target.parent, target.name.casefold()), set()
+        )
+        if target.parent == folder:
+            paths.update(case_index.get(target.name.lower(), []))
+        return paths
+
+    def receiver_dependencies(paths: set[Path]) -> set[Path]:
+        result: set[Path] = set()
+        for path in paths:
+            cached = dependencies.get(path.relative_to(root).as_posix())
+            if not isinstance(cached, dict) or not isinstance(
+                cached.get("paths"), list
+            ):
+                continue
+            for relative in cached["paths"]:
+                if isinstance(relative, str):
+                    asset = Path(relative)
+                    if (
+                        not asset.is_absolute()
+                        and not asset.drive
+                        and ".." not in asset.parts
+                    ):
+                        result.add(root / asset)
+        return result
+
     with (
         ExitStack() as stages,
         prefetched_exports(names, connection.export_workers, backup) as exports,
@@ -949,8 +1136,8 @@ def pull(
             try:
                 folder = root / app
                 folder.mkdir(parents=True, exist_ok=True)
-                writer = AssetWriter(folder)
-                output_hashes: dict[Path, str] = {}
+                asset_digests: dict[Path, str] = {}
+                writer = AssetWriter(folder, digests=asset_digests)
                 staging = Path(
                     stages.enter_context(
                         tempfile.TemporaryDirectory(prefix=".gorak-stage-", dir=folder)
@@ -960,36 +1147,20 @@ def pull(
                 for path in folder.iterdir():
                     case_index.setdefault(path.name.lower(), []).append(path)
 
-                def verify_receiver(
-                    *keys: str,
-                    folder: Path = folder,
-                    case_index: dict[str, list[Path]] = case_index,
-                ) -> None:
-                    if plan is None:
-                        return
-                    for target in (
-                        path for key in keys for path in source_slots(root, key)
-                    ):
-                        paths = {target} | observed_by_name.get(
-                            (target.parent, target.name.casefold()), set()
-                        )
-                        if target.parent == folder:
-                            paths.update(case_index.get(target.name.lower(), []))
-                        for path in paths:
-                            try:
-                                current = digest(path.read_bytes())
-                            except FileNotFoundError:
-                                current = None
-                            if current != plan.observed_files.get(path):
-                                raise ProjectError(
-                                    "Local source changed since planning; rerun the command"
-                                )
+                captured_styles, stylesheet_assets = stylesheet_inputs(root, folder)
+                with captured_reads(root, captured_styles):
+                    styles = parent_styles(folder)
+                style_paths = {root_defaults, folder / "field_defaults.json"}
+                style_digests = {
+                    path: digest(captured_styles[path])
+                    if path in captured_styles
+                    else None
+                    for path in style_paths | stylesheet_assets
+                }
 
-                accepted: list[str] = []
-                replacements: list[tuple[str, str]] = []
-                styles = parent_styles(folder)
-                count = sum(key == app or key.startswith(app + "/") for key in changed)
-                converted = 0
+                accepted: list[PullProjection] = []
+                seen: set[str] = set()
+                count = len(changed_by_app[app])
                 report(f"Converting {app}", 0, count)
                 for native in application_children(xml):
                     name = native.get("name", "")
@@ -997,28 +1168,188 @@ def pull(
                     catalog_key = catalog_keys.get(key.casefold())
                     if catalog_key is None or catalog_key not in changed:
                         continue
+                    seen.add(catalog_key)
                     try:
                         validate_name(name)
                         old = identities.get(
                             ("/" in key, identity(remote[catalog_key]))
                         )
-                        remove_old = (
-                            old is not None
+                        retired = (
+                            old
+                            if old is not None
                             and old != key
                             and (
                                 old.casefold() not in catalog_keys
                                 or old.casefold() == key.casefold()
                             )
+                            else None
                         )
 
-                        retired = (
-                            [old]
-                            if remove_old
-                            and old is not None
-                            and old.casefold() != key.casefold()
-                            else []
-                        )
-                        before_install = partial(verify_receiver, key, *retired)
+                        def projected(
+                            files: dict[Path, str],
+                            staged_style: Path,
+                            write: Callable[[], bool],
+                            *,
+                            key: str = key,
+                            catalog_key: str = cast(str, catalog_key),
+                            old: str | None = old,
+                            retired: str | None = retired,
+                            folder: Path = folder,
+                            case_index: dict[str, list[Path]] = case_index,
+                            style_digests: dict[Path, str | None] = style_digests,
+                            style_paths: set[Path] = style_paths,
+                            asset_digests: dict[Path, str] = asset_digests,
+                            writer: AssetWriter = writer,
+                            accepted: list[PullProjection] = accepted,
+                        ) -> None:
+                            component = "/" in key
+                            targets = source_slots(root, key)
+                            old_targets = (
+                                source_slots(root, retired)
+                                if retired is not None
+                                else []
+                            )
+                            writes = {
+                                path
+                                for target in (*targets, *old_targets)
+                                for path in receiver_files(target, case_index, folder)
+                            }
+                            shared = style_paths if component else set()
+                            original = writes | shared
+                            if component and old is not None:
+                                original.add(
+                                    root / old.split("/", 1)[0] / "field_defaults.json"
+                                )
+                            original |= receiver_dependencies(original)
+                            if component:
+                                original.update(style_digests)
+                            staged_defaults = (
+                                observed_digest(staged_style)
+                                if component and style_digests[root_defaults] is None
+                                else None
+                            )
+                            inputs: dict[Path, str | None] = {}
+                            for stage_file, value in files.items():
+                                path = folder / stage_file.name
+                                inputs[path] = value
+                                referenced = (
+                                    image_dependencies(path, stage_file.read_bytes())
+                                    if asset_digests
+                                    else set()
+                                )
+                                inputs.update(
+                                    {
+                                        asset: asset_digests[asset]
+                                        for asset in referenced
+                                    }
+                                )
+                                ledger.asset_dependencies[
+                                    path.relative_to(root).as_posix()
+                                ] = {
+                                    "version": 3,
+                                    "hash": value,
+                                    "paths": sorted(
+                                        asset.relative_to(root).as_posix()
+                                        for asset in referenced
+                                    ),
+                                }
+                            projected_assets = {
+                                path: value
+                                for path, value in inputs.items()
+                                if path not in targets
+                            }
+                            new_assets = {
+                                path: asset_digests[path]
+                                for path in original & writer.created
+                            }
+                            if component:
+                                inputs.update(
+                                    {
+                                        path: value
+                                        for path, value in style_digests.items()
+                                        if value is not None or path not in shared
+                                    }
+                                )
+
+                            def verify() -> None:
+                                paths = original if plan is not None else set()
+                                for path in paths | projected_assets.keys():
+                                    current = observed_digest(path)
+                                    if plan is not None and path in original:
+                                        expected = (
+                                            generated_defaults
+                                            if path == root_defaults
+                                            and generated_defaults is not None
+                                            else plan.observed_files.get(path)
+                                        )
+                                        if expected is None and path in new_assets:
+                                            expected = new_assets[path]
+                                        if current != expected or (
+                                            component
+                                            and path in style_digests
+                                            and style_digests.get(path) != expected
+                                            and not (
+                                                path == root_defaults
+                                                and style_digests.get(path) is None
+                                                and generated_defaults is not None
+                                            )
+                                        ):
+                                            raise ProjectError(
+                                                "Local source changed since planning; rerun the command"
+                                            )
+                                    if (
+                                        path in projected_assets
+                                        and current != projected_assets[path]
+                                    ):
+                                        raise ProjectError(
+                                            "Projected image changed before installation; rerun the command"
+                                        )
+
+                            def install_files() -> bool:
+                                created_defaults = write()
+                                if (
+                                    plan is not None
+                                    and retired is not None
+                                    and retired.casefold() != key.casefold()
+                                ):
+                                    if any(
+                                        observed_digest(path)
+                                        != plan.observed_files.get(path)
+                                        for path in old_targets
+                                    ):
+                                        raise ProjectError(
+                                            "Local source changed since planning; rerun the command"
+                                        )
+                                for previous, current in zip(
+                                    old_targets, targets, strict=False
+                                ):
+                                    if not (
+                                        previous.exists()
+                                        and current.exists()
+                                        and previous.samefile(current)
+                                    ):
+                                        previous.unlink(missing_ok=True)
+                                return created_defaults
+
+                            if staged_defaults is not None:
+                                writes.add(root_defaults)
+                            item = PullProjection(
+                                key,
+                                catalog_key,
+                                old,
+                                writes,
+                                inputs,
+                                verify,
+                                install_files,
+                                staged_defaults,
+                            )
+                            group = group_by_key.get(catalog_key.casefold())
+                            if group is not None:
+                                groups[group].append(item)
+                            else:
+                                verify()
+                                install(item)
+                                accepted.append(item)
 
                         if native.tag == "APPLICATION":
                             tree = etree.Element("OPENROAD")
@@ -1035,12 +1366,16 @@ def pull(
                                 + "\n"
                             )
                             staged = staging / "app.json"
-                            write_text(staged, payload, digests=output_hashes)
-                            before_install()
-                            staged.replace(folder / "app.json")
-                            output_hashes[folder / "app.json"] = output_hashes.pop(
-                                staged
-                            )
+                            manifest_digest: dict[Path, str] = {}
+                            write_text(staged, payload, digests=manifest_digest)
+
+                            def install_manifest(
+                                staged: Path = staged, folder: Path = folder
+                            ) -> bool:
+                                staged.replace(folder / "app.json")
+                                return False
+
+                            projected(manifest_digest, staged, install_manifest)
                         else:
                             project_component_files(
                                 native,
@@ -1050,61 +1385,39 @@ def pull(
                                 parent_styles=styles,
                                 case_index=case_index,
                                 staging=staging,
-                                digests=output_hashes,
-                                before_install=before_install,
+                                projected=projected,
                             )
-                        if old is not None and old != key:
-                            if remove_old:
-                                if old.casefold() != key.casefold():
-                                    verify_receiver(old)
-                                for previous, current in zip(
-                                    source_slots(root, old),
-                                    source_slots(root, key),
-                                    strict=True,
-                                ):
-                                    if not (
-                                        previous.exists()
-                                        and current.exists()
-                                        and previous.samefile(current)
-                                    ):
-                                        previous.unlink(missing_ok=True)
-                            replacements.append((old, key))
-                        accepted.append(key)
                     except Exception as ex:
                         result.failed[key] = str(ex)
-                    converted += 1
-                    report(f"Converting {app}", converted, count)
-                local = hashes(
-                    root,
-                    [app],
-                    captured=output_hashes,
-                    dependency_cache=ledger.asset_dependencies,
-                )
-                for old, key in replacements:
-                    # Do not discard a replacement checkpoint written by an earlier app.
-                    entry = ledger.entries.get(old)
-                    if entry and identity(entry.get("database") or {}) == identity(
-                        remote[catalog_keys[key.casefold()]]
-                    ):
-                        ledger.entries.pop(old)
-                for key in accepted:
-                    token = remote[catalog_keys[key.casefold()]]
-                    ledger.record(key, local[key], token)
-                    result.succeeded.append(key)
-                accepted_names = {item.casefold() for item in accepted}
-                for key in changed:
-                    if (
-                        (key == app or key.startswith(app + "/"))
-                        and key.casefold() not in accepted_names
-                        and key not in result.failed
-                    ):
-                        result.failed[key] = (
-                            "Catalog object is missing from the native XML export"
-                        )
-                ledger.save()
+                    report(f"Converting {app}", len(seen), count)
+                checkpoint(accepted)
+                for key in changed_by_app[app] - seen:
+                    result.failed[key] = (
+                        "Catalog object is missing from the native XML export"
+                    )
             except Exception as ex:
                 result.failed[app] = str(ex)
             report("Downloading applications", index, len(names))
+
+        for group, items in groups.items():
+            if not items:
+                continue
+            if {item.catalog_key.casefold() for item in items} != group:
+                for item in items:
+                    result.skipped[item.key] = (
+                        "Another member of the Workbench rename group could not be prepared"
+                    )
+                continue
+            try:
+                before_defaults = generated_defaults
+                try:
+                    install_rename_group(root, items, install, checkpoint)
+                except Exception:
+                    generated_defaults = before_defaults
+                    raise
+            except Exception as ex:
+                for item in items:
+                    result.failed[item.key] = str(ex)
     return result
 
 
@@ -1273,14 +1586,20 @@ def plan_transfer(
         if not p.parent.name.startswith(".")
         and (not scoped_apps or p.parent.name.casefold() in scoped_apps)
     )
-    # An app's manifest can already have moved while some components remain
-    # under the old name. Keep those tracked receiver files in the inventory.
-    retained_apps = {
-        old.split("/", 1)[0]
+    # A partial application rename can leave tracked components on either
+    # side without a manifest. Keep both sides discoverable for retry.
+    rename_folders = {
+        name.split("/", 1)[0].casefold()
         for old, new in renamed.items()
-        if "/" in old
-        and old.split("/", 1)[0].casefold() != new.split("/", 1)[0].casefold()
-        and (not scoped_apps or old.split("/", 1)[0].casefold() in scoped_apps)
+        if old.split("/", 1)[0].casefold() != new.split("/", 1)[0].casefold()
+        for name in (old, new)
+    }
+    retained_apps = {
+        app
+        for key in ledger.entries
+        if "/" in key
+        and (app := key.split("/", 1)[0]).casefold() in rename_folders
+        and (not scoped_apps or app.casefold() in scoped_apps)
     }
     observed_files: dict[Path, str] = {}
     report("Hashing local source")
@@ -1771,12 +2090,11 @@ def execute_transfer(
         }
         plan.push.difference_update(overridden)
     replacements = replacements_for_renames(plan, prefer) if prefer == "push" else set()
-    selected_moves: set[str] = set()
-    omitted_moves: set[str] = set()
-    for old, new in plan.renamed.items():
-        slots = selected_moves if new in plan.pull else omitted_moves
-        slots.update((old.casefold(), new.casefold()))
-    if selected_moves & omitted_moves:
+    selected_moves = {key.casefold() for key in plan.pull}
+    if any(
+        group & selected_moves and not group <= selected_moves
+        for group in rename_groups(plan.renamed, plan.remote)
+    ):
         raise ProjectError(
             "The selected Workbench renames share a source or destination with other renames. "
             "Pull the whole rename group in one command."

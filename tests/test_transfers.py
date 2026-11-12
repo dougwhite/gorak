@@ -1,3 +1,4 @@
+import json
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -9,6 +10,8 @@ from lxml import etree
 
 from gorak import transfers as t
 from gorak.connection import OpenRoadConnection
+from gorak.export import project_component_files
+from gorak.parser import NS
 from gorak.project import ProjectError
 from gorak.xml_writer import document, new_application, new_component
 
@@ -544,18 +547,13 @@ def test_pull_checkpoints_written_bytes_without_rereading(
     Database(monkeypatch)
     t.push(connection(), tmp_path, compile=False)
     original = t.hashes
-
-    def hashing(root: Path, *args: Any, **kwargs: Any) -> dict[str, str]:
-        captured = kwargs.get("captured")
-        assert captured
-        for path in (root / "sample").iterdir():
-            if path.suffix in {".w4gl", ".wml"} or path.name == "app.json":
-                assert captured[path] == t.digest(path.read_bytes())
-        assert original(root, *args) == original(root, *args, **kwargs)
-        return original(root, *args, **kwargs)
-
-    monkeypatch.setattr(t, "hashes", hashing)
+    monkeypatch.setattr(
+        t, "hashes", lambda *a, **kw: pytest.fail("Pull reread installed source")
+    )
     assert not t.pull(connection(), tmp_path, full=True).failed
+    expected = original(tmp_path)
+    entries = t.Ledger(tmp_path, connection()).entries
+    assert {key: value["hash"] for key, value in entries.items()} == expected
 
 
 @pytest.mark.parametrize("cold", [True, False])
@@ -1591,3 +1589,166 @@ def test_acknowledged_deletion_clears_compilation_queue(
     )
     t.execute_transfer(connection(), tmp_path, direction="sync", compile=True)
     assert "compile" not in t.status(connection(), tmp_path)
+
+
+@pytest.mark.parametrize("when", ["during_export", "after_install"])
+def test_pull_does_not_hide_receiver_image_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, when: str
+) -> None:
+    from PIL import Image
+
+    path = source(tmp_path, name="picture")
+    path.write_text("[framesource]\n===\n")
+    path.with_suffix(".wml").write_text(
+        '<frame><topform><bgbitmap src="images/picture.png"/></topform></frame>'
+    )
+    image = path.parent / "images/picture.png"
+    image.parent.mkdir()
+    Image.new("RGB", (2, 2), "red").save(image)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    db.tokens["sample/picture"]["count"] = 20
+
+    if when == "during_export":
+
+        def exporting(*args: Any) -> None:
+            db.exporting(*args)
+            Image.new("RGB", (2, 2), "blue").save(image)
+
+        monkeypatch.setattr(t, "backup_application_xml", exporting)
+        with pytest.raises(ProjectError, match="Local source changed since planning"):
+            t.execute_transfer(connection(), tmp_path, direction="pull")
+        assert 'src="images/picture.png"' in path.with_suffix(".wml").read_text()
+    else:
+        original = project_component_files
+
+        def projecting(*args: Any, **kwargs: Any) -> Any:
+            projected = original(*args, **kwargs)
+            Image.new("RGB", (2, 2), "blue").save(image)
+            return projected
+
+        monkeypatch.setattr(t, "project_component_files", projecting)
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert t.status(connection(), tmp_path)["push"] == ["sample/picture"]
+
+
+@pytest.mark.parametrize("level", ["root", "application"])
+@pytest.mark.parametrize("when", ["before_install", "after_install"])
+def test_pull_does_not_hide_shared_stylesheet_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, level: str, when: str
+) -> None:
+    from gorak.native_styles import empty_delta
+
+    path = source(tmp_path, name="picture")
+    path.write_text("[framesource]\n===\n")
+    path.with_suffix(".wml").write_text("<frame><topform/></frame>")
+    defaults = (tmp_path if level == "root" else path.parent) / "field_defaults.json"
+    defaults.write_text(json.dumps(empty_delta()))
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    db.tokens["sample/picture"]["count"] = 20
+    original = project_component_files
+
+    def projecting(*args: Any, **kwargs: Any) -> Any:
+        if when == "before_install":
+            defaults.write_text(defaults.read_text() + "\n")
+        projected = original(*args, **kwargs)
+        if when == "after_install":
+            defaults.write_text(defaults.read_text() + "\n")
+        return projected
+
+    monkeypatch.setattr(t, "project_component_files", projecting)
+    if when == "before_install":
+        with pytest.raises(ProjectError, match="Local source changed since planning"):
+            t.execute_transfer(connection(), tmp_path, direction="pull")
+    else:
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert t.status(connection(), tmp_path)["push"] == ["sample/picture"]
+
+
+def test_failed_rename_swap_preserves_both_files_and_checkpoints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = source(tmp_path, name="a")
+    b = source(tmp_path, name="b")
+    edit_local(a, 11)
+    edit_local(b, 22)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    rename_objects(db, {"sample/a": "sample/b", "sample/b": "sample/a"})
+    attribute = f"{{{NS['xsi']}}}type"
+    node = db.nodes["sample/b"]
+    original_kind = node.get(attribute)
+    assert original_kind is not None
+    node.set(attribute, "unsupported")
+    before = t.Ledger(tmp_path, connection()).path.read_bytes()
+    original_files = (a.read_bytes(), b.read_bytes())
+
+    with pytest.raises(ProjectError, match="Unsupported component type"):
+        t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert (a.read_bytes(), b.read_bytes()) == original_files
+    assert t.Ledger(tmp_path, connection()).path.read_bytes() == before
+
+    node.set(attribute, original_kind)
+    t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert "RETURN 22" in a.read_text()
+    assert "RETURN 11" in b.read_text()
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+def test_rename_swap_rolls_back_if_installation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import export
+
+    a = source(tmp_path, name="a")
+    b = source(tmp_path, name="b")
+    edit_local(b, 2)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    rename_objects(db, {"sample/a": "sample/b", "sample/b": "sample/a"})
+    before = (a.read_bytes(), b.read_bytes())
+    ledger = t.Ledger(tmp_path, connection()).path
+    previous = ledger.read_bytes()
+    normalize_case = export.normalize_case_path
+
+    def failing_install(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path == a:
+            assert b.read_bytes() != before[1]
+            raise PermissionError("synthetic write failure")
+        normalize_case(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(export, "normalize_case_path", failing_install)
+        with pytest.raises(ProjectError, match="synthetic write failure"):
+            t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert (a.read_bytes(), b.read_bytes()) == before
+    assert ledger.read_bytes() == previous
+    t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert t.status(connection(), tmp_path)["conflicts"] == []
+
+
+@pytest.mark.parametrize("scope", [None, "sample", "renamed"])
+def test_application_rename_retries_after_manifest_projection_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str | None
+) -> None:
+    source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    rename_objects(db, {"sample": "renamed", "sample/hello": "renamed/hello"})
+    native = db.nodes["renamed"]
+    windowicon = etree.SubElement(native, "windowicon")
+    etree.SubElement(windowicon, "obj_encoded").text = "12:bitmapobject\nunsupported"
+
+    with pytest.raises(ProjectError, match="bitmap"):
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert (tmp_path / "sample/app.json").exists()
+    assert not (tmp_path / "renamed/app.json").exists()
+    assert (tmp_path / "renamed/hello.w4gl").exists()
+
+    native.remove(windowicon)
+    assert t.status(connection(), tmp_path)["conflicts"] == []
+    t.execute_transfer(connection(), tmp_path, direction="sync", scope=scope)
+    assert not (tmp_path / "sample/app.json").exists()
+    assert (tmp_path / "renamed/app.json").exists()
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}

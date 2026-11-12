@@ -449,12 +449,15 @@ def project_component_files(
     case_index: dict[str, list[Path]] | None = None,
     staging: Path | None = None,
     digests: dict[Path, str] | None = None,
-    before_install: Callable[[], None] | None = None,
+    projected: Callable[[dict[Path, str], Path, Callable[[], bool]], None]
+    | None = None,
 ) -> Component:
     from .image_assets import externalize
 
     name = str(native.get("name"))
-    staged_digests: dict[Path, str] | None = {} if digests is not None else None
+    staged_digests: dict[Path, str] | None = (
+        {} if digests is not None or projected is not None else None
+    )
     # Prepare all component files before replacing any existing source. A
     # malformed query, stylesheet or bitmap must not leave a half-written frame.
     with (
@@ -525,31 +528,47 @@ def project_component_files(
             etree.XMLSyntaxError,
         ) as ex:
             raise ComponentProjectionError(str(ex)) from ex
-        if before_install is not None:
-            before_install()
-        for suffix in (
-            ".w4gl",
-            ".wml",
-            ".fielddefaults.json",
-            ".queries.json",
-            ".icons.json",
-        ):
-            target = source_dir / f"{name}{suffix}"
-            source = stage / target.name
-            if source.exists():
-                normalize_case_path(
-                    target, progress=progress, label="component", case_index=case_index
-                )
-                source.replace(target)
-                if digests is not None and staged_digests is not None:
-                    digests[target] = staged_digests[source]
-                if case_index is not None:
-                    case_index[target.name.lower()] = [target]
-            else:
-                target.unlink(missing_ok=True)
-        defaults = stage.parent / "field_defaults.json"
-        if defaults.exists() and not (source_dir.parent / defaults.name).exists():
-            copy2(defaults, source_dir.parent / defaults.name)
+
+        def install() -> bool:
+            for suffix in (
+                ".w4gl",
+                ".wml",
+                ".fielddefaults.json",
+                ".queries.json",
+                ".icons.json",
+            ):
+                target = source_dir / f"{name}{suffix}"
+                source = stage / target.name
+                if source.exists():
+                    normalize_case_path(
+                        target,
+                        progress=progress,
+                        label="component",
+                        case_index=case_index,
+                    )
+                    source.replace(target)
+                    if digests is not None and staged_digests is not None:
+                        digests[target] = staged_digests[source]
+                    if case_index is not None:
+                        case_index[target.name.lower()] = [target]
+                else:
+                    target.unlink(missing_ok=True)
+            defaults = stage.parent / "field_defaults.json"
+            target_defaults = source_dir.parent / defaults.name
+            if defaults.exists() and not target_defaults.exists():
+                try:
+                    with target_defaults.open("xb") as stream:
+                        stream.write(defaults.read_bytes())
+                    return True
+                except FileExistsError:
+                    pass
+            return False
+
+        if projected is None:
+            install()
+        else:
+            assert staged_digests is not None
+            projected(staged_digests, stage.parent / "field_defaults.json", install)
         return component
 
 
