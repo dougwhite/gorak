@@ -40,6 +40,15 @@ def test_disabled_launch_unchanged_and_enabled_arguments_are_separate() -> None:
         remote_writer_prefix("source&other", "cp1252")
 
 
+def test_frozen_writer_uses_embedded_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    wrapped = local_writer_command(
+        ["w4gldev", "rundbapp", "example"], "source", "cp1252"
+    )
+    assert wrapped[:2] == [sys.executable, "--_writer"]
+    assert "-m" not in wrapped
+
+
 @pytest.mark.parametrize("arguments", [["-c", "pass"], ["-m", "gorak.writer_worker"]])
 def test_subprocess_guard_rejects_unbounded_python(arguments: list[str]) -> None:
     with pytest.raises(AssertionError, match="Tests must mock external commands"):

@@ -65,6 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
     """Builds the gorak CLI argument parser."""
 
     parser = argparse.ArgumentParser(prog="gorak")
+    from .build_info import version_text
+
+    parser.add_argument("--version", action="version", version=version_text())
+    parser.add_argument(
+        "--self-update", action="store_true", help="Update an installer-managed binary"
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     source_parser = subparsers.add_parser(
@@ -944,6 +950,13 @@ def dispatch(argv: Sequence[str] | None = None) -> None:
     parsed = parser.parse_args(args)
 
     try:
+        if parsed.self_update:
+            if parsed.command is not None:
+                raise ProjectError("Use --self-update without a subcommand")
+            from .binary_install import self_update
+
+            print(self_update())
+            return
         if parsed.command == "source":
             from .storage_command import source_command
 
