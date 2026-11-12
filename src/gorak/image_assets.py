@@ -480,11 +480,15 @@ class AssetWriter:
         index = 0
         while True:
             name = base + (f"-{index:02d}" if index else "") + ".png"
-            if name.casefold() not in occupied and not (directory / name).exists():
-                break
+            if name.casefold() not in occupied:
+                try:
+                    with (directory / name).open("xb") as output:
+                        output.write(data)
+                    break
+                except FileExistsError:
+                    pass
             index += 1
         occupied.add(name.casefold())
-        (directory / name).write_bytes(data)
         name = "images/" + name
         self.origins.setdefault(name, set()).add(origin)
         self._candidates.setdefault(origin, set()).add(name)

@@ -15,7 +15,7 @@ def test_inventory_preserves_identity_name_and_source_change_tokens(
     monkeypatch.setattr(
         catalog,
         "application_tokens",
-        lambda _: {"sample": {"id": 10, "name": "sample"}},
+        lambda *_: {"sample": {"id": 10, "name": "sample"}},
     )
     item = ComponentSyncMetadata(
         application_name="sample",

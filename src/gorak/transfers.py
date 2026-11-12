@@ -6,10 +6,12 @@ import hashlib
 import json
 import os
 import socket
+import subprocess
 import tempfile
 import tomllib
 from contextlib import ExitStack
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -154,6 +156,7 @@ def hashes(
     captured: dict[Path, str] | None = None,
     inputs: dict[Path, bytes] | None = None,
     dependency_cache: dict[str, Any] | None = None,
+    observed_files: dict[Path, str] | None = None,
 ) -> dict[str, str]:
     apps = (
         apps
@@ -240,6 +243,8 @@ def hashes(
                 ]
             )
         report("Hashing local source", index, len(apps))
+    if observed_files is not None:
+        observed_files.update(read)
     return result
 
 
@@ -476,6 +481,46 @@ def refresh_tokens(
     ledger.save()
 
 
+def verify_push_receiver(
+    connection: OpenRoadConnection, plan: TransferPlan, key: str
+) -> None:
+    """Compare the import's write set, including any Workbench rename alias."""
+    slots = [key]
+    for old, new in plan.renamed.items():
+        if in_scope(key, old) or in_scope(old, key):
+            slots.append(new)
+
+    def affected(
+        tokens: dict[str, Any], app: str, app_slots: list[str]
+    ) -> dict[str, Any]:
+        selected = {
+            name.casefold(): token
+            for name, token in tokens.items()
+            if any(in_scope(name, slot) for slot in app_slots)
+        }
+        if app not in selected:
+            # Component imports can bump application counters. The parent
+            # still has to be the same application for a scoped import.
+            selected[app] = next(
+                (
+                    identity(token)
+                    for name, token in tokens.items()
+                    if name.casefold() == app
+                ),
+                None,
+            )
+        return selected
+
+    for app in {slot.split("/", 1)[0].casefold() for slot in slots}:
+        app_slots = [slot for slot in slots if in_scope(slot, app)]
+        if affected(plan.remote, app, app_slots) != affected(
+            inventory(connection, app), app, app_slots
+        ):
+            raise ProjectError(
+                "Database source changed since planning; rerun the command"
+            )
+
+
 @validation_scope()
 @resolution_scope()
 def push(
@@ -670,6 +715,8 @@ def push(
                                 component_xml = work / "partial.xml"
                                 component_xml.write_bytes(document([node]))
                                 (work / "import.log").unlink(missing_ok=True)
+                                if plan is not None:
+                                    verify_push_receiver(connection, plan, key)
                                 submit(
                                     connection,
                                     app,
@@ -692,6 +739,8 @@ def push(
                             )
                         continue
                     (work / "import.log").unlink(missing_ok=True)
+                    if plan is not None:
+                        verify_push_receiver(connection, plan, app)
                     submit(
                         connection,
                         app,
@@ -731,6 +780,8 @@ def push(
                                 result.succeeded.extend(accepted)
                                 continue
                             (work / "import.log").unlink(missing_ok=True)
+                            if plan is not None:
+                                verify_push_receiver(connection, plan, key)
                             submit(
                                 connection,
                                 app,
@@ -866,6 +917,8 @@ def pull(
     if dry_run:
         result.succeeded.extend(sorted(changed))
         return result
+    if not changed:
+        return result
     names = sorted({key.split("/")[0] for key in changed})
     # Export exceptions are collected by the worker so one failed app doesn't close the stream.
     export_errors: dict[str, str] = {}
@@ -877,6 +930,13 @@ def pull(
             export_errors[app] = str(ex)
 
     from .export_pipeline import prefetched_exports
+
+    observed_by_name: dict[tuple[Path, str], set[Path]] = {}
+    if plan is not None:
+        for path in plan.observed_files:
+            observed_by_name.setdefault((path.parent, path.name.casefold()), set()).add(
+                path
+            )
 
     with (
         ExitStack() as stages,
@@ -899,7 +959,34 @@ def pull(
                 case_index: dict[str, list[Path]] = {}
                 for path in folder.iterdir():
                     case_index.setdefault(path.name.lower(), []).append(path)
+
+                def verify_receiver(
+                    *keys: str,
+                    folder: Path = folder,
+                    case_index: dict[str, list[Path]] = case_index,
+                ) -> None:
+                    if plan is None:
+                        return
+                    for target in (
+                        path for key in keys for path in source_slots(root, key)
+                    ):
+                        paths = {target} | observed_by_name.get(
+                            (target.parent, target.name.casefold()), set()
+                        )
+                        if target.parent == folder:
+                            paths.update(case_index.get(target.name.lower(), []))
+                        for path in paths:
+                            try:
+                                current = digest(path.read_bytes())
+                            except FileNotFoundError:
+                                current = None
+                            if current != plan.observed_files.get(path):
+                                raise ProjectError(
+                                    "Local source changed since planning; rerun the command"
+                                )
+
                 accepted: list[str] = []
+                replacements: list[tuple[str, str]] = []
                 styles = parent_styles(folder)
                 count = sum(key == app or key.startswith(app + "/") for key in changed)
                 converted = 0
@@ -908,10 +995,31 @@ def pull(
                     name = native.get("name", "")
                     key = app if native.tag == "APPLICATION" else f"{app}/{name}"
                     catalog_key = catalog_keys.get(key.casefold())
-                    if catalog_key not in changed:
+                    if catalog_key is None or catalog_key not in changed:
                         continue
                     try:
                         validate_name(name)
+                        old = identities.get(
+                            ("/" in key, identity(remote[catalog_key]))
+                        )
+                        remove_old = (
+                            old is not None
+                            and old != key
+                            and (
+                                old.casefold() not in catalog_keys
+                                or old.casefold() == key.casefold()
+                            )
+                        )
+
+                        retired = (
+                            [old]
+                            if remove_old
+                            and old is not None
+                            and old.casefold() != key.casefold()
+                            else []
+                        )
+                        before_install = partial(verify_receiver, key, *retired)
+
                         if native.tag == "APPLICATION":
                             tree = etree.Element("OPENROAD")
                             tree.append(externalize(native, folder, app, writer=writer))
@@ -926,8 +1034,9 @@ def pull(
                                 )
                                 + "\n"
                             )
-                            staged = folder / ".app.json.tmp"
+                            staged = staging / "app.json"
                             write_text(staged, payload, digests=output_hashes)
+                            before_install()
                             staged.replace(folder / "app.json")
                             output_hashes[folder / "app.json"] = output_hashes.pop(
                                 staged
@@ -942,7 +1051,24 @@ def pull(
                                 case_index=case_index,
                                 staging=staging,
                                 digests=output_hashes,
+                                before_install=before_install,
                             )
+                        if old is not None and old != key:
+                            if remove_old:
+                                if old.casefold() != key.casefold():
+                                    verify_receiver(old)
+                                for previous, current in zip(
+                                    source_slots(root, old),
+                                    source_slots(root, key),
+                                    strict=True,
+                                ):
+                                    if not (
+                                        previous.exists()
+                                        and current.exists()
+                                        and previous.samefile(current)
+                                    ):
+                                        previous.unlink(missing_ok=True)
+                            replacements.append((old, key))
                         accepted.append(key)
                     except Exception as ex:
                         result.failed[key] = str(ex)
@@ -954,37 +1080,7 @@ def pull(
                     captured=output_hashes,
                     dependency_cache=ledger.asset_dependencies,
                 )
-                replacements = []
-                for key in accepted:
-                    token = remote[catalog_keys[key.casefold()]]
-                    old = identities.get(("/" in key, identity(token)))
-                    if old and old != key:
-                        replacements.append((old, key))
-                # Protect every current catalog destination, including swaps, chains,
-                # and destinations belonging to another application in this batch.
-                protected = {key.casefold() for key in remote}
                 for old, key in replacements:
-                    if (
-                        old.casefold() not in protected
-                        or old.casefold() == key.casefold()
-                    ):
-                        paths = (
-                            [root / (old + suffix) for suffix in SUFFIXES]
-                            if "/" in old
-                            else [root / old / "app.json"]
-                        )
-                        for previous in paths:
-                            current = (
-                                root / (key + previous.name[len(Path(old).name) :])
-                                if "/" in old
-                                else root / key / "app.json"
-                            )
-                            if not (
-                                previous.exists()
-                                and current.exists()
-                                and previous.samefile(current)
-                            ):
-                                previous.unlink(missing_ok=True)
                     # Do not discard a replacement checkpoint written by an earlier app.
                     entry = ledger.entries.get(old)
                     if entry and identity(entry.get("database") or {}) == identity(
@@ -1056,6 +1152,7 @@ class TransferPlan:
     missing_local: set[str]
     database_deletions: set[str]
     acknowledged_deletions: set[str]
+    observed_files: dict[Path, str]
 
     def preview(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -1093,6 +1190,47 @@ def local_source_absent(root: Path, key: str) -> bool:
     return not any(path.with_suffix(suffix).exists() for suffix in SUFFIXES)
 
 
+def source_slots(root: Path, key: str) -> list[Path]:
+    if "/" not in key:
+        return [root / key / "app.json"]
+    return [root / (key + suffix) for suffix in SUFFIXES]
+
+
+def clean_git_source(root: Path, apps: set[str], files: dict[Path, str]) -> bool:
+    """Allow an initial pull over tracked source with no uncommitted changes."""
+
+    def git(*args: str) -> bytes:
+        return subprocess.check_output(
+            [
+                "git",
+                "--no-optional-locks",
+                "--literal-pathspecs",
+                "-C",
+                str(root),
+                *args,
+            ],
+            stderr=subprocess.DEVNULL,
+        )
+
+    scopes = [*sorted(apps), "field_defaults.json", "images"]
+    try:
+        if git("status", "--porcelain", "-z", "--untracked-files=all", "--", *scopes):
+            return False
+        tracked = {
+            os.fsdecode(item[2:])
+            for item in git("ls-files", "-v", "-z", "--", *scopes).split(b"\0")
+            if item.startswith(b"H ")
+        }
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    folded_scopes = {scope.casefold() for scope in scopes}
+    return all(
+        path.relative_to(root).as_posix() in tracked
+        for path in files
+        if path.relative_to(root).parts[0].casefold() in folded_scopes
+    )
+
+
 def plan_transfer(
     connection: OpenRoadConnection,
     root: Path,
@@ -1101,6 +1239,7 @@ def plan_transfer(
     direction: str = "sync",
     full: bool = False,
     prefer: str | None = None,
+    observe_receivers: bool = False,
 ) -> TransferPlan:
     check_paths(root)
     ledger = Ledger(root, connection)
@@ -1124,22 +1263,37 @@ def plan_transfer(
     app_scope = scope.split("/", 1)[0] if scope else None
     scoped_apps = {app_scope.casefold()} if app_scope else set()
     for old, new in renamed.items():
-        if "/" not in old and (
-            old.casefold() in scoped_apps or new.casefold() in scoped_apps
-        ):
-            scoped_apps.update((old.casefold(), new.casefold()))
+        old_app, new_app = old.split("/", 1)[0], new.split("/", 1)[0]
+        aliases = {old_app.casefold(), new_app.casefold()}
+        if scoped_apps & aliases:
+            scoped_apps.update(aliases)
     apps = sorted(
         p.parent.name
         for p in root.glob("*/app.json")
         if not p.parent.name.startswith(".")
         and (not scoped_apps or p.parent.name.casefold() in scoped_apps)
     )
+    # An app's manifest can already have moved while some components remain
+    # under the old name. Keep those tracked receiver files in the inventory.
+    retained_apps = {
+        old.split("/", 1)[0]
+        for old, new in renamed.items()
+        if "/" in old
+        and old.split("/", 1)[0].casefold() != new.split("/", 1)[0].casefold()
+        and (not scoped_apps or old.split("/", 1)[0].casefold() in scoped_apps)
+    }
+    observed_files: dict[Path, str] = {}
     report("Hashing local source")
     # Presence is enough for cold planning. Push captures and hashes the bytes
     # once per application when preparing the actual import.
     local = (
-        hashes(root, apps, dependency_cache=ledger.asset_dependencies)
-        if ledger.entries
+        hashes(
+            root,
+            sorted(set(apps) | retained_apps),
+            dependency_cache=ledger.asset_dependencies,
+            observed_files=observed_files if observe_receivers else None,
+        )
+        if ledger.entries or (observe_receivers and direction != "push" and remote)
         else local_names(root, apps)
     )
     local_keys = {key.casefold(): key for key in local}
@@ -1183,6 +1337,11 @@ def plan_transfer(
     if (
         app_scope
         and app_scope.casefold() not in pull_apps
+        and not any(
+            old.split("/", 1)[0].casefold() == app_scope.casefold()
+            and new.split("/", 1)[0].casefold() in pull_apps
+            for old, new in renamed.items()
+        )
         and (
             direction == "pull"
             or (direction == "sync" and app_scope.casefold() in remote_keys)
@@ -1301,6 +1460,17 @@ def plan_transfer(
             else:
                 reason = "Local and database changes overlap"
             conflicts[sender, key] = Conflict(sender, key, reason)
+    if direction == "pull" and prefer is None and conflicts and observe_receivers:
+        initial = {
+            pair
+            for pair, item in conflicts.items()
+            if item.reason == "No shared transfer checkpoint"
+            and item.local.casefold() not in previous
+        }
+        initial_apps = {local.split("/", 1)[0] for local, _ in initial}
+        if initial and clean_git_source(root, initial_apps, observed_files):
+            for pair in initial:
+                del conflicts[pair]
     return TransferPlan(
         ledger,
         local,
@@ -1313,6 +1483,7 @@ def plan_transfer(
         missing_local,
         database_deletions,
         acknowledged,
+        observed_files,
     )
 
 
@@ -1322,9 +1493,9 @@ def forget_deleted(root: Path, ledger: Ledger, key: str) -> None:
     for recorded in list(ledger.entries):
         if in_scope(recorded, key):
             ledger.entries.pop(recorded)
-    ledger.save()
     app, _, component = key.partition("/")
     clear_compiled_targets(root, app, component or None)
+    ledger.save()
 
 
 def apply_local_deletions(root: Path, plan: TransferPlan, result: Result) -> None:
@@ -1553,7 +1724,13 @@ def execute_transfer(
             "Use push --full or pull --full to select the source of a full transfer"
         )
     plan = plan_transfer(
-        connection, root, scope=scope, direction=direction, full=full, prefer=prefer
+        connection,
+        root,
+        scope=scope,
+        direction=direction,
+        full=full,
+        prefer=prefer,
+        observe_receivers=direction != "push",
     )
     deferred_apps: set[str] = set()
     if prefer == "push":
@@ -1594,6 +1771,16 @@ def execute_transfer(
         }
         plan.push.difference_update(overridden)
     replacements = replacements_for_renames(plan, prefer) if prefer == "push" else set()
+    selected_moves: set[str] = set()
+    omitted_moves: set[str] = set()
+    for old, new in plan.renamed.items():
+        slots = selected_moves if new in plan.pull else omitted_moves
+        slots.update((old.casefold(), new.casefold()))
+    if selected_moves & omitted_moves:
+        raise ProjectError(
+            "The selected Workbench renames share a source or destination with other renames. "
+            "Pull the whole rename group in one command."
+        )
     if dry_run:
         preview = plan.preview()
         if replacements:
@@ -1633,7 +1820,11 @@ def execute_transfer(
     results = []
     pulled_for_compile: set[str] = set()
     if plan.acknowledged_deletions:
-        for key in plan.acknowledged_deletions:
+        from .compiler import clear_compiled_targets
+
+        for key in sorted(plan.acknowledged_deletions):
+            app, _, component = key.partition("/")
+            clear_compiled_targets(root, app, component or None)
             plan.ledger.entries.pop(key)
         plan.ledger.save()
     if direction != "push":

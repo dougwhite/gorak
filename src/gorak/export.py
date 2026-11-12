@@ -449,6 +449,7 @@ def project_component_files(
     case_index: dict[str, list[Path]] | None = None,
     staging: Path | None = None,
     digests: dict[Path, str] | None = None,
+    before_install: Callable[[], None] | None = None,
 ) -> Component:
     from .image_assets import externalize
 
@@ -524,6 +525,8 @@ def project_component_files(
             etree.XMLSyntaxError,
         ) as ex:
             raise ComponentProjectionError(str(ex)) from ex
+        if before_install is not None:
+            before_install()
         for suffix in (
             ".w4gl",
             ".wml",
@@ -835,8 +838,15 @@ def read_component_sync_metadata(
             app,
         )
 
-    metadata = read_all_component_sync_metadata(connection)
-    return [item for item in metadata if item.application_name.lower() == app.lower()]
+    metadata = get_all_component_sync_metadata(
+        remote=require_remote_host(connection),
+        vnode=connection.vnode,
+        database=connection.database,
+        app=app,
+    )
+    return [
+        item for item in metadata if item.application_name.casefold() == app.casefold()
+    ]
 
 
 def read_all_component_sync_metadata(

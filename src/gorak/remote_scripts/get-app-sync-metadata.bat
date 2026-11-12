@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 if "%~2"=="" (
-    >&2 echo Usage: %~nx0 VNODE DATABASE
+    >&2 echo Usage: %~nx0 VNODE DATABASE [APP]
     exit /b 64
 )
 
@@ -21,6 +21,7 @@ set "II_W4GLAPPS_SYS=%II_SYSTEM%\ingres\w4glapps\"
 
 set "VNODE=%~1"
 set "DATABASE=%~2"
+set "APP=%~3"
 set "DB_TARGET=%VNODE%::%DATABASE%"
 
 set "TEMP_DIR=%GORAK_ROOT%/temp"
@@ -35,6 +36,7 @@ set "SQL_FILE=%TEMP_DIR%\app-sync-metadata-%RANDOM%.sql"
 (
     echo select e.entity_name as application_name, a.entity_id, a.alter_date, a.alter_count
     echo from ii_applications a join ii_entities e on a.entity_id=e.entity_id
+    if defined APP echo where lower^(e.entity_name^) = lower^('%APP%'^)
     echo order by e.entity_name
     echo \p\g
 ) > "%SQL_FILE%"

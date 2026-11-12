@@ -1,5 +1,7 @@
+import subprocess
 from copy import deepcopy
 from pathlib import Path
+from subprocess import CalledProcessError
 from typing import Any
 
 import pytest
@@ -1067,7 +1069,8 @@ def test_two_way_sync_resolves_conflict_and_moves_independent_edits(
     t.execute_transfer(
         connection(), tmp_path, direction="sync", prefer=prefer, compile=False
     )
-    assert db.reads == reads + 2  # One plan and one post-import checkpoint read.
+    # One plan, one scoped check per import, and one post-import checkpoint read.
+    assert db.reads == reads + 2 + len(db.imports)
     assert "RETURN 5" in database_only.read_text()
     assert b"RETURN 4" in etree.tostring(db.nodes["sample/local_only"])
     expected = "RETURN 2" if prefer == "push" else "RETURN 3"
@@ -1134,6 +1137,11 @@ def test_unbased_overlap_requires_an_explicit_direction(
     t.execute_transfer(connection(), tmp_path, direction="push", compile=False)
     (tmp_path / ".openroad/transfers.json").unlink()
     db.imports.clear()
+
+    def git_unavailable(*args: Any, **kwargs: Any) -> bytes:
+        raise CalledProcessError(128, "git")
+
+    monkeypatch.setattr(subprocess, "check_output", git_unavailable)
     with pytest.raises(ProjectError, match="No shared transfer checkpoint"):
         t.execute_transfer(connection(), tmp_path, direction="pull")
     assert db.imports == db.exports == []
@@ -1406,3 +1414,180 @@ def test_push_rechecks_catalog_before_native_delete(
         t.execute_transfer(connection(), tmp_path, direction="push")
     assert db.deletions == []
     assert "sample/hello" in t.Ledger(tmp_path, connection()).entries
+
+
+@pytest.mark.parametrize("git_state", ["clean", "dirty", "untracked"])
+def test_first_pull_protects_uncommitted_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, git_state: str
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    ledger = tmp_path / ".openroad/transfers.json"
+    ledger.unlink()
+    edit_database(db, "sample/hello", 3)
+
+    def git(command: list[str], **kwargs: Any) -> bytes:
+        if "status" in command:
+            return b" M sample/hello.w4gl\x00" if git_state == "dirty" else b""
+        assert "ls-files" in command
+        entries = b"H sample/app.json\x00"
+        if git_state != "untracked":
+            entries += b"H sample/hello.w4gl\x00"
+        return entries
+
+    monkeypatch.setattr(subprocess, "check_output", git)
+    if git_state == "clean":
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+        assert "RETURN 3" in path.read_text()
+        assert ledger.exists()
+        assert t.status(connection(), tmp_path)["conflicts"] == []
+    else:
+        with pytest.raises(ProjectError, match="No shared transfer checkpoint"):
+            t.execute_transfer(connection(), tmp_path, direction="pull")
+        assert "RETURN 1" in path.read_text()
+        assert not ledger.exists()
+        assert db.exports == []
+
+
+def test_pull_revalidates_receiver_after_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    edit_database(db, "sample/hello", 3)
+
+    def exporting(*args: Any) -> None:
+        db.exporting(*args)
+        edit_local(path, 2)
+
+    monkeypatch.setattr(t, "backup_application_xml", exporting)
+    with pytest.raises(ProjectError, match="Local source changed since planning"):
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert "RETURN 2" in path.read_text()
+    assert t.status(connection(), tmp_path)["conflicts"]
+
+
+def test_pull_rename_preserves_destination_created_during_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    destination = path.with_name("renamed.w4gl")
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    rename_objects(db, {"sample/hello": "sample/renamed"})
+
+    def exporting(*args: Any) -> None:
+        db.exporting(*args)
+        destination.write_text("concurrent local source")
+
+    monkeypatch.setattr(t, "backup_application_xml", exporting)
+    with pytest.raises(ProjectError, match="Local source changed since planning"):
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert path.exists()
+    assert destination.read_text() == "concurrent local source"
+    assert "sample/hello" in t.Ledger(tmp_path, connection()).entries
+
+
+@pytest.mark.parametrize("whole_app", [False, True])
+def test_push_revalidates_receiver_after_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, whole_app: bool
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    if whole_app:
+        (path.parent / "app.json").write_text('{"description":"changed"}')
+    else:
+        edit_local(path, 2)
+    db.imports.clear()
+    prepare = t.prepare
+
+    def preparing(*args: Any, **kwargs: Any) -> list[str]:
+        result = prepare(*args, **kwargs)
+        edit_database(db, "sample/hello", 3)
+        return result
+
+    monkeypatch.setattr(t, "prepare", preparing)
+    with pytest.raises(ProjectError, match="Database source changed since planning"):
+        t.execute_transfer(connection(), tmp_path, direction="push")
+    assert db.imports == []
+    assert b"RETURN 3" in etree.tostring(db.nodes["sample/hello"])
+    assert t.status(connection(), tmp_path)["conflicts"]
+
+
+def test_scoped_rename_swap_refuses_without_losing_either_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = source(tmp_path, name="a")
+    b = source(tmp_path, name="b")
+    edit_local(b, 2)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    rename_objects(db, {"sample/a": "sample/b", "sample/b": "sample/a"})
+    before = t.Ledger(tmp_path, connection()).path.read_bytes()
+
+    with pytest.raises(ProjectError, match="Pull the whole rename group"):
+        t.execute_transfer(
+            connection(), tmp_path, direction="pull", scope="sample/a", dry_run=True
+        )
+    with pytest.raises(ProjectError, match="Pull the whole rename group"):
+        t.execute_transfer(connection(), tmp_path, direction="pull", scope="sample/a")
+    assert db.exports == []
+    assert t.Ledger(tmp_path, connection()).path.read_bytes() == before
+    t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert "RETURN 2" in a.read_text()
+    assert "RETURN 1" in b.read_text()
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+@pytest.mark.parametrize("scope", [None, "sample", "renamed"])
+def test_application_rename_retry_includes_retained_components(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str | None
+) -> None:
+    original = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    rename_objects(db, {"sample": "renamed", "sample/hello": "renamed/hello"})
+    with monkeypatch.context() as patch:
+
+        def fail_projection(*args: Any, **kwargs: Any) -> None:
+            raise ProjectError("synthetic component projection failure")
+
+        patch.setattr(t, "project_component_files", fail_projection)
+        with pytest.raises(
+            ProjectError, match="synthetic component projection failure"
+        ):
+            t.execute_transfer(connection(), tmp_path, direction="pull")
+
+    assert not (tmp_path / "sample/app.json").exists()
+    assert original.exists()
+    assert (tmp_path / "renamed/app.json").exists()
+    assert t.status(connection(), tmp_path)["conflicts"] == []
+    t.execute_transfer(connection(), tmp_path, direction="pull", scope=scope)
+    assert not original.exists()
+    assert (tmp_path / "renamed/hello.w4gl").exists()
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+@pytest.mark.parametrize("whole_app", [False, True])
+def test_acknowledged_deletion_clears_compilation_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, whole_app: bool
+) -> None:
+    from gorak import compiler
+
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    compiler.queue_compilation(tmp_path, [("sample", "hello")])
+    path.unlink()
+    if whole_app:
+        (path.parent / "app.json").unlink()
+        path.parent.rmdir()
+    db.deleting(connection(), "sample", None if whole_app else "hello", path)
+    monkeypatch.setattr(
+        compiler, "compile_source", lambda *_: pytest.fail("Deleted target compiled")
+    )
+    t.execute_transfer(connection(), tmp_path, direction="sync", compile=True)
+    assert "compile" not in t.status(connection(), tmp_path)
