@@ -10,19 +10,25 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
+from release_version import version_tag
+
 from gorak.build_info import platform_id
 
 
 def release_tag(package_version: str, tag: str | None, release: bool) -> str:
-    selected = tag or f"v{package_version}"
+    try:
+        canonical = version_tag(package_version)
+    except ValueError as error:
+        raise ValueError(
+            "Release tag requires a non-development package version"
+        ) from error
+    selected = tag or canonical
     if not re.fullmatch(r"v[0-9][A-Za-z0-9.+-]*", selected):
         raise ValueError(
             "tag must start with v and a digit and contain only version characters"
         )
-    if release and (tag != f"v{package_version}" or "dev" in package_version):
-        raise ValueError(
-            "Release tag must equal v<package version>, without dev versions"
-        )
+    if release and tag != canonical:
+        raise ValueError(f"Release tag must equal {canonical}")
     return selected
 
 
@@ -34,7 +40,7 @@ def main() -> None:
     parser.add_argument(
         "--tag",
         default=os.environ.get("GORAK_BUILD_TAG") or None,
-        help="Release tag (defaults to v<package version>)",
+        help="Release tag (defaults to the repository's version-to-tag convention)",
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]

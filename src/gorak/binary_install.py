@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Iterator, Sequence
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,8 @@ from .build_info import build_info, version_text
 from .errors import ProjectError
 
 RECEIPT = "installation.json"
+TRANSACTION = ".install-transaction.json"
+SYSTEM_HELPER = "system-update.ps1"
 
 
 def executable_name() -> str:
@@ -59,8 +62,17 @@ def managed_root(executable: Path) -> Path:
     path = executable.resolve()
     root = path.parent.parent
     state = receipt(root)
-    if path != root / "bin" / executable_name() or state.get("sha256") != file_hash(
-        path
+    digest = file_hash(path)
+    # An interrupted swap may leave the new executable beside the old receipt.
+    # Permit only the exact journaled candidate to launch a staged repair worker.
+    interrupted = False
+    if (root / TRANSACTION).exists():
+        transaction = read_transaction(root)
+        interrupted = (
+            transaction["old"] == state and transaction["new"]["sha256"] == digest
+        )
+    if path != root / "bin" / executable_name() or (
+        state.get("sha256") != digest and not interrupted
     ):
         raise ProjectError("gorak executable does not match its installation receipt")
     return root
@@ -94,16 +106,152 @@ def probe(executable: Path, expected: dict[str, str]) -> None:
 @contextlib.contextmanager
 def install_lock(root: Path) -> Iterator[None]:
     lock = root / ".install-lock"
-    try:
-        lock.mkdir()
-    except FileExistsError as error:
+    if lock.is_symlink() or lock.is_dir():
         raise ProjectError(
-            "Another gorak install/update is active; inspect .install-lock before retrying"
-        ) from error
+            "Invalid or legacy installation lock; inspect before retrying"
+        )
+    # Keep the inode: unlinking a lock file permits concurrent locks on two inodes.
+    # Kernel locks release on process termination, including abrupt worker death.
+    with lock.open("a+b") as stream:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b"\0")
+            stream.flush()
+        stream.seek(0)
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise ProjectError("Another gorak install/update is active") from error
+        try:
+            yield
+        finally:
+            if sys.platform == "win32":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def atomic_write(path: Path, data: bytes) -> None:
+    pending = path.with_suffix(".pending.json")
+    if pending.is_symlink():
+        raise ProjectError("Managed installation files must not be symbolic links")
     try:
-        yield
+        with pending.open("wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        pending.replace(path)
     finally:
-        lock.rmdir()
+        pending.unlink(missing_ok=True)
+
+
+def read_transaction(root: Path) -> dict[str, Any]:
+    path = root / TRANSACTION
+    try:
+        if path.is_symlink():
+            raise ValueError("symlink")
+        transaction = json.loads(path.read_bytes())
+        if not isinstance(transaction, dict) or transaction.get("schema") != 1:
+            raise ValueError("schema")
+        for key in ("new", "old"):
+            state = transaction[key]
+            if state is None and key == "old":
+                continue
+            if (
+                not isinstance(state, dict)
+                or state.get("root") != str(root)
+                or state.get("product") != "gorak"
+                or state.get("schema") != 1
+                or state.get("scope") not in {"user", "system"}
+                or not isinstance(state.get("sha256"), str)
+            ):
+                raise ValueError("receipt")
+        return transaction
+    except (OSError, ValueError, KeyError) as error:
+        raise ProjectError(
+            "Invalid interrupted-install journal; installation unchanged"
+        ) from error
+
+
+def recover_install(root: Path) -> None:
+    """Complete or roll back a journaled swap. Caller holds the installation lock."""
+    if not (root / TRANSACTION).exists():
+        return
+    transaction = read_transaction(root)
+    old, new = transaction["old"], transaction["new"]
+    target = root / "bin" / executable_name()
+    previous = target.with_name(target.name + ".previous")
+    helper = root / SYSTEM_HELPER
+    for path in (
+        target,
+        previous,
+        root / "installation.previous.json",
+        helper,
+        root / (SYSTEM_HELPER + ".previous"),
+        root / RECEIPT,
+    ):
+        if path.is_symlink():
+            raise ProjectError("Recovery files must not be symbolic links")
+    current_hash = file_hash(target) if target.exists() else None
+    allowed = {new["sha256"], old["sha256"] if old else None, None}
+    if current_hash not in allowed:
+        raise ProjectError("Interrupted installation was modified; refusing recovery")
+    try:
+        committed = receipt(root) == new and current_hash == new["sha256"]
+        if new.get("helper_sha256"):
+            committed = (
+                committed
+                and helper.is_file()
+                and file_hash(helper) == new["helper_sha256"]
+            )
+    except ProjectError:
+        committed = False
+    if not committed:
+        if old is not None:
+            saved = (root / "installation.previous.json").read_bytes()
+            if json.loads(saved) != old or file_hash(previous) != old["sha256"]:
+                raise ProjectError("Previous installation failed recovery verification")
+            if old.get("helper_sha256"):
+                saved_helper = root / (SYSTEM_HELPER + ".previous")
+                if file_hash(saved_helper) != old["helper_sha256"]:
+                    raise ProjectError("Previous updater failed recovery verification")
+                restore_copy(saved_helper, helper)
+            else:
+                helper.unlink(missing_ok=True)
+            if current_hash != old["sha256"]:
+                restore_copy(previous, target)
+            if not (root / RECEIPT).exists() or (root / RECEIPT).read_bytes() != saved:
+                atomic_write(root / RECEIPT, saved)
+        else:
+            target.unlink(missing_ok=True)
+            helper.unlink(missing_ok=True)
+            target.with_name(target.name + ".pending").unlink(missing_ok=True)
+            (root / (SYSTEM_HELPER + ".pending")).unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                target.parent.rmdir()
+    (root / "installation.pending.json").unlink(missing_ok=True)
+    target.with_name(target.name + ".pending").unlink(missing_ok=True)
+    (root / (SYSTEM_HELPER + ".pending")).unlink(missing_ok=True)
+    (root / TRANSACTION).unlink()
+
+
+def restore_copy(source: Path, target: Path) -> None:
+    pending = target.with_name(target.name + ".pending")
+    if pending.is_symlink():
+        raise ProjectError("Managed installation files must not be symbolic links")
+    try:
+        shutil.copy2(source, pending)
+        replace_file(pending, target)
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def replace_file(source: Path, target: Path) -> None:
@@ -128,6 +276,8 @@ def install(source: Path, root: Path, scope: str, expected_hash: str) -> None:
     if root.is_symlink() or (root / "bin").is_symlink():
         raise ProjectError("Installation directories must not be symbolic links")
     root = root.resolve()
+    if scope == "system" and root != system_root():
+        raise ProjectError("System installations must use Program Files\\gorak")
     root.mkdir(parents=True, exist_ok=True)
     with install_lock(root):
         for path in (
@@ -135,6 +285,10 @@ def install(source: Path, root: Path, scope: str, expected_hash: str) -> None:
             root / "installation.previous.json",
             root / "installation.pending.json",
             root / "update-result.txt",
+            root / TRANSACTION,
+            root / SYSTEM_HELPER,
+            root / (SYSTEM_HELPER + ".previous"),
+            root / (SYSTEM_HELPER + ".pending"),
             root / "bin" / (executable_name() + ".previous"),
             root / "bin" / (executable_name() + ".pending"),
         ):
@@ -142,7 +296,10 @@ def install(source: Path, root: Path, scope: str, expected_hash: str) -> None:
                 raise ProjectError(
                     "Managed installation files must not be symbolic links"
                 )
+        recover_install(root)
         old: dict[str, Any] | None = None
+        # Pending files may remain if a process died before committing its journal.
+        (root / ".install-transaction.pending.json").unlink(missing_ok=True)
         existing = set(root.iterdir()) - {root / ".install-lock"}
         if existing:
             old = receipt(root)
@@ -158,7 +315,6 @@ def install(source: Path, root: Path, scope: str, expected_hash: str) -> None:
         if file_hash(source) != expected_hash:
             raise ProjectError("Staged executable checksum changed")
         probe(source, build_info())
-        target.parent.mkdir(exist_ok=True)
         pending = target.with_name(target.name + ".pending")
         previous = target.with_name(target.name + ".previous")
         receipt_path = root / RECEIPT
@@ -171,31 +327,46 @@ def install(source: Path, root: Path, scope: str, expected_hash: str) -> None:
             "sha256": expected_hash,
             **build_info(),
         }
+        helper_data = (
+            files("gorak").joinpath("install_scripts/system-update.ps1").read_bytes()
+            if scope == "system"
+            else None
+        )
+        if helper_data is not None:
+            new_state["helper_sha256"] = hashlib.sha256(helper_data).hexdigest()
         if old_receipt is not None:
-            (root / "installation.previous.json").write_bytes(old_receipt)
+            atomic_write(root / "installation.previous.json", old_receipt)
             shutil.copy2(target, previous)
-        replaced = False
+            if old and old.get("helper_sha256"):
+                helper = root / SYSTEM_HELPER
+                if file_hash(helper) != old["helper_sha256"]:
+                    raise ProjectError(
+                        "Installed updater changed outside the installer"
+                    )
+                shutil.copy2(helper, root / (SYSTEM_HELPER + ".previous"))
+        # Persist an immutable before-image before any active file is changed.
+        atomic_write(
+            root / TRANSACTION,
+            json.dumps({"schema": 1, "old": old, "new": new_state}).encode(),
+        )
         try:
+            target.parent.mkdir(exist_ok=True)
             shutil.copy2(source, pending)
             pending.chmod(0o755)
             if file_hash(pending) != expected_hash:
                 raise ProjectError("Staged executable copy failed verification")
             replace_file(pending, target)
-            replaced = True
             probe(target, build_info())
-            temp_receipt = root / "installation.pending.json"
-            temp_receipt.write_text(
-                json.dumps(new_state, indent=2) + "\n", encoding="utf-8"
+            if helper_data is not None:
+                helper_pending = root / (SYSTEM_HELPER + ".pending")
+                helper_pending.write_bytes(helper_data)
+                replace_file(helper_pending, root / SYSTEM_HELPER)
+            atomic_write(
+                receipt_path, (json.dumps(new_state, indent=2) + "\n").encode()
             )
-            temp_receipt.replace(receipt_path)
+            (root / TRANSACTION).unlink()
         except BaseException:
-            if replaced:
-                if old_receipt is not None:
-                    shutil.copy2(previous, pending)
-                    replace_file(pending, target)
-                    receipt_path.write_bytes(old_receipt)
-                else:
-                    target.unlink(missing_ok=True)
+            recover_install(root)
             raise
         finally:
             pending.unlink(missing_ok=True)
@@ -212,8 +383,11 @@ def self_update() -> str:
         )
     root = managed_root(Path(sys.executable))
     state = receipt(root)
+    if state["scope"] == "system":
+        launch_system_update(root)
+        return f"Updating gorak after administrator approval. Result: {root / 'update-result.txt'}"
     tag, asset = latest_release(build_info()["platform"])
-    if tag == state.get("tag"):
+    if tag == state.get("tag") and not (root / TRANSACTION).exists():
         return f"gorak is already at {tag}"
     staging = Path(tempfile.mkdtemp(prefix="gorak-update-"))
     candidate = staging / executable_name()
@@ -252,35 +426,87 @@ def self_update() -> str:
 
 def launch_windows_update(command: list[str], scope: str) -> None:
     if scope == "system":
-        if sys.platform != "win32":
-            raise ProjectError("System-wide binary updates require Windows")
-        # ShellExecute's runas verb supplies the standard UAC consent prompt.
-        execute = ctypes.windll.shell32.ShellExecuteW
-        execute.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_int,
-        ]
-        execute.restype = ctypes.c_void_p
-        result = execute(
-            None, "runas", command[0], subprocess.list2cmdline(command[1:]), None, 1
+        raise ProjectError("System updates must use the protected installed helper")
+    subprocess.Popen(
+        command,
+        env=child_environment(),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=0x00000200
+        | 0x00000008,  # CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+    )
+
+
+def system_root() -> Path:
+    if sys.platform != "win32":
+        raise ProjectError("System-wide binary updates require Windows")
+    buffer = ctypes.create_unicode_buffer(32768)
+    # CSIDL_PROGRAM_FILES: do not trust caller-controlled environment variables.
+    result = ctypes.windll.shell32.SHGetFolderPathW(None, 0x26, None, 0, buffer)
+    if result != 0:
+        raise ProjectError("Cannot locate Program Files")
+    return Path(buffer.value) / "gorak"
+
+
+def launch_system_update(root: Path) -> None:
+    if root != system_root() or root.is_symlink():
+        raise ProjectError("System updater must be installed in Program Files\\gorak")
+    helper = root / SYSTEM_HELPER
+    state = receipt(root)
+    helper_hashes = {state.get("helper_sha256")}
+    if (root / TRANSACTION).exists():
+        transaction = read_transaction(root)
+        if transaction["old"] == state:
+            helper_hashes.add(transaction["new"].get("helper_sha256"))
+    if (
+        helper.is_symlink()
+        or not helper.is_file()
+        or file_hash(helper) not in helper_hashes
+    ):
+        raise ProjectError(
+            "Protected system updater is missing or changed; rerun the installer"
         )
-        if result is None or result <= 32:
-            raise ProjectError(
-                "Administrator approval was cancelled or the updater could not start"
-            )
-    else:
-        subprocess.Popen(
-            command,
-            env=child_environment(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=0x00000200
-            | 0x00000008,  # CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+    launch_elevated_helper(helper)
+
+
+def launch_elevated_helper(helper: Path) -> None:
+    if sys.platform != "win32":
+        raise ProjectError("System-wide binary updates require Windows")
+    buffer = ctypes.create_unicode_buffer(32768)
+    if not ctypes.windll.kernel32.GetSystemDirectoryW(buffer, len(buffer)):
+        raise ProjectError("Cannot locate Windows PowerShell")
+    powershell = Path(buffer.value) / "WindowsPowerShell/v1.0/powershell.exe"
+    command = [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(helper),
+        "-WaitPid",
+        str(os.getpid()),
+    ]
+    execute = ctypes.windll.shell32.ShellExecuteW
+    execute.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_int,
+    ]
+    execute.restype = ctypes.c_void_p
+    result = execute(
+        None,
+        "runas",
+        str(powershell),
+        subprocess.list2cmdline(command),
+        str(helper.parent),
+        1,
+    )
+    if result is None or result <= 32:
+        raise ProjectError(
+            "Administrator approval was cancelled or the updater could not start"
         )
 
 

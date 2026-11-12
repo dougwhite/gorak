@@ -11,6 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from release_version import version_tag
+
 ROOT = Path(__file__).resolve().parent.parent
 UPSTREAM = "dougwhite/gorak"
 CONSUMERS = (
@@ -60,12 +62,10 @@ class GitHub:
 
 
 def candidate_tag(version: str, run: str) -> str:
-    match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:(a|b|rc)(\d+))?", version)
-    if not match or not run.isdecimal():
+    if not run.isdecimal():
         raise ValueError("Expected a package release version and numeric CI run number")
-    suffix = {"a": "alpha", "b": "beta", "rc": "rc"}.get(match[2])
-    prerelease = f"{suffix}.{match[3]}." if suffix else ""
-    return f"v{match[1]}-{prerelease}dev.{run}"
+    tag = version_tag(version)
+    return f"{tag}{'.' if '-' in tag else '-'}dev.{run}"
 
 
 def update_manifest(original: str, tag: str, source_version: int) -> tuple[str, int]:

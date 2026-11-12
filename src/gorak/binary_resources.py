@@ -17,6 +17,8 @@ def check_bundle() -> None:
     for resource in remote_script_resources():
         if not resource.read_bytes():
             raise ValueError(f"Empty packaged helper: {resource.name}")
+    if not files("gorak").joinpath("install_scripts/system-update.ps1").read_bytes():
+        raise ValueError("Missing protected system updater")
     for name in (
         "AGENTS.md",
         "field_defaults.json",

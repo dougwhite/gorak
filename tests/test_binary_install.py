@@ -61,7 +61,8 @@ def test_failed_post_install_probe_restores_executable_and_receipt(
         installer.install(candidate, root, "user", installer.file_hash(candidate))
     assert target(root).read_bytes() == b"new gorak"
     assert (root / installer.RECEIPT).read_bytes() == before
-    assert not (root / ".install-lock").exists()
+    with installer.install_lock(root):
+        pass
 
 
 def test_bad_candidate_preserves_installed_version(
@@ -225,7 +226,7 @@ def test_failed_first_install_can_be_retried(
     monkeypatch.setattr(installer, "probe", probe)
     with pytest.raises(ProjectError, match="cannot start"):
         installer.install(candidate, root, "user", installer.file_hash(candidate))
-    assert list(root.iterdir()) == []
+    assert list(root.iterdir()) == [root / ".install-lock"]
     monkeypatch.setattr(installer, "probe", lambda *a: None)
     installer.install(candidate, root, "user", installer.file_hash(candidate))
     assert installer.managed_root(target(root)) == root
@@ -249,3 +250,90 @@ def test_windows_user_handoff_detaches_without_a_shell(
     assert calls[0][1]["creationflags"] == 0x208
     assert calls[0][1]["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
     assert "shell" not in calls[0][1]
+
+
+def test_system_update_does_not_download_or_elevate_a_user_candidate(
+    candidate: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "protected installation"
+    installer.install(candidate, root, "user", installer.file_hash(candidate))
+    state = installer.receipt(root)
+    state["scope"] = "system"
+    (root / installer.RECEIPT).write_text(json.dumps(state))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(target(root)))
+    calls: list[Path] = []
+    monkeypatch.setattr(installer, "launch_system_update", calls.append)
+
+    def unexpected(*args: Any) -> Any:
+        raise AssertionError(
+            "System download must happen only inside the elevated helper"
+        )
+
+    monkeypatch.setattr(installer, "latest_release", unexpected)
+    monkeypatch.setattr(installer, "download_binary", unexpected)
+    assert "administrator approval" in installer.self_update()
+    assert calls == [root]
+    with pytest.raises(ProjectError, match="protected installed helper"):
+        installer.launch_windows_update([str(candidate)], "system")
+
+
+def test_system_helper_must_match_protected_installation(
+    candidate: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "protected"
+    installer.install(candidate, root, "user", installer.file_hash(candidate))
+    helper = root / installer.SYSTEM_HELPER
+    helper.write_bytes(b"synthetic protected helper")
+    state = installer.receipt(root)
+    state.update(scope="system", helper_sha256=installer.file_hash(helper))
+    (root / installer.RECEIPT).write_text(json.dumps(state))
+    monkeypatch.setattr(installer, "system_root", lambda: root)
+    launched: list[Path] = []
+    monkeypatch.setattr(installer, "launch_elevated_helper", launched.append)
+    installer.launch_system_update(root)
+    assert launched == [helper]
+    helper.write_bytes(b"changed")
+    with pytest.raises(ProjectError, match="missing or changed"):
+        installer.launch_system_update(root)
+    with pytest.raises(ProjectError, match="Program Files"):
+        installer.launch_system_update(tmp_path / "user-controlled")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows system installation")
+@pytest.mark.parametrize("fail_receipt", [False, True])
+def test_system_install_updates_or_restores_its_helper(
+    candidate: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_receipt: bool
+) -> None:
+    root = tmp_path / "protected"
+    monkeypatch.setattr(installer, "system_root", lambda: root)
+    installer.install(candidate, root, "system", installer.file_hash(candidate))
+    helper = root / installer.SYSTEM_HELPER
+    old_helper = helper.read_bytes()
+    old_state = installer.receipt(root)
+    assert old_state["helper_sha256"] == installer.file_hash(helper)
+    resources = tmp_path / "resources"
+    (resources / "install_scripts").mkdir(parents=True)
+    (resources / "install_scripts" / installer.SYSTEM_HELPER).write_bytes(
+        b"synthetic next helper"
+    )
+    monkeypatch.setattr(installer, "files", lambda package: resources)
+    candidate.write_bytes(b"next executable")
+    replace = Path.replace
+
+    def replace_receipt(path: Path, destination: Path) -> Path:
+        if fail_receipt and path.name == "installation.pending.json":
+            raise OSError("receipt blocked")
+        return replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", replace_receipt)
+    if fail_receipt:
+        with pytest.raises(OSError, match="receipt blocked"):
+            installer.install(candidate, root, "system", installer.file_hash(candidate))
+        assert helper.read_bytes() == old_helper
+        assert installer.receipt(root) == old_state
+    else:
+        installer.install(candidate, root, "system", installer.file_hash(candidate))
+        assert helper.read_bytes() == b"synthetic next helper"
+        assert installer.receipt(root)["helper_sha256"] == installer.file_hash(helper)
+    assert (root / (installer.SYSTEM_HELPER + ".previous")).read_bytes() == old_helper

@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Embedded release tag (empty uses v<package version>); does not create a tag'
+        description: 'Embedded release tag (empty uses the package release tag); does not create a tag'
         type: string
         required: false
 
@@ -63,6 +63,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 -Scope User -Directory "$env:RUNNER_TEMP\gorak-installer-smoke" -FromDirectory dist/binary
+      - name: Exercise protected Windows helper offline
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke_system_update.ps1 -Binary dist/binary/gorak-windows-x64.exe
       - uses: actions/upload-artifact@v4
         with:
           name: gorak-${{ matrix.platform }}

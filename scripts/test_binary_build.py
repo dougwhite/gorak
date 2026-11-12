@@ -7,9 +7,18 @@ from assemble_binary_release import assemble
 from build_binary import release_tag
 
 
-@pytest.mark.parametrize("version", ["1.2.3", "0.1.0a1"])
-def test_release_tag_matches_package_including_alpha(version: str) -> None:
-    assert release_tag(version, f"v{version}", True) == f"v{version}"
+@pytest.mark.parametrize(
+    ("version", "tag"),
+    [
+        ("1.2.3", "v1.2.3"),
+        ("0.1.0a1", "v0.1.0-alpha.1"),
+        ("1.2.3b2", "v1.2.3-beta.2"),
+        ("1.2.3rc3", "v1.2.3-rc.3"),
+    ],
+)
+def test_release_tag_matches_package_including_alpha(version: str, tag: str) -> None:
+    assert release_tag(version, tag, True) == tag
+    assert release_tag(version, None, False) == tag
 
 
 @pytest.mark.parametrize(
@@ -18,6 +27,7 @@ def test_release_tag_matches_package_including_alpha(version: str) -> None:
         ("1.2.3", None),
         ("1.2.3", "v1.2.4"),
         ("0.1.0a1", "v0.1.0-alpha.1.dev.42"),
+        ("0.1.0a1", "v0.1.0a1"),
         ("1.2.3.dev1", "v1.2.3.dev1"),
     ],
 )

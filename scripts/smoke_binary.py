@@ -14,6 +14,23 @@ def smoke(binary: Path) -> None:
     fixture = (
         Path(__file__).resolve().parents[1] / "tests/fixtures/fm_example_frame.xml"
     )
+    if os.name == "nt":
+        # Parse both PowerShell entry points without executing downloads or elevation.
+        script_root = Path(__file__).resolve().parents[1]
+        for script in (
+            script_root / "scripts/install.ps1",
+            script_root / "src/gorak/install_scripts/system-update.ps1",
+        ):
+            subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-Command",
+                    "$errors = $null; $tokens = $null; [System.Management.Automation.Language.Parser]::ParseFile($env:GORAK_PARSE_SCRIPT, [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }",
+                ],
+                env={**os.environ, "GORAK_PARSE_SCRIPT": str(script)},
+                check=True,
+            )
     with tempfile.TemporaryDirectory(prefix="gorak-binary-smoke-") as temporary:
         root = Path(temporary)
         portable = root / (
