@@ -12,6 +12,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 from lxml import etree
 
@@ -22,7 +23,7 @@ from .export import (
     project_component_files,
 )
 from .image_assets import AssetWriter, externalize
-from .import_backend import import_component_xml
+from .import_backend import delete_database_source, import_component_xml
 from .importer import validate_name
 from .native_styles import parent_styles, resolution_scope, validation_scope
 from .operation_progress import report
@@ -333,15 +334,20 @@ class Result:
     succeeded: list[str] = field(default_factory=list)
     failed: dict[str, str] = field(default_factory=dict)
     skipped: dict[str, str] = field(default_factory=dict)
+    deleted: list[str] = field(default_factory=list)
+    deletion_backup: Path | None = None
 
     def summary(self) -> str:
         lines = [
-            f"{self.direction.capitalize()} complete: {len(self.succeeded)} succeeded, {len(self.failed)} failed, {len(self.skipped)} skipped"
+            f"{self.direction.capitalize()} complete: {len(self.succeeded) + len(self.deleted)} succeeded, {len(self.failed)} failed, {len(self.skipped)} skipped"
         ]
         lines.extend(
             f"{key}: {reason}"
             for key, reason in {**self.failed, **self.skipped}.items()
         )
+        lines.extend(f"Deleted {key}" for key in self.deleted)
+        if self.deletion_backup is not None:
+            lines.append(f"Deleted local source saved in {self.deletion_backup}")
         return "\n".join(lines)
 
 
@@ -517,22 +523,20 @@ def push(
     removed = missing_local if plan is None else missing_local & plan.push
     if plan is not None:
         changed -= removed
-    for key in sorted(removed):
-        result.failed[key] = (
-            "Local deletion or rename requires a native database operation; it is not imported as a duplicate"
-        )
-    removed_apps = {key for key in missing_local if "/" not in key}
-    for key in list(changed):
-        app = key.split("/")[0]
-        new = key not in ledger.entries
-        ambiguous = (app not in ledger.entries and removed_apps) or any(
-            old.startswith(app + "/") for old in missing_local
-        )
-        if new and ambiguous:
-            result.skipped[key] = (
-                "Resolve the local deletion/rename before adding a new object in this scope"
-            )
-            changed.remove(key)
+    if plan is None:
+        for key in sorted(removed):
+            result.failed[key] = "Use the CLI to plan a tracked source deletion"
+        removed_apps = {key for key in missing_local if "/" not in key}
+        for key in list(changed):
+            app = key.split("/")[0]
+            if key not in ledger.entries and (
+                (app not in ledger.entries and removed_apps)
+                or any(old.startswith(app + "/") for old in missing_local)
+            ):
+                result.skipped[key] = (
+                    "Resolve the local deletion/rename before adding a new object in this scope"
+                )
+                changed.remove(key)
     if not changed:
         if not dry_run:
             refresh_tokens(connection, ledger, result, plan.scope if plan else None)
@@ -1064,6 +1068,10 @@ class TransferPlan:
         }
         if self.database_deletions:
             result["database_deletions"] = sorted(self.database_deletions)
+        if removed := self.push & self.missing_local:
+            result["local_deletions"] = sorted(removed)
+        if moves := {new: old for old, new in self.renamed.items() if new in self.pull}:
+            result["renames"] = moves
         return result
 
 
@@ -1092,6 +1100,7 @@ def plan_transfer(
     scope: str | None = None,
     direction: str = "sync",
     full: bool = False,
+    prefer: str | None = None,
 ) -> TransferPlan:
     check_paths(root)
     ledger = Ledger(root, connection)
@@ -1153,6 +1162,24 @@ def plan_transfer(
         for old, new in renamed.items()
         if "/" not in old and old.casefold() in pull_apps
     )
+    database_changes = {
+        key
+        for key, token in remote.items()
+        if previous.get(key.casefold(), {}).get("database") != token
+    }
+    restore_apps: set[str] = set()
+    if prefer == "pull" and direction != "push" and (scope is None or "/" not in scope):
+        for key, entry in ledger.entries.items():
+            if "/" in key or not isinstance(entry.get("database"), dict):
+                continue
+            current = renamed.get(key, key).casefold()
+            if current in pull_apps or current not in remote_keys:
+                continue
+            if not (in_scope(key, scope) or in_scope(current, scope)):
+                continue
+            if full or any(in_scope(name, current) for name in database_changes):
+                restore_apps.add(current)
+        pull_apps.update(restore_apps)
     if (
         app_scope
         and app_scope.casefold() not in pull_apps
@@ -1173,7 +1200,8 @@ def plan_transfer(
     deleted = {
         key
         for key, entry in ledger.entries.items()
-        if isinstance(entry.get("database"), dict)
+        if isinstance(token := entry.get("database"), dict)
+        and identity(token) is not None
         and key.casefold() not in remote_keys
         and key not in renamed
     }
@@ -1182,7 +1210,9 @@ def plan_transfer(
         for key in deleted & missing_local
         if in_scope(key, scope) and local_source_absent(root, key)
     }
-    missing_local -= acknowledged
+    # Both primary source objects are gone. Any local companion files still
+    # need to be moved aside on pull.
+    missing_local -= deleted
     deleted -= acknowledged
     pending_deletions = {
         key for key in deleted if direction != "push" and in_scope(key, scope)
@@ -1198,11 +1228,6 @@ def plan_transfer(
         for key, value in local.items()
         if previous.get(key.casefold(), {}).get("hash") != value
     }
-    database_changes = {
-        key
-        for key, token in remote.items()
-        if previous.get(key.casefold(), {}).get("database") != token
-    }
     push = {
         key
         for key in (set(local) | local_changes if full else local_changes)
@@ -1210,8 +1235,13 @@ def plan_transfer(
     }
     pull = {
         key
-        for key in (remote if full else database_changes)
-        if selected(key, old_names, remote_keys)
+        for key in remote
+        if (
+            full
+            or key in database_changes
+            or key.split("/", 1)[0].casefold() in restore_apps
+        )
+        and selected(key, old_names, remote_keys)
         and direction != "push"
         and key.split("/", 1)[0].casefold() in pull_apps
     }
@@ -1286,6 +1316,227 @@ def plan_transfer(
     )
 
 
+def forget_deleted(root: Path, ledger: Ledger, key: str) -> None:
+    from .compiler import clear_compiled_targets
+
+    for recorded in list(ledger.entries):
+        if in_scope(recorded, key):
+            ledger.entries.pop(recorded)
+    ledger.save()
+    app, _, component = key.partition("/")
+    clear_compiled_targets(root, app, component or None)
+
+
+def apply_local_deletions(root: Path, plan: TransferPlan, result: Result) -> None:
+    backup = root / ".openroad/deletions" / uuid4().hex
+    by_app: dict[str, dict[str, str]] = {}
+    for key in sorted(plan.database_deletions):
+        app, _, component = key.partition("/")
+        moved: list[tuple[Path, Path]] = []
+        try:
+            if app not in by_app:
+                by_app[app] = hashes(root, [app])
+            current = by_app[app]
+            expected = {
+                name: value for name, value in plan.local.items() if in_scope(name, key)
+            }
+            actual = {
+                name: value for name, value in current.items() if in_scope(name, key)
+            }
+            if actual != expected:
+                raise ProjectError(
+                    "Local source changed since planning; rerun the command"
+                )
+            folder = root / app
+            paths = (
+                [folder / f"{component}{suffix}" for suffix in SUFFIXES]
+                if component
+                else [folder]
+            )
+            for path in paths:
+                if not path.exists():
+                    continue
+                destination = backup / path.relative_to(root)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                path.rename(destination)
+                moved.append((path, destination))
+        except (OSError, ProjectError) as ex:
+            for path, destination in reversed(moved):
+                if not path.exists():
+                    destination.rename(path)
+                else:
+                    result.deletion_backup = backup.relative_to(root)
+            result.failed[key] = str(ex)
+            continue
+        result.deleted.append(key)
+        if moved:
+            result.deletion_backup = backup.relative_to(root)
+        try:
+            forget_deleted(root, plan.ledger, key)
+        except (OSError, ValueError, ProjectError) as ex:
+            result.failed[key] = (
+                f"Local source removed; could not record deletion: {ex}"
+            )
+
+
+def apply_database_deletions(
+    connection: OpenRoadConnection,
+    root: Path,
+    plan: TransferPlan,
+    result: Result,
+    replacements: set[str],
+) -> None:
+    requested = (plan.push & plan.missing_local) | replacements
+    targets = sorted(
+        key
+        for key in requested
+        if "/" not in key or key.split("/", 1)[0] not in requested
+    )
+    if not targets:
+        return
+    planned = {key.casefold(): value for key, value in plan.remote.items()}
+    try:
+        current = {
+            key.casefold(): value for key, value in inventory(connection).items()
+        }
+    except Exception as ex:
+        for key in targets:
+            result.failed[key] = f"Could not verify source before deletion: {ex}"
+        return
+    actual_names = {key.casefold(): key for key in plan.remote}
+    submitted: dict[str, str] = {}
+    log_dir = root / ".openroad/deletions" / uuid4().hex
+    failed_imports = set(result.failed) | set(result.skipped)
+    additions = {
+        key for key in plan.push if key in plan.local and key.casefold() not in planned
+    }
+    for key in targets:
+        app, _, component = key.partition("/")
+        if any(
+            (in_scope(added, app) if component else "/" not in added)
+            and any(
+                in_scope(added, failed) or in_scope(failed, added)
+                for failed in failed_imports
+            )
+            for added in additions
+        ):
+            result.skipped[key] = "A related import failed; the original was kept"
+            continue
+        replacement = key in replacements
+        if replacement and key not in result.succeeded:
+            result.skipped[key] = (
+                "The local version was not imported; the renamed source was kept"
+            )
+            continue
+        old = plan.ledger.entries[key].get("database")
+        slot = plan.renamed.get(key, key).casefold()
+        token = planned.get(slot)
+        if not replacement and (
+            not isinstance(old, dict)
+            or not token
+            or identity(old) is None
+            or identity(old) != identity(token)
+        ):
+            result.failed[key] = (
+                "Cannot verify the database identity of the deleted source"
+            )
+            continue
+        if (
+            not replacement
+            and (root / (key + ".w4gl") if component else root / app).exists()
+        ):
+            result.failed[key] = (
+                "Local source still exists; remove it before deleting in Workbench"
+            )
+            continue
+        if {name: value for name, value in planned.items() if in_scope(name, slot)} != {
+            name: value for name, value in current.items() if in_scope(name, slot)
+        }:
+            result.failed[key] = (
+                "Database source changed since planning; rerun the command"
+            )
+            continue
+        actual_app, _, actual_component = actual_names[slot].partition("/")
+        try:
+            if replacement:
+                # The old-name import has succeeded. Keep the renamed object
+                # pending for deletion if native cleanup cannot finish now.
+                plan.ledger.record(actual_names[slot], "", planned[slot])
+                plan.ledger.save()
+            delete_database_source(
+                connection,
+                actual_app,
+                actual_component or None,
+                log_dir / f"{actual_app}-{actual_component or 'application'}.log",
+            )
+        except Exception as ex:
+            result.failed[key] = str(ex)
+        else:
+            submitted[key] = slot
+    if submitted:
+        try:
+            remaining = {
+                key.casefold(): token for key, token in inventory(connection).items()
+            }
+        except Exception as ex:
+            for key in submitted:
+                result.failed[key] = (
+                    f"Deletion submitted; could not confirm catalog result: {ex}"
+                )
+            return
+        for key, slot in submitted.items():
+            if any(
+                in_scope(name, slot)
+                or (
+                    ("/" in name) == ("/" in slot)
+                    and identity(token) == identity(planned[slot])
+                )
+                for name, token in remaining.items()
+            ):
+                result.failed[key] = (
+                    "OpenROAD did not remove the source from the catalog"
+                )
+            else:
+                try:
+                    forget_deleted(
+                        root,
+                        plan.ledger,
+                        actual_names[slot] if key in replacements else key,
+                    )
+                except (OSError, ValueError, ProjectError) as ex:
+                    result.failed[key] = (
+                        f"Database source removed; could not record deletion: {ex}"
+                    )
+                result.deleted.append(actual_names[slot])
+
+
+def replacements_for_renames(plan: TransferPlan, prefer: str | None) -> set[str]:
+    moved = {old.casefold(): (old, new) for old, new in plan.renamed.items()}
+    remote = {key.casefold() for key in plan.remote}
+    replacements: set[str] = set()
+    for key in sorted(plan.push - plan.missing_local):
+        app = key.split("/", 1)[0]
+        move = moved.get(app.casefold()) or moved.get(key.casefold())
+        if move is None:
+            continue
+        old, new = move
+        if (
+            prefer != "push"
+            or old.casefold() in remote
+            or old not in plan.push
+            or any(in_scope(local, new) for local in plan.local)
+        ):
+            raise ProjectError(
+                f"{key} was renamed in Workbench to {new}. "
+                "Pull the rename or force-push the original application or component if its old name is free."
+            )
+        replacements.add(old)
+    for old in replacements:
+        new = plan.renamed[old]
+        plan.pull = {key for key in plan.pull if not in_scope(key, new)}
+    return replacements
+
+
 def execute_transfer(
     connection: OpenRoadConnection,
     root: Path,
@@ -1301,7 +1552,9 @@ def execute_transfer(
         raise ProjectError(
             "Use push --full or pull --full to select the source of a full transfer"
         )
-    plan = plan_transfer(connection, root, scope=scope, direction=direction, full=full)
+    plan = plan_transfer(
+        connection, root, scope=scope, direction=direction, full=full, prefer=prefer
+    )
     deferred_apps: set[str] = set()
     if prefer == "push":
         plan.pull.difference_update(
@@ -1311,11 +1564,18 @@ def execute_transfer(
             item.database for item in plan.conflicts if item.local in plan.push
         )
     elif prefer == "pull":
+        pulled_slots = {key.casefold() for key in plan.pull}
+
+        def database_wins(key: str) -> bool:
+            return key.casefold() in pulled_slots or any(
+                in_scope(key, deleted) for deleted in plan.database_deletions
+            )
+
         unresolved = [
             item
             for item in plan.conflicts
             if item.local in plan.push
-            and item.database not in plan.pull
+            and not database_wins(item.database)
             and direction == "sync"
         ]
         if unresolved and not dry_run:
@@ -1325,17 +1585,21 @@ def execute_transfer(
                 + ". Resolve the deletion or rename before syncing."
             )
         overridden = {
-            item.local for item in plan.conflicts if item.database in plan.pull
+            item.local for item in plan.conflicts if database_wins(item.database)
         }
-        pulled_slots = {key.casefold() for key in plan.pull}
         deferred_apps = {
             key
             for key in overridden & plan.push
-            if "/" not in key and key.casefold() not in pulled_slots
+            if "/" not in key and not database_wins(key)
         }
         plan.push.difference_update(overridden)
+    replacements = replacements_for_renames(plan, prefer) if prefer == "push" else set()
     if dry_run:
         preview = plan.preview()
+        if replacements:
+            preview["replace_database_renames"] = sorted(
+                plan.renamed[key] for key in replacements
+            )
         if deferred_apps:
             preview["deferred_application_pushes"] = sorted(deferred_apps)
         return json.dumps(preview, indent=2)
@@ -1350,17 +1614,8 @@ def execute_transfer(
         )
         raise ProjectError(f"Transfer conflicts:\n{details}\n{hint}")
 
-    renamed_slots = {key.casefold(): name for key, name in plan.renamed.items()}
-    for key in sorted(plan.push):
-        app = key.split("/", 1)[0]
-        renamed_to = renamed_slots.get(key.casefold()) or renamed_slots.get(
-            app.casefold()
-        )
-        if renamed_to:
-            raise ProjectError(
-                f"{key} was renamed in Workbench to {renamed_to}. "
-                "Resolve the rename before pushing to the old name."
-            )
+    if prefer != "push":
+        replacements_for_renames(plan, prefer)
     if scope and "/" in scope:
         local_apps = {key.casefold() for key in plan.local if "/" not in key}
         remote_apps = {key.casefold() for key in plan.remote if "/" not in key}
@@ -1368,7 +1623,10 @@ def execute_transfer(
             raise ProjectError(
                 "Export the application before pulling an individual component"
             )
-        if any(key.split("/", 1)[0].casefold() not in remote_apps for key in plan.push):
+        if any(
+            key.split("/", 1)[0].casefold() not in remote_apps
+            for key in plan.push - plan.missing_local
+        ):
             raise ProjectError(
                 "Push the application before pushing an individual component"
             )
@@ -1381,10 +1639,7 @@ def execute_transfer(
     if direction != "push":
         pulled = pull(connection, root, plan=plan)
         results.append(pulled)
-        for key in sorted(plan.database_deletions):
-            pulled.failed[key] = (
-                "Deleted in Workbench. Remove the local source to accept the deletion."
-            )
+        apply_local_deletions(root, plan, pulled)
         if compile:
             from .compiler import queue_compilation
 
@@ -1405,15 +1660,15 @@ def execute_transfer(
                     connection, root, pulled, scope, additional=pulled_for_compile
                 )
     if direction != "pull":
-        results.append(
-            push(
-                connection,
-                root,
-                compile=compile,
-                plan=plan,
-                pulled_for_compile=pulled_for_compile,
-            )
+        pushed = push(
+            connection,
+            root,
+            compile=compile,
+            plan=plan,
+            pulled_for_compile=pulled_for_compile,
         )
+        apply_database_deletions(connection, root, plan, pushed, replacements)
+        results.append(pushed)
     summary = "\n".join(result.summary() for result in results)
     if deferred_apps:
         summary += (
@@ -1437,6 +1692,8 @@ def status(connection: OpenRoadConnection, root: Path) -> dict[str, object]:
 
 def format_status(state: dict[str, object]) -> str:
     sections = []
+    removed = set(cast(list[str], state.get("local_deletions", [])))
+    renamed = cast(dict[str, str], state.get("renames", {}))
     for key, marker, label in (
         ("push", "->", "Pending push"),
         ("pull", "<-", "Pending pull"),
@@ -1449,7 +1706,14 @@ def format_status(state: dict[str, object]) -> str:
                 "\n".join(
                     [
                         f"{label} ({len(items)}):",
-                        *(f"{marker} {item}" for item in items),
+                        *(
+                            f"{marker} {item} (delete)"
+                            if key == "push" and item in removed
+                            else f"{marker} {item} (renamed from {renamed[item]})"
+                            if key == "pull" and item in renamed
+                            else f"{marker} {item}"
+                            for item in items
+                        ),
                     ]
                 )
             )

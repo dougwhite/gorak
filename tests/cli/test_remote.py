@@ -167,6 +167,7 @@ class TestRemoteInstallCommand:
             "backup-component.bat",
             "compile-source.bat",
             "create-source.bat",
+            "delete-source.bat",
             "get-app-list.bat",
             "get-app-sync-metadata.bat",
             "get-component-list.bat",

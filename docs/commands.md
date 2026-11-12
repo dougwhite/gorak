@@ -152,8 +152,10 @@ component name. Quote `'APP!COMPONENT'` in Bash.
 `--dry-run` previews transfers. `push --full` and `pull --full` include
 unchanged source in scope. Transfers compile only with `--compile`.
 
-To accept a deletion, remove the object in Workbench and the matching source
-files locally, then run `gorak sync`.
+Push, pull, and sync transfer tracked deletions. A deletion conflicts with edits
+on the other side. Pull saves removed files in `.openroad/deletions/`.
+Workbench renames keep their identity on pull. A disk rename pushes as an add
+and a delete.
 
 ## Compile, run, and test
 

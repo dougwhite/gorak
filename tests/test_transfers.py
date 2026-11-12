@@ -32,11 +32,21 @@ class Database:
         self.nodes: dict[str, etree._Element] = {}
         self.imports: list[str] = []
         self.exports: list[str] = []
+        self.deletions: list[str] = []
         self.reject: set[str] = set()
         self.reads = 0
         monkeypatch.setattr(t, "inventory", self.inventory)
         monkeypatch.setattr(t, "import_component_xml", self.importing)
         monkeypatch.setattr(t, "backup_application_xml", self.exporting)
+        monkeypatch.setattr(t, "delete_database_source", self.deleting)
+
+    def deleting(self, c: Any, app: str, component: str | None, log: Path) -> None:
+        key = f"{app}/{component}" if component else app
+        self.deletions.append(key)
+        for name in list(self.tokens):
+            if name == key or name.startswith(key + "/"):
+                self.tokens.pop(name)
+                self.nodes.pop(name)
 
     def inventory(self, c: Any, app: str | None = None) -> dict[str, dict[str, object]]:
         self.reads += 1
@@ -1158,24 +1168,22 @@ def test_application_scope_excludes_conflicts_in_other_apps(
     ]
 
 
-def test_component_scope_preserves_local_rename_protection(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_local_rename_is_an_add_and_a_tracked_delete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = source(tmp_path)
     db = Database(monkeypatch)
-    t.execute_transfer(connection(), tmp_path, direction="push", compile=False)
-    db.imports.clear()
+    t.execute_transfer(connection(), tmp_path, direction="push")
     path.rename(path.with_name("renamed.w4gl"))
-    with pytest.raises(ProjectError, match="Resolve the local deletion/rename"):
-        t.execute_transfer(
-            connection(),
-            tmp_path,
-            direction="push",
-            scope="sample/renamed",
-            compile=False,
-        )
-    assert db.imports == []
-    assert "sample/renamed" not in db.nodes
+    state = t.status(connection(), tmp_path)
+    assert state["push"] == ["sample/hello", "sample/renamed"]
+    assert state["local_deletions"] == ["sample/hello"]
+    assert "-> sample/hello (delete)" in t.format_status(state)
+    t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert db.deletions == ["sample/hello"]
+    assert "sample/renamed" in db.nodes
+    assert "sample/hello" not in db.nodes
 
 
 def test_pull_requires_a_local_application(
@@ -1199,7 +1207,7 @@ def test_pull_requires_a_local_application(
     assert not (project / "sample").exists()
 
 
-def test_deleted_database_component_requires_manual_resolution(
+def test_deleted_database_component_is_backed_up_after_conflict_resolution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1213,11 +1221,11 @@ def test_deleted_database_component_requires_manual_resolution(
     with pytest.raises(ProjectError, match="Database object was deleted"):
         t.execute_transfer(connection(), tmp_path, direction="pull")
     assert "RETURN 2" in path.read_text()
-    with pytest.raises(ProjectError, match="Remove the local source"):
-        t.execute_transfer(connection(), tmp_path, direction="pull", prefer="pull")
-    assert path.exists()
-    path.unlink()
-    t.execute_transfer(connection(), tmp_path, direction="sync")
+    result = t.execute_transfer(connection(), tmp_path, direction="sync", prefer="pull")
+    assert "Deleted sample/hello" in result
+    assert not path.exists()
+    backups = list((tmp_path / ".openroad/deletions").glob("*/sample/hello.w4gl"))
+    assert len(backups) == 1 and "RETURN 2" in backups[0].read_text()
     assert "sample/hello" not in t.Ledger(tmp_path, connection()).entries
 
 
@@ -1256,3 +1264,145 @@ def test_app_export_initializes_transfer_history_and_app_import_creates_source(
     edit_local(project / "sample/hello.w4gl", 2)
     cli.main(["push", "sample/hello"])
     assert database.imports == ["sample", "sample/hello"]
+
+
+def test_delete_without_ledger_never_removes_database_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    path.unlink()
+    (tmp_path / ".openroad/transfers.json").unlink()
+    t.execute_transfer(connection(), tmp_path, direction="push", prefer="push")
+    assert db.deletions == []
+    assert "sample/hello" in db.nodes
+
+
+@pytest.mark.parametrize("prefer", ["push", "pull"])
+def test_application_delete_conflicts_with_new_workbench_component(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prefer: str
+) -> None:
+    import shutil
+
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    shutil.rmtree(path.parent)
+    node = deepcopy(db.nodes["sample/hello"])
+    node.set("name", "added")
+    db.nodes["sample/added"] = node
+    db.tokens["sample/added"] = {"id": 90, "name": "added", "count": 1}
+    with pytest.raises(ProjectError, match="sample/added"):
+        t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert db.deletions == db.exports == []
+    t.execute_transfer(connection(), tmp_path, direction="sync", prefer=prefer)
+    if prefer == "push":
+        assert not db.nodes
+        assert db.deletions == ["sample"]
+    else:
+        assert not db.deletions
+        assert (tmp_path / "sample/added.w4gl").exists()
+        assert (tmp_path / "sample/app.json").exists()
+
+
+def test_force_push_restores_original_name_after_workbench_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    edit_local(path, 2)
+    rename_objects(db, {"sample/hello": "sample/renamed"})
+    state = t.format_status(t.status(connection(), tmp_path))
+    assert "<- sample/renamed (renamed from sample/hello)" in state
+    assert "!! sample/hello <> sample/renamed" in state
+    with pytest.raises(ProjectError, match="Database object was renamed"):
+        t.execute_transfer(connection(), tmp_path, direction="sync")
+    t.execute_transfer(connection(), tmp_path, direction="sync", prefer="push")
+    assert db.deletions == ["sample/renamed"]
+    assert b"RETURN 2" in etree.tostring(db.nodes["sample/hello"])
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+def test_failed_rename_import_preserves_original_database_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    path.rename(path.with_name("renamed.w4gl"))
+    db.reject.add("sample/renamed")
+    with pytest.raises(ProjectError, match="original was kept"):
+        t.execute_transfer(connection(), tmp_path, direction="push")
+    assert db.deletions == []
+    assert "sample/hello" in db.nodes
+
+
+def test_failed_forced_rename_cleanup_is_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    edit_local(path, 2)
+    rename_objects(db, {"sample/hello": "sample/renamed"})
+
+    def fail(*args: Any) -> None:
+        raise ProjectError("synthetic deletion failure")
+
+    monkeypatch.setattr(t, "delete_database_source", fail)
+    with pytest.raises(ProjectError, match="synthetic deletion failure"):
+        t.execute_transfer(connection(), tmp_path, direction="sync", prefer="push")
+    assert "sample/hello" in db.nodes and "sample/renamed" in db.nodes
+    assert t.status(connection(), tmp_path)["local_deletions"] == ["sample/renamed"]
+    monkeypatch.setattr(t, "delete_database_source", db.deleting)
+    t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert db.deletions == ["sample/renamed"]
+    assert b"RETURN 2" in etree.tostring(db.nodes["sample/hello"])
+
+
+def test_force_pull_archives_deleted_application_and_local_edits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    (path.parent / "app.json").write_text('{"description":"Local change"}')
+    edit_local(path, 2)
+    db.deleting(connection(), "sample", None, tmp_path / "unused.log")
+    with pytest.raises(ProjectError, match="Transfer conflicts"):
+        t.execute_transfer(connection(), tmp_path, direction="sync")
+    assert path.exists()
+    summary = t.execute_transfer(
+        connection(), tmp_path, direction="sync", prefer="pull"
+    )
+    assert "Deleted sample" in summary and "still pending" not in summary
+    assert not path.parent.exists()
+    backups = list((tmp_path / ".openroad/deletions").glob("*/sample/hello.w4gl"))
+    assert len(backups) == 1 and "RETURN 2" in backups[0].read_text()
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+def test_push_rechecks_catalog_before_native_delete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    path.unlink()
+    reads = db.reads
+
+    def changing_inventory(c: Any) -> dict[str, dict[str, object]]:
+        if db.reads > reads:
+            db.tokens["sample/hello"]["count"] = 50
+        return db.inventory(c)
+
+    monkeypatch.setattr(t, "inventory", changing_inventory)
+    with pytest.raises(ProjectError, match="Database source changed since planning"):
+        t.execute_transfer(connection(), tmp_path, direction="push")
+    assert db.deletions == []
+    assert "sample/hello" in t.Ledger(tmp_path, connection()).entries

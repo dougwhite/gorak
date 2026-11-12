@@ -115,3 +115,74 @@ def import_component_xml(
         raise ProjectError(
             "Remote helper did not confirm import; reinstall helpers and inspect import.log"
         )
+
+
+def delete_database_source(
+    connection: OpenRoadConnection, app: str, component: str | None, log_path: Path
+) -> None:
+    """Invoke native OpenROAD deletion. The caller confirms absence in the catalog."""
+    from .importer import validate_name
+    from .revision_check import validate_revision_target
+
+    validate_name(app)
+    if component is not None:
+        validate_name(component)
+    validate_revision_target(connection)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.unlink(missing_ok=True)
+    target = local.build_database_target(connection.vnode, connection.database)
+    if connection.backend == "local":
+        output = local.run_subprocess(
+            local_writer_command(
+                [
+                    "w4gldev",
+                    "destroyapp",
+                    target,
+                    app,
+                    *([f"-c{component}"] if component else []),
+                    "-nowindows",
+                    "-TALL,logonly",
+                    f"-L{local.command_path(log_path)}",
+                ],
+                connection.database if connection.revision_generation else None,
+                connection.writer_encoding,
+            )
+        )
+        if not log_path.is_file():
+            log_path.write_text(output)
+            raise ProjectError(f"OpenROAD did not create a deletion log: {log_path}")
+        diagnostics = log_path.read_text(errors="replace")
+    else:
+        host = require_remote_host(connection)
+        if any(
+            not re.fullmatch(r"[A-Za-z0-9_.-]+", value)
+            for value in (connection.vnode, connection.database)
+        ):
+            raise ProjectError(
+                "Remote deletion connection names contain unsupported characters"
+            )
+        if not re.fullmatch(r"[A-Za-z]:\\[A-Za-z0-9_ .\\-]+", host.gorak_root):
+            raise ProjectError("Remote deletion root contains shell metacharacters")
+        remote.verify_remote_helpers(host)
+        args = [
+            f"{host.gorak_root}\\delete-source.bat",
+            target,
+            app,
+            component or "-",
+            f"{host.gorak_root}\\delete-{uuid4().hex}.log",
+        ]
+        command = [
+            "ssh",
+            "-T",
+            host.ssh_target,
+            remote_writer_prefix(host.writer_database, host.writer_encoding)
+            + " ".join(f'"{value}"' for value in args),
+        ]
+        diagnostics = remote.run_subprocess(command)
+        log_path.write_text(diagnostics)
+        if "GORAK_DELETE_OK" not in diagnostics.splitlines():
+            raise ProjectError(f"Remote helper did not confirm deletion: {log_path}")
+    try:
+        checked_log(diagnostics)
+    except ProjectError as ex:
+        raise ProjectError(f"OpenROAD reported a deletion error: {log_path}") from ex

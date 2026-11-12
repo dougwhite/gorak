@@ -68,7 +68,7 @@ class RemoteHost:
 
 RunCommand = Callable[[list[str]], str]
 REMOTE_HELPER_MANIFEST = "gorak-helpers.json"
-REMOTE_HELPER_VERSION = "10"
+REMOTE_HELPER_VERSION = "11"
 REMOTE_HELPER_FILES = [
     "applist.sql",
     "revision-generation.sql",
@@ -77,6 +77,7 @@ REMOTE_HELPER_FILES = [
     "backup-component.bat",
     "import-component.bat",
     "compile-source.bat",
+    "delete-source.bat",
     "create-source.bat",
     "update-application.bat",
     "run-application.ps1",

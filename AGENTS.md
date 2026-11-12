@@ -39,7 +39,7 @@ uv run mypy
 - Live acceptance requires an explicitly authorized disposable environment.
   Keep Workbench editors closed during imports and follow
   [push and pull](docs/push.md). Resolve conflicts before proceeding; report
-  failures and retry pending items. Deletion pushes are not implemented.
+  failures and retry pending items. Use disposable projects to test deletions.
 - Require successful `gorak push` before `gorak test`: tests execute database
   source and do not synchronize disk edits. Report failed checks and unavailable
   manual acceptance honestly.
