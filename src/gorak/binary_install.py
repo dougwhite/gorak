@@ -334,16 +334,19 @@ def install(source: Path, root: Path, scope: str, expected_hash: str) -> None:
         )
         if helper_data is not None:
             new_state["helper_sha256"] = hashlib.sha256(helper_data).hexdigest()
+        if old and old.get("helper_sha256"):
+            helper = root / SYSTEM_HELPER
+            if not helper.is_file() or file_hash(helper) != old["helper_sha256"]:
+                raise ProjectError("Installed updater changed outside the installer")
+        # Recovery and integrity checks above still run on repeat installation.
+        # Preserve the last distinct working build instead of backing up itself.
+        if old == new_state:
+            return
         if old_receipt is not None:
             atomic_write(root / "installation.previous.json", old_receipt)
             shutil.copy2(target, previous)
             if old and old.get("helper_sha256"):
-                helper = root / SYSTEM_HELPER
-                if file_hash(helper) != old["helper_sha256"]:
-                    raise ProjectError(
-                        "Installed updater changed outside the installer"
-                    )
-                shutil.copy2(helper, root / (SYSTEM_HELPER + ".previous"))
+                shutil.copy2(root / SYSTEM_HELPER, root / (SYSTEM_HELPER + ".previous"))
         # Persist an immutable before-image before any active file is changed.
         atomic_write(
             root / TRANSACTION,

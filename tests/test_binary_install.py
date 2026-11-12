@@ -44,6 +44,85 @@ def test_install_and_replace_retains_previous(candidate: Path, tmp_path: Path) -
     assert installer.managed_root(target(root)) == root
 
 
+@pytest.mark.parametrize(
+    "scope",
+    [
+        "user",
+        pytest.param(
+            "system",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="Windows system installation"
+            ),
+        ),
+    ],
+)
+@pytest.mark.parametrize("committed_journal", [False, True])
+def test_repeat_install_preserves_last_distinct_build(
+    candidate: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scope: str,
+    committed_journal: bool,
+) -> None:
+    root = tmp_path / "managed"
+    monkeypatch.setattr(installer, "system_root", lambda: root)
+    resources = tmp_path / "resources"
+    (resources / "install_scripts").mkdir(parents=True)
+    resource = resources / "install_scripts" / installer.SYSTEM_HELPER
+    resource.write_bytes(b"helper v1")
+    monkeypatch.setattr(installer, "files", lambda package: resources)
+    installer.install(candidate, root, scope, installer.file_hash(candidate))
+    old = installer.receipt(root)
+    candidate.write_bytes(b"executable v2")
+    resource.write_bytes(b"helper v2")
+    monkeypatch.setattr(
+        installer,
+        "build_info",
+        lambda: {"tag": "v2", "version": "2", "platform": "test"},
+    )
+    installer.install(candidate, root, scope, installer.file_hash(candidate))
+    new = installer.receipt(root)
+    if committed_journal:
+        (root / installer.TRANSACTION).write_text(
+            json.dumps({"schema": 1, "old": old, "new": new})
+        )
+    paths = [
+        target(root),
+        target(root).with_name(target(root).name + ".previous"),
+        root / installer.RECEIPT,
+        root / "installation.previous.json",
+    ]
+    if scope == "system":
+        paths.extend(
+            [
+                root / installer.SYSTEM_HELPER,
+                root / (installer.SYSTEM_HELPER + ".previous"),
+            ]
+        )
+    before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths}
+
+    def unexpected_write(*args: Any) -> None:
+        raise AssertionError(
+            "An identical install must not write a journal or rotate backups"
+        )
+
+    monkeypatch.setattr(installer, "atomic_write", unexpected_write)
+    installer.install(candidate, root, scope, installer.file_hash(candidate))
+    assert {
+        path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths
+    } == before
+    assert not (root / installer.TRANSACTION).exists()
+    assert json.loads((root / "installation.previous.json").read_bytes()) == old
+    assert installer.file_hash(paths[1]) == old["sha256"]
+    if scope == "system":
+        (root / installer.SYSTEM_HELPER).write_bytes(b"tampered")
+        with pytest.raises(ProjectError, match="updater changed"):
+            installer.install(candidate, root, scope, installer.file_hash(candidate))
+        assert (
+            root / (installer.SYSTEM_HELPER + ".previous")
+        ).read_bytes() == b"helper v1"
+
+
 def test_failed_post_install_probe_restores_executable_and_receipt(
     candidate: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

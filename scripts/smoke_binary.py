@@ -105,12 +105,14 @@ def smoke(binary: Path) -> None:
             json.loads((installation / "installation.json").read_text())["sha256"]
             == digest
         )
-        # Repeat replacement through staging, including the previous-copy path.
+        # Reinstalling identical bytes must not create or rotate rollback backups.
+        receipt_before = (installation / "installation.json").read_bytes()
+        installed_mtime = installed.stat().st_mtime_ns
         run(portable, "--_install", "--root", str(installation), "--sha256", digest)
-        assert (
-            installed.with_name(installed.name + ".previous").read_bytes()
-            == portable.read_bytes()
-        )
+        assert not installed.with_name(installed.name + ".previous").exists()
+        assert not (installation / "installation.previous.json").exists()
+        assert (installation / "installation.json").read_bytes() == receipt_before
+        assert installed.stat().st_mtime_ns == installed_mtime
         assert run(installed, "--version").strip() == identity
         assert "checksum" in run(
             portable,
@@ -123,7 +125,7 @@ def smoke(binary: Path) -> None:
         )
         assert run(installed, "--version").strip() == identity
         print(
-            f"PASS: {identity}: portable, resources, XML conversion, writer dispatch, managed install, replacement, checksum refusal"
+            f"PASS: {identity}: portable, resources, XML conversion, writer dispatch, managed install, repeat-install preservation, checksum refusal"
         )
 
 
