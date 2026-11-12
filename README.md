@@ -88,25 +88,28 @@ List the applications available in the configured OpenROAD source database:
 gorak app list
 ```
 
-Export an existing application into the project:
+To extract an existing application from Workbench into the on-disk gorak project:
 
 ```bash
 gorak app export myapplication
 ```
 
-For a new application on disk, use `gorak app import myapplication` or `gorak push myapplication`.
+To publish a new application from your gorak project back into Workbench,
+use `gorak app import myapplication` or `gorak push myapplication`.
 
-When editing readable source, use:
+After editing source on disk, use:
 
 ```bash
-# edit .w4gl / .wml files in your editor
-gorak push myapplication --compile
+gorak push myapplication         # pushes changes back into Workbench
 gorak test                       # run configured OpenROAD tests
 git diff                         # review the result
 ```
 
-`gorak test` runs database source. Use `gorak status` to see pending pushes,
-pulls, and conflicts. Use `gorak sync` to transfer changes in both directions.
+`gorak test` runs database source.
+
+Use `gorak status` to see pending pushes, pulls, and conflicts.
+Use `gorak sync` to transfer changes in both directions.
+
 See [conflict resolution](docs/push.md#two-way) when both sides changed.
 
 New projects include an `AGENTS.md` describing this workflow for coding agents such
