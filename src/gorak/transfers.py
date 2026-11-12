@@ -9,8 +9,8 @@ import socket
 import subprocess
 import tempfile
 import tomllib
-from collections.abc import Callable
-from contextlib import ExitStack
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import copy2, rmtree
@@ -456,21 +456,21 @@ def refresh_tokens(
     ledger: Ledger,
     result: Result,
     scope: str | None = None,
-) -> None:
+) -> dict[str, dict[str, object]] | None:
     pending = [
         key
         for key, entry in ledger.entries.items()
         if entry.get("database") is None and in_scope(key, scope)
     ]
     if not pending:
-        return
+        return None
     report("Reading database tokens for imported source")
     try:
         remote = {key.casefold(): value for key, value in inventory(connection).items()}
     except Exception as ex:
         for key in pending:
             result.failed[key] = f"Imported; database token read needs retry: {ex}"
-        return
+        return None
     for key in pending:
         if key.casefold() not in remote:
             result.failed[key] = (
@@ -480,6 +480,82 @@ def refresh_tokens(
         else:
             ledger.entries[key]["database"] = remote[key.casefold()]
     ledger.save()
+    return remote
+
+
+@contextmanager
+def compilation_checkpoints(
+    connection: OpenRoadConnection,
+    root: Path,
+    apps: set[str],
+    *,
+    ledger: Ledger | None = None,
+    before: dict[str, dict[str, object]] | None = None,
+) -> Iterator[list[str]]:
+    """Acknowledge compiler catalog changes for previously current source."""
+    diagnostics: list[str] = []
+    eligible: dict[str, dict[str, object]] = {}
+    try:
+        ledger = ledger if ledger is not None else Ledger(root, connection)
+        scope = {app.casefold() for app in apps}
+        tracked = {
+            key: entry["database"]
+            for key, entry in ledger.entries.items()
+            if key.split("/", 1)[0].casefold() in scope
+            and isinstance(entry.get("database"), dict)
+        }
+        if tracked:
+            if before is None:
+                before = {
+                    key.casefold(): token
+                    for key, token in inventory(connection).items()
+                }
+            eligible = {
+                key: token
+                for key, token in tracked.items()
+                if before.get(key.casefold()) == token
+            }
+    except Exception as ex:
+        diagnostics.append(
+            f"Could not check transfer metadata before compilation: {ex}"
+        )
+    try:
+        yield diagnostics
+    finally:
+        if ledger is not None and eligible:
+            try:
+                after = {
+                    key.casefold(): token
+                    for key, token in inventory(connection).items()
+                }
+                updates = {}
+                for key, old in eligible.items():
+                    new = after.get(key.casefold())
+                    if new is None or new == old:
+                        continue
+                    # Names, IDs and other source markers must remain stable.
+                    markers = (
+                        {"alter_count", "alter_date"}
+                        if "/" in key
+                        else {"count", "date"}
+                    )
+                    if {k: v for k, v in old.items() if k not in markers} == {
+                        k: v for k, v in new.items() if k not in markers
+                    }:
+                        updates[key] = new
+                if updates:
+                    for key, token in updates.items():
+                        ledger.entries[key]["database"] = token
+                    try:
+                        ledger.save()
+                    except OSError:
+                        for key in updates:
+                            ledger.entries[key]["database"] = eligible[key]
+                        raise
+            except Exception as ex:
+                diagnostics.append(
+                    f"Could not refresh transfer metadata after compilation: {ex}"
+                )
 
 
 def verify_push_receiver(
@@ -585,7 +661,9 @@ def push(
                 changed.remove(key)
     if not changed:
         if not dry_run:
-            refresh_tokens(connection, ledger, result, plan.scope if plan else None)
+            before = refresh_tokens(
+                connection, ledger, result, plan.scope if plan else None
+            )
             if compile:
                 retry_compilation(
                     connection,
@@ -593,6 +671,8 @@ def push(
                     result,
                     plan.scope if plan else None,
                     additional=pulled_for_compile,
+                    ledger=ledger,
+                    before=before,
                 )
         return result
     remote = inventory(connection) if plan is None else plan.remote
@@ -807,16 +887,20 @@ def push(
                     if key != app and key not in result.failed:
                         result.skipped[key] = "Application import failed"
             report("Uploading applications", index, len(ordered))
-        if compile and not dry_run:
+    if not dry_run:
+        before = refresh_tokens(
+            connection, ledger, result, plan.scope if plan else None
+        )
+        if compile:
             retry_compilation(
                 connection,
                 root,
                 result,
                 plan.scope if plan else None,
                 additional=pulled_for_compile,
+                ledger=ledger,
+                before=before,
             )
-    if not dry_run:
-        refresh_tokens(connection, ledger, result, plan.scope if plan else None)
     return result
 
 
@@ -827,6 +911,8 @@ def retry_compilation(
     scope: str | None = None,
     *,
     additional: set[str] | None = None,
+    ledger: Ledger | None = None,
+    before: dict[str, dict[str, object]] | None = None,
 ) -> None:
     from .atomic_json import write_record
     from .compiler import compile_source, read_compile_queue
@@ -836,24 +922,35 @@ def retry_compilation(
         return
     try:
         targets = read_compile_queue(path)
+        selected = {
+            (app, name)
+            for app, name in targets
+            if in_scope(f"{app}/{name}", scope) or f"{app}/{name}" in (additional or ())
+        }
+        if not selected:
+            return
         failed = []
-        for app, name in targets:
-            key = f"{app}/{name}"
-            if not in_scope(key, scope) and (
-                additional is None or key not in additional
-            ):
-                failed.append((app, name))
-                continue
-            log = root / ".openroad/compiles" / app / (name + ".log")
-            try:
-                log.parent.mkdir(parents=True, exist_ok=True)
-                log.unlink(missing_ok=True)
-                outcome = compile_source(connection, app, name, log)
-                if not outcome.success:
-                    raise ProjectError(outcome.diagnostics())
-            except Exception as ex:
-                failed.append((app, name))
-                result.failed[f"{app}/{name}"] = f"Database compilation failed: {ex}"
+        with compilation_checkpoints(
+            connection, root, {app for app, _ in selected}, ledger=ledger, before=before
+        ) as diagnostics:
+            for app, name in targets:
+                if (app, name) not in selected:
+                    failed.append((app, name))
+                    continue
+                log = root / ".openroad/compiles" / app / (name + ".log")
+                try:
+                    log.parent.mkdir(parents=True, exist_ok=True)
+                    log.unlink(missing_ok=True)
+                    outcome = compile_source(connection, app, name, log)
+                    if not outcome.success:
+                        raise ProjectError(outcome.diagnostics())
+                except Exception as ex:
+                    failed.append((app, name))
+                    result.failed[f"{app}/{name}"] = (
+                        f"Database compilation failed: {ex}"
+                    )
+        if diagnostics:
+            result.failed["compilation metadata"] = "\n".join(diagnostics)
         if failed:
             write_record(path, [list(item) for item in failed])
         else:
@@ -2173,7 +2270,15 @@ def execute_transfer(
                 }
             if direction == "pull":
                 retry_compilation(
-                    connection, root, pulled, scope, additional=pulled_for_compile
+                    connection,
+                    root,
+                    pulled,
+                    scope,
+                    additional=pulled_for_compile,
+                    ledger=plan.ledger,
+                    before={
+                        key.casefold(): token for key, token in plan.remote.items()
+                    },
                 )
     if direction != "pull":
         pushed = push(

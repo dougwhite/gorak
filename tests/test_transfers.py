@@ -1793,3 +1793,83 @@ def test_application_rename_retries_after_manifest_projection_failure(
     assert not (tmp_path / "sample/app.json").exists()
     assert (tmp_path / "renamed/app.json").exists()
     assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+def test_explicit_compile_refreshes_only_previously_current_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import compiler
+
+    edited_after_compile = source(tmp_path, name="hello")
+    source(tmp_path, name="pending")
+    source(tmp_path, name="replacement")
+    source(tmp_path, app="other")
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    previous = deepcopy(t.Ledger(tmp_path, connection()).entries)
+    edit_database(db, "sample/pending", 3)
+
+    def compiling(
+        c: Any, app: str, name: str | None, log: Path
+    ) -> compiler.CompileResult:
+        assert (app, name) == ("sample", None)
+        db.tokens["sample"]["count"] = 2
+        for key in (
+            "sample/hello",
+            "sample/pending",
+            "sample/replacement",
+            "other/hello",
+        ):
+            db.tokens[key].update(alter_date="after compile", alter_count=20)
+        db.tokens["sample/replacement"]["id"] = 100
+        log.parent.mkdir(parents=True)
+        log.write_text("Compiled")
+        return compiler.CompileResult(True, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compiling)
+    reads = db.reads
+    compiler.compile_command(connection(), tmp_path, "sample", None)
+    assert db.reads == reads + 2
+    entries = t.Ledger(tmp_path, connection()).entries
+    for key in ("sample", "sample/hello"):
+        assert entries[key]["database"] == db.tokens[key]
+        assert entries[key]["hash"] == previous[key]["hash"]
+    for key in ("sample/pending", "sample/replacement", "other/hello"):
+        assert entries[key] == previous[key]
+
+    edit_local(edited_after_compile, 2)
+    t.execute_transfer(connection(), tmp_path, direction="push", scope="sample/hello")
+    assert b"RETURN 2" in etree.tostring(db.nodes["sample/hello"])
+
+
+@pytest.mark.parametrize("direction", ["push", "pull", "sync"])
+def test_transfer_compile_refreshes_the_batch_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, direction: str
+) -> None:
+    from gorak import compiler
+
+    a = source(tmp_path, name="a")
+    b = source(tmp_path, name="b")
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push")
+    if direction in {"push", "sync"}:
+        edit_local(a, 2)
+    else:
+        edit_database(db, "sample/a", 2)
+    if direction in {"pull", "sync"}:
+        edit_database(db, "sample/b", 3)
+    else:
+        edit_local(b, 3)
+    calls = []
+
+    def compiling(c: Any, app: str, name: str, log: Path) -> compiler.CompileResult:
+        calls.append((app, name))
+        db.tokens[app]["count"] = 9
+        db.tokens[f"{app}/{name}"].update(alter_date="after compile", alter_count=20)
+        log.write_text("Compiled")
+        return compiler.CompileResult(True, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compiling)
+    t.execute_transfer(connection(), tmp_path, direction=direction, compile=True)
+    assert set(calls) == {("sample", "a"), ("sample", "b")}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}

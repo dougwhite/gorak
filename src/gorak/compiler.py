@@ -106,6 +106,7 @@ def compile_command(
 ) -> str:
     from .project_lock import project_lock
     from .sync_guard import binding_status, validate_tracking_health
+    from .transfers import compilation_checkpoints
 
     with project_lock(root, "compile", recover_push=True):
         binding_status(connection, root, recover_push=True)
@@ -123,22 +124,24 @@ def compile_command(
             raise ProjectError("No applications in this project to compile")
         messages = []
         failed = False
-        for name in apps:
-            result = compile_source(
-                connection,
-                name,
-                component,
-                root / ".openroad/compiles" / uuid4().hex / "compile.log",
-            )
-            target = f"{name}/{component}" if component else name
-            messages.append(
-                f"Compiling database source: {target}\n{result.diagnostics()}\nFull log: {result.log}"
-            )
-            failed |= not result.success
-            if result.success:
-                clear_compiled_targets(root, name, component)
+        with compilation_checkpoints(connection, root, set(apps)) as diagnostics:
+            for name in apps:
+                result = compile_source(
+                    connection,
+                    name,
+                    component,
+                    root / ".openroad/compiles" / uuid4().hex / "compile.log",
+                )
+                target = f"{name}/{component}" if component else name
+                messages.append(
+                    f"Compiling database source: {target}\n{result.diagnostics()}\nFull log: {result.log}"
+                )
+                failed |= not result.success
+                if result.success:
+                    clear_compiled_targets(root, name, component)
+        messages.extend(diagnostics)
         message = "\n".join(messages)
-        if failed:
+        if failed or diagnostics:
             raise ProjectError(message)
         return message
 
