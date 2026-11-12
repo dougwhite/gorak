@@ -288,6 +288,10 @@ def test_get_component_sync_metadata_runs_sql_for_application() -> None:
     command, input_text = calls[0]
     assert command == ["sql", "myvnode::exampledb"]
     assert input_text is not None
+    assert (
+        "\njoin ii_entities app_folder on base.folder_id = app_folder.entity_id\n"
+        in input_text
+    )
     assert "and lower(case when app_current.entity_name is null" in input_text
     assert "then app_folder.entity_name" in input_text
     assert "else app_current.entity_name end) = lower('sample_app')" in input_text
@@ -311,12 +315,17 @@ def test_get_all_component_sync_metadata_runs_one_sql() -> None:
     assert command == ["sql", "myvnode::exampledb"]
     assert input_text is not None
     assert "from ii_entities base" in input_text
+    assert (
+        "\nleft join ii_entities app_folder on base.folder_id = app_folder.entity_id\n"
+        in input_text
+    )
     assert "lower(case when app_current.entity_name is null" not in input_text
 
 
 def test_component_sync_metadata_query_escapes_application_name() -> None:
-    assert "then app_folder.entity_name else app_current.entity_name end) = lower('owner''s_app')" in (
-        component_sync_metadata_query("owner's_app")
+    assert (
+        "then app_folder.entity_name else app_current.entity_name end) = lower('owner''s_app')"
+        in (component_sync_metadata_query("owner's_app"))
     )
 
 

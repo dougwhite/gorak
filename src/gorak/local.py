@@ -229,6 +229,7 @@ def component_list_query(app: str) -> str:
 
 def component_sync_metadata_query(app: str | None = None) -> str:
     app_filter = ""
+    folder_join = "left join"
     app_name_expression = (
         "case when app_current.entity_name is null "
         "then app_folder.entity_name "
@@ -236,6 +237,9 @@ def component_sync_metadata_query(app: str | None = None) -> str:
     )
     if app is not None:
         app_name = app.replace("'", "''")
+        # A missing folder cannot match a named application. Exclude it at the
+        # join so Ingres never passes its null name through the LOWER filter.
+        folder_join = "join"
         app_filter = f"and lower({app_name_expression}) = lower('{app_name}')"
 
     lines = [
@@ -253,7 +257,7 @@ def component_sync_metadata_query(app: str | None = None) -> str:
         "       c.last_altered_by,",
         "       c.current_make",
         "from ii_entities base",
-        "left join ii_entities app_folder on base.folder_id = app_folder.entity_id",
+        f"{folder_join} ii_entities app_folder on base.folder_id = app_folder.entity_id",
         "left join ii_entities app_current on app_current.base_entity_id = app_folder.entity_id",
         "left join ii_applications a on a.entity_id = app_current.entity_id",
         "left join ii_entities ver on ver.base_entity_id = base.entity_id",
