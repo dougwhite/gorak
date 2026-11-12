@@ -7,6 +7,8 @@ from typing import Any
 from lxml import etree
 
 from .errors import ProjectError
+from .source_reads import exists as source_exists
+from .source_reads import read_text as read_source_text
 from .style_values import XSI
 
 
@@ -84,9 +86,9 @@ def extract_icons(node: etree._Element) -> dict[str, Any] | None:
 def overlay_icons(node: etree._Element, source: Path) -> None:
     from .parser import split_w4gl
 
-    if source.with_suffix(".icons.json").exists():
+    if source_exists(source.with_suffix(".icons.json")):
         raise ProjectError("Obsolete class icon sidecar; re-export this component")
-    metadata = tomllib.loads(split_w4gl(source.read_text(encoding="utf-8"))[0])
+    metadata = tomllib.loads(split_w4gl(read_source_text(source))[0])
     old = node.find("extension")
     if "icons" not in metadata:
         if (

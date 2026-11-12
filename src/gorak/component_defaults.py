@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .domain import Component
+from .source_output import write_text
 
 if TYPE_CHECKING:
     from .image_assets import AssetWriter
@@ -28,15 +29,23 @@ def minimal_component_defaults(
 
 
 def write_component_defaults(
-    source: Path, overrides: dict[str, Any], *, writer: "AssetWriter | None" = None
+    source: Path,
+    overrides: dict[str, Any],
+    *,
+    writer: "AssetWriter | None" = None,
+    digests: dict[Path, str] | None = None,
 ) -> None:
     """Write only differences from the effective app; remove an empty file."""
     values = minimal_component_defaults(source, overrides)
-    write_projected_defaults(source, values, writer=writer)
+    write_projected_defaults(source, values, writer=writer, digests=digests)
 
 
 def write_projected_defaults(
-    source: Path, values: dict[str, Any], *, writer: "AssetWriter | None" = None
+    source: Path,
+    values: dict[str, Any],
+    *,
+    writer: "AssetWriter | None" = None,
+    digests: dict[Path, str] | None = None,
 ) -> None:
     """Write an already validated, minimal native stylesheet projection."""
     from .image_assets import stylesheet_assets
@@ -50,8 +59,8 @@ def write_projected_defaults(
     )
     path = defaults_path(source)
     if values:
-        path.write_text(
-            json.dumps(values, indent=4) + "\n", encoding="utf-8", newline="\n"
+        write_text(
+            path, json.dumps(values, indent=4) + "\n", newline="\n", digests=digests
         )
     else:
         path.unlink(missing_ok=True)

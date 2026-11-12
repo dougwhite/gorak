@@ -207,9 +207,9 @@ def xml_root(tree: etree._ElementTree | etree._Element) -> etree._Element:
 
 
 def parse_component_node(
-    node: etree._Element, *, project_frame: bool = True
+    node: etree._Element, *, project_frame: bool = True, project_markup: bool = True
 ) -> Component:
-    """Parse a single OpenROAD component node."""
+    """Parse component metadata, optionally deferring layout projection to a caller."""
 
     validate_instructions(node)
     script_node = node.find("script")
@@ -279,11 +279,14 @@ def parse_component_node(
     markup_nodes = [child for child in node if child.tag in FRAME_MARKUP_CHILDREN]
     markup = (
         encode_frame_markup(markup_nodes, field_defaults)
-        if project_frame and component_type in FRAME_COMPONENT_TYPES and markup_nodes
+        if project_markup
+        and project_frame
+        and component_type in FRAME_COMPONENT_TYPES
+        and markup_nodes
         else None
     )
 
-    if component_type == "fieldtemplate":
+    if project_markup and component_type == "fieldtemplate":
         from .field_templates import encode_layout
 
         markup = encode_layout(node)

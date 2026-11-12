@@ -13,6 +13,7 @@ from typing import Any, cast
 from dotenv import dotenv_values, set_key, unset_key
 
 from .errors import ProjectError as ProjectError
+from .source_reads import read_text as read_source_text
 
 PROJECT_MANIFEST = "gorak.json"
 DEFAULT_VERSION = "0.1.0"
@@ -193,7 +194,7 @@ def default_field_defaults_json() -> str:
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+    return cast(dict[str, Any], json.loads(read_source_text(path)))
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:

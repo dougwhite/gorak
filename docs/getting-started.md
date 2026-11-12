@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers the simplest Gorak setup: OpenROAD and Gorak running on the
+This guide covers the simplest gorak setup: OpenROAD and gorak running on the
 same development machine, using OpenROAD's normal command-line tools.
 
 > **Early alpha.** Start with a disposable OpenROAD source database and keep a
@@ -14,13 +14,13 @@ same development machine, using OpenROAD's normal command-line tools.
 - [`uv`](https://docs.astral.sh/uv/).
 - Git.
 
-Gorak can also run OpenROAD on another Windows machine over
+gorak can also run OpenROAD on another Windows machine over
 [SSH](remote.md). Direct [ODBC metadata access](config.md#optional-odbc-metadata-access)
 is available but is not required for this guide or the normal workflow.
 
-## Install Gorak
+## Install gorak
 
-Clone the Gorak repository and install the command:
+Clone the gorak repository and install the command:
 
 ```sh
 git clone https://github.com/dougwhite/gorak.git
@@ -30,7 +30,7 @@ uv tool install --editable .
 gorak --help
 ```
 
-Run Gorak from a shell initialized for your OpenROAD and Ingres installation.
+Run gorak from a shell initialized for your OpenROAD and Ingres installation.
 In PowerShell, with `II_SYSTEM` set to the selected installation root:
 
 ```powershell
@@ -44,7 +44,7 @@ gorak new myproject
 cd myproject
 ```
 
-Gorak creates a Git repository, project metadata, connection examples, agent
+gorak creates a Git repository, project metadata, connection examples, agent
 instructions, shared field defaults, and a small starter application called
 `myproject`.
 
@@ -75,6 +75,8 @@ gorak config --backend local --vnode myvnode --database sourcedb
 This writes the local connection settings to `.env`, which is ignored by Git.
 Use separate values for the vnode and database; do not write
 `myvnode::sourcedb` in the database setting.
+Before running a restored application, check its runtime `database_name` in
+`app.json`. It can differ from the source database in `.env`.
 
 Check the connection by listing the applications in the source database:
 
@@ -93,14 +95,14 @@ List the source components if you want to inspect the application first:
 gorak component list myapplication
 ```
 
-Export it into readable Gorak source:
+Export the application into the project:
 
 ```sh
 gorak app export myapplication
 ```
 
 The new application directory contains `app.json`, readable `.w4gl` source,
-frame `.wml`, and any application field defaults. Gorak keeps local
+frame `.wml`, and any application field defaults. gorak keeps local
 synchronization state under the ignored `.openroad/` directory.
 
 ## Make the initial Git commit
@@ -118,46 +120,16 @@ The tracked project is now a normal Git repository. Do not add `.env` or
 
 ## Push a change back to OpenROAD
 
-Start by pulling any newer Workbench changes:
+Use `gorak push` to send local changes. To push one component:
 
 ```sh
-gorak sync
+gorak push myapplication/mycomponent
 ```
 
-Edit a supported `.w4gl` or `.wml` file, then inspect Gorak's planned changes:
+Run `gorak compile` and `gorak test` as needed. To compile during a push,
+use `gorak push --compile`.
 
-```sh
-gorak status
-```
-
-Push the disk change into the OpenROAD source database:
-
-```sh
-gorak sync --push
-```
-
-gorak imports and compiles the changed source. If the application has
-configured tests, run them after a successful push:
-
-```sh
-gorak test
-git diff
-```
-
-`gorak test` runs the source already stored in OpenROAD; it never pushes disk
-changes automatically.
-
-The normal loop is:
-
-```sh
-gorak sync
-# edit readable source
-gorak status
-gorak sync --push
-gorak test
-git diff
-```
-
-If Gorak reports a conflict or refuses an operation, stop and preserve both sides.
-Do not resolve it by deleting `.openroad/`. See [Push and recovery](push.md) for
-safe retry and recovery commands.
+> If an alpha upgrade breaks transfers, save local edits and move `.openroad/`
+> aside. To start from Workbench again, run `gorak pull APP --full --force`
+> for each local application you want to replace. For a clean copy, use
+> `gorak app export APP` in a fresh project.

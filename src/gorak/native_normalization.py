@@ -23,13 +23,14 @@ def opaque_descendant(node: etree._Element) -> bool:
 def explicit_row_types(root: etree._Element) -> None:
     """Resolve native array default types without changing row order or contents."""
     for node in root.iter():
-        if node.tag == "frmflow" or opaque_descendant(node):
+        if node.tag == "frmflow":
             continue
         row_class = node.find("row_class")
+        if row_class is None or opaque_descendant(node):
+            continue
         rows = node.findall("row")
         if (
-            row_class is not None
-            and rows
+            rows
             and not row_class.attrib
             and is_text_node(row_class)
             and text_value(row_class)
@@ -102,6 +103,8 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
     # Snapshot traversal before reordering ancestors, which can otherwise skip
     # nested fields in lxml's live iterator.
     for field in list(node.iter()):
+        if len(field) < 2:
+            continue
         if field.tag in {"extension", "taggedvalues", "frmflow"} or opaque_descendant(
             field
         ):
@@ -113,7 +116,7 @@ def signature(root: etree._Element, *, pixel_geometry: bool = False) -> object:
         ):
             field[:] = sorted(field, key=lambda child: str(child.tag))
     if pixel_geometry:
-        from .frame_geometry import geometry_signature
+        from .frame_geometry import _normalize_geometry
 
-        return geometry_signature(node)
+        _normalize_geometry(node)
     return raw_signature(node)

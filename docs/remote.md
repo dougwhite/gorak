@@ -59,8 +59,11 @@ After setup, the normal commands use the remote host automatically:
 ```sh
 gorak app list
 gorak app export myapplication
+gorak status
 gorak sync
-gorak sync --push
+gorak push
+gorak pull
+gorak compile
 gorak test
 ```
 

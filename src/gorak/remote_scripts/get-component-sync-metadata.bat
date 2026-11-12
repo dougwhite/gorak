@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 if "%~2"=="" (
-    >&2 echo Usage: %~nx0 VNODE DATABASE
+    >&2 echo Usage: %~nx0 VNODE DATABASE [APP]
     exit /b 64
 )
 
@@ -21,6 +21,7 @@ set "II_W4GLAPPS_SYS=%II_SYSTEM%\ingres\w4glapps\"
 
 set "VNODE=%~1"
 set "DATABASE=%~2"
+set "APP=%~3"
 set "DB_TARGET=%VNODE%::%DATABASE%"
 
 set "TEMP_DIR=%GORAK_ROOT%/temp"
@@ -47,7 +48,11 @@ set "SQL_FILE=%TEMP_DIR%\component-sync-metadata-%RANDOM%.sql"
     echo        c.last_altered_by,
     echo        c.current_make
     echo from ii_entities base
-    echo left join ii_entities app_folder on base.folder_id = app_folder.entity_id
+    if defined APP (
+        echo join ii_entities app_folder on base.folder_id = app_folder.entity_id
+    ) else (
+        echo left join ii_entities app_folder on base.folder_id = app_folder.entity_id
+    )
     echo left join ii_entities app_current on app_current.base_entity_id = app_folder.entity_id
     echo left join ii_applications a on a.entity_id = app_current.entity_id
     echo left join ii_entities ver on ver.base_entity_id = base.entity_id
@@ -55,6 +60,7 @@ set "SQL_FILE=%TEMP_DIR%\component-sync-metadata-%RANDOM%.sql"
     echo left join ii_components c on c.entity_id = ver.entity_id
     echo where base.base_entity_id = 0
     echo and base.folder_id != 0
+    if defined APP echo and lower^(case when app_current.entity_name is null then app_folder.entity_name else app_current.entity_name end^) = lower^('%APP%'^)
     echo order by application_name, base.entity_name
     echo \p\g
 ) > "%SQL_FILE%"

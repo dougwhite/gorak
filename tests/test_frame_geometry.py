@@ -132,3 +132,44 @@ def test_tracking_keeps_nested_opaque_shape_coordinates_exact(
     assert tracking_signature(a, pixel_geometry=True) != tracking_signature(
         b, pixel_geometry=True
     )
+
+
+@pytest.mark.parametrize("kind", ["framesource", "frametemplate"])
+def test_tracking_geometry_preserves_input_and_exact_normalized_content(
+    kind: str,
+) -> None:
+    from gorak.native_normalization import signature as tracking_signature
+
+    source = etree.fromstring(
+        f'<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        f'name="panel" xsi:type="{kind}">'
+        "<topform><width>1001</width><childfields><row><xleft>321</xleft>"
+        "<defaultvalue>1</defaultvalue><name>value</name>"
+        "<extension><width>321</width><defaultvalue>1</defaultvalue></extension>"
+        "</row><row_class>entryfield</row_class></childfields></topform>"
+        "<script>  initialize()={}\n</script></COMPONENT>"
+    )
+    expected = etree.fromstring(
+        f'<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        f'name="panel" xsi:type="{kind}">'
+        "<script>initialize()={}</script><topform><childfields>"
+        '<row xsi:type="entryfield">'
+        "<extension><width>321</width><defaultvalue>1</defaultvalue></extension>"
+        "<name>value</name><xleft>31</xleft></row></childfields>"
+        "<width>96</width></topform></COMPONENT>"
+    )
+    before = etree.tostring(source)
+    assert tracking_signature(source, pixel_geometry=True) == signature(expected)
+    assert etree.tostring(source) == before
+    assert tracking_signature(source, pixel_geometry=True) == signature(expected)
+
+
+def test_geometry_leaves_nonlayout_component_content_exact() -> None:
+    source = etree.fromstring(
+        '<COMPONENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'name="calculate" xsi:type="proc4glsource">'
+        "<script> return 1; </script><width>1001</width></COMPONENT>"
+    )
+    before = etree.tostring(source)
+    assert geometry_signature(source) == signature(source)
+    assert etree.tostring(source) == before

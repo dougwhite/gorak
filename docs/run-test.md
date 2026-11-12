@@ -6,7 +6,7 @@ OpenROAD database. They do not synchronize disk changes first.
 Push a source change before running it:
 
 ```sh
-gorak sync --push
+gorak push --compile
 gorak test
 ```
 

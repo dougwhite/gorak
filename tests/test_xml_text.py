@@ -86,6 +86,18 @@ def test_comments_do_not_eat_following_text() -> None:
     assert text_value(node(f"<script>a<!-- note -->b{PI}c</script>")) == "ab\x07c"
 
 
+@pytest.mark.parametrize("value", ["", "日本語 & < ]]>", "line\r\nnext\rline"])
+@pytest.mark.parametrize("cdata", [False, True])
+def test_scalar_fast_path_preserves_text_and_metadata(value: str, cdata: bool) -> None:
+    source = etree.Element("script", language="4gl")
+    source.tail = "tail"
+    set_text(source, value, cdata=cdata)
+    reconstructed = node(etree.tostring(source, encoding="unicode", with_tail=False))
+    assert text_value(reconstructed) == value
+    assert source.attrib == {"language": "4gl"}
+    assert source.tail == "tail"
+
+
 def test_structural_instruction_refused() -> None:
     with pytest.raises(ProjectError, match="text property"):
         parse_markup(f"<frame>{PI}<topform/></frame>")

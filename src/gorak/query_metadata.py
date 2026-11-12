@@ -8,6 +8,9 @@ from lxml import etree
 
 from .errors import ProjectError
 from .query_values import decode_collection, encode_collection
+from .source_output import write_text
+from .source_reads import exists as source_exists
+from .source_reads import read_text as read_source_text
 
 
 def query_path(source: Path) -> Path:
@@ -37,12 +40,10 @@ def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def read_queries(source: Path) -> etree._Element | None:
     path = query_path(source)
-    if not path.exists():
+    if not source_exists(path):
         return None
     try:
-        data = json.loads(
-            path.read_text(encoding="utf-8"), object_pairs_hook=unique_object
-        )
+        data = json.loads(read_source_text(path), object_pairs_hook=unique_object)
         if (
             not isinstance(data, dict)
             or set(data) != {"version", "queries"}
@@ -59,18 +60,23 @@ def read_queries(source: Path) -> etree._Element | None:
         raise ProjectError(f"Invalid query metadata {path}: {ex}") from ex
 
 
-def write_queries(source: Path, value: dict[str, Any] | None) -> None:
+def write_queries(
+    source: Path,
+    value: dict[str, Any] | None,
+    *,
+    digests: dict[Path, str] | None = None,
+) -> None:
     path = query_path(source)
     if value is None:
         path.unlink(missing_ok=True)
     else:
-        path.write_text(
-            json.dumps(value, indent=2, ensure_ascii=True) + "\n", encoding="utf-8"
+        write_text(
+            path, json.dumps(value, indent=2, ensure_ascii=True) + "\n", digests=digests
         )
 
 
 def overlay_queries(node: etree._Element, source: Path) -> None:
-    if node.find("queries") is not None and not query_path(source).is_file():
+    if node.find("queries") is not None and not source_exists(query_path(source)):
         raise ProjectError(
             f"Missing query metadata {query_path(source)}; re-export the component. "
             'To remove queries explicitly, use {"version": 1, "queries": null}.'

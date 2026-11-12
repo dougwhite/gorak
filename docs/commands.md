@@ -1,6 +1,6 @@
-# Gorak command reference
+# gorak command reference
 
-This page documents Gorak's normal project, synchronization, execution, and
+This page documents gorak's normal project, synchronization, execution, and
 maintenance commands. Experimental source-storage, database-hook, and journal
 research commands are intentionally omitted.
 
@@ -21,7 +21,7 @@ your machine.
 
 ### `gorak new NAME [--nogit]`
 
-Creates a Gorak project, a starter application named `NAME`, connection
+Creates a gorak project, a starter application named `NAME`, connection
 examples, `AGENTS.md`, field defaults, and `gorak.json`. Git is initialized
 unless `--nogit` is supplied.
 
@@ -89,6 +89,11 @@ gorak app export salesapp
 
 `--output` selects an explicit destination when running outside a project.
 
+### `gorak app import APP [--force] [--compile]`
+
+Imports a local application into OpenROAD. `gorak push APP` also creates a
+new application in the database.
+
 ### `gorak component list APP [--format json|csv]`
 
 Lists an application's components.
@@ -115,7 +120,7 @@ gorak component import salesapp calculate_totals --dry-run
 gorak component import salesapp calculate_totals
 ```
 
-For normal project work, prefer `gorak sync --push`.
+For normal project work, use `gorak push APP/COMPONENT`.
 
 ### `gorak includes list APP`
 
@@ -125,71 +130,41 @@ Lists the applications included by `APP`.
 
 ### `gorak status`
 
-Compares readable disk source, Gorak's baseline, and the OpenROAD source
-database. It prints a read-only JSON plan showing pull, push, unchanged, or
-conflicting source.
+Lists pending pushes (`->`), pulls (`<-`), and conflicts (`!!`) across the project.
 
-```sh
-gorak status
-```
+### `gorak pull [TARGET] [--force] [--full] [--dry-run] [--compile]`
 
-### `gorak sync`
+Updates local source from Workbench. Use `gorak app export APP` to add an application.
 
-Pulls OpenROAD changes into the current project.
+### `gorak push [TARGET] [--force] [--full] [--dry-run] [--compile]`
 
-```sh
-gorak sync
-```
+Sends local changes to OpenROAD.
 
-Gorak refuses to overwrite pending disk changes.
+### `gorak sync [TARGET] [--force-push | --force-pull] [--dry-run] [--compile]`
 
-### `gorak sync --push [--dry-run]`
+Transfers changes in both directions. The force options choose which side wins
+on conflicts. See [transfer workflows](push.md).
 
-Imports disk changes, records OpenROAD acceptance, updates the baseline, and compiles
-the affected database source.
+At the project root, omit `TARGET` for project scope or use `APP` or
+`APP/COMPONENT`. Inside an application, omit it for that app or use a bare
+component name. Quote `'APP!COMPONENT'` in Bash.
 
-```sh
-gorak sync --push --dry-run
-gorak sync --push
-```
+`--dry-run` previews transfers. `push --full` and `pull --full` include
+unchanged source in scope. Transfers compile only with `--compile`.
 
-`--dry-run` prepares and validates the import without changing OpenROAD.
-
-### `gorak sync --bind`
-
-Verifies and binds an older unbound cache to its configured source target.
-Fresh exports bind automatically, so most new projects do not need this option.
-
-### `gorak sync --push --force`
-
-Chooses disk as authoritative for the entire tracked project and rebuilds damaged
-tracking while retaining displaced source. It cannot be combined with
-`--dry-run` or `--bind`. Use it only after deliberately choosing the disk
-version during recovery.
-
-### `gorak recover push [--take disk|database]`
-
-Reconciles an incomplete or damaged push:
-
-```sh
-gorak recover push
-gorak recover push --take disk
-gorak recover push --take database
-```
-
-Without `--take`, recovery completes only when disk and database source already
-agree. An authority choice applies to the entire tracked project. See
-[Push and recovery](push.md) before using it.
+Push, pull, and sync transfer tracked deletions. A deletion conflicts with edits
+on the other side. Pull saves removed files in `.openroad/deletions/`.
+Workbench renames keep their identity on pull. A disk rename pushes as an add
+and a delete.
 
 ## Compile, run, and test
 
-### `gorak compile APP [COMPONENT]`
+### `gorak compile [TARGET]`
 
-Compiles source already stored in the OpenROAD database and prints full
-diagnostics. Omitting `COMPONENT` force-compiles the application.
+Compiles database source using the same target rules as push and pull.
 
 ```sh
-gorak compile salesapp calculate_totals
+gorak compile salesapp/calculate_totals
 gorak compile salesapp
 ```
 
@@ -234,11 +209,11 @@ See [Run and Test](run-test.md) for suite configuration and result handling.
 
 ### `gorak remote install`
 
-Installs or updates Gorak's helper scripts on the configured Windows host.
+Installs or updates gorak's helper scripts on the configured Windows host.
 
 ### `gorak remote check`
 
-Checks that the installed remote helpers match the current Gorak build.
+Checks that the installed remote helpers match the current gorak build.
 
 Both commands accept `--host`, `--user`, and `--gorak-root` to override
 the project configuration for one invocation. See [Remote Helpers](remote.md).
@@ -247,7 +222,7 @@ the project configuration for one invocation. See [Remote Helpers](remote.md).
 
 ### `gorak styles publish|compact [--dry-run]`
 
-`publish` writes the complete project stylesheet instead of relying on Gorak's
+`publish` writes the complete project stylesheet instead of relying on gorak's
 built-in stock baseline.
 
 `compact` promotes identical frame/application stylesheets upward without
@@ -268,7 +243,7 @@ for inspection. Use application or component export for normal portable source.
 
 ### `gorak debug audit XML_FILE [--all] [--missing-only]`
 
-Reports XML nodes that are not represented in Gorak's readable source. Use
+Reports XML nodes that are not represented in gorak's readable source. Use
 `--all` instead of `XML_FILE` to audit cached project exports.
 `--missing-only` filters the report.
 
@@ -294,7 +269,7 @@ If `--sql-backend` is omitted, it follows `--backend`.
 | --- | --- | --- |
 | `--host HOST` | `GORAK_REMOTE_HOST` | Windows SSH host. |
 | `--user USER` | `GORAK_REMOTE_USER` | SSH username. |
-| `--gorak-root PATH` | `GORAK_REMOTE_ROOT` | Windows directory containing Gorak helpers. |
+| `--gorak-root PATH` | `GORAK_REMOTE_ROOT` | Windows directory containing gorak helpers. |
 
 ### ODBC metadata
 
@@ -307,6 +282,6 @@ If `--sql-backend` is omitted, it follows `--backend`.
 | `--db-user USER` | `GORAK_DB_USER` | ODBC username. |
 | `--db-password PASSWORD` | `GORAK_DB_PASSWORD` | ODBC password. |
 
-ODBC is optional for normal local and SSH workflows. It changes how Gorak reads
+ODBC is optional for normal local and SSH workflows. It changes how gorak reads
 Ingres metadata; OpenROAD export, import, compilation, run, and test still use
 the local or remote OpenROAD backend.

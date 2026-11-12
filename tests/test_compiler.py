@@ -91,3 +91,46 @@ def test_compile_cli_reports_all_diagnostics_and_failure_exit(
         cli.main(["compile", "example", "widget"])
     assert ex.value.code == 1
     assert diagnostics in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("cwd", "args", "expected"),
+    [
+        ("", [], [("alpha", None), ("beta", None)]),
+        ("", ["beta"], [("beta", None)]),
+        ("", ["alpha/widget"], [("alpha", "widget")]),
+        ("", ["alpha!widget"], [("alpha", "widget")]),
+        ("beta", [], [("beta", None)]),
+        ("beta", ["widget"], [("beta", "widget")]),
+    ],
+)
+def test_compile_uses_transfer_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cwd: str,
+    args: list[str],
+    expected: list[tuple[str, str | None]],
+) -> None:
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    for app in ("alpha", "beta"):
+        (tmp_path / app).mkdir()
+        (tmp_path / app / "app.json").write_text("{}")
+    monkeypatch.chdir(tmp_path / cwd)
+    monkeypatch.setattr(
+        cli,
+        "resolve_openroad_connection",
+        lambda *_: OpenRoadConnection("local", "node", "db", None),
+    )
+    calls = []
+
+    def compile_source(
+        c: Any, app: str, component: str | None, log: Path
+    ) -> compiler.CompileResult:
+        calls.append((app, component))
+        log.parent.mkdir(parents=True)
+        log.write_text("Compiled")
+        return compiler.CompileResult(True, log)
+
+    monkeypatch.setattr(compiler, "compile_source", compile_source)
+    cli.main(["compile", *args])
+    assert calls == expected

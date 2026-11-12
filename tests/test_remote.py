@@ -103,7 +103,7 @@ COMPONENT_SYNC_METADATA_OUTPUT = """
 REMOTE_MANIFEST_OUTPUT = dedent(
     """
         {
-          "version": "9",
+          "version": "12",
           "files": [
             "applist.sql",
             "revision-generation.sql",
@@ -112,6 +112,7 @@ REMOTE_MANIFEST_OUTPUT = dedent(
             "backup-component.bat",
             "import-component.bat",
             "compile-source.bat",
+            "delete-source.bat",
     "create-source.bat",
     "update-application.bat",
             "run-application.ps1",
@@ -120,6 +121,7 @@ REMOTE_MANIFEST_OUTPUT = dedent(
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
+            "get-app-sync-metadata.bat",
             "get-include-list.bat",
             "gorak-helpers.json"
           ]
@@ -329,6 +331,7 @@ class TestVerifyRemoteHelpers:
             "backup-component.bat",
             "import-component.bat",
             "compile-source.bat",
+            "delete-source.bat",
             "create-source.bat",
             "update-application.bat",
             "run-application.ps1",
@@ -337,6 +340,7 @@ class TestVerifyRemoteHelpers:
             "get-app-list.bat",
             "get-component-list.bat",
             "get-component-sync-metadata.bat",
+            "get-app-sync-metadata.bat",
             "get-include-list.bat",
             "gorak-helpers.json",
         ]
@@ -363,7 +367,7 @@ class TestVerifyRemoteHelpers:
         with pytest.raises(RemoteCommandError) as ex:
             verify_remote_helpers(
                 REMOTE_HOST,
-                run_cmd=lambda command: '{"version": "9", "files": []}',
+                run_cmd=lambda command: '{"version": "12", "files": []}',
             )
 
         assert "missing or outdated" in str(ex.value)
@@ -604,7 +608,10 @@ class TestGetIncludeList:
 class TestGetAllComponentSyncMetadata:
     """Tests for remote component sync metadata."""
 
-    def test_runs_remote_get_component_sync_metadata_command(self) -> None:
+    @pytest.mark.parametrize("app", [None, "sample"])
+    def test_runs_remote_get_component_sync_metadata_command(
+        self, app: str | None
+    ) -> None:
         calls = []
 
         def fake_run(command: list[str]) -> str:
@@ -616,6 +623,7 @@ class TestGetAllComponentSyncMetadata:
             vnode="vnode",
             database="db",
             run_cmd=fake_run,
+            app=app,
         )
 
         assert result[0].component_name == "fm_start"
@@ -624,7 +632,8 @@ class TestGetAllComponentSyncMetadata:
                 "ssh",
                 "-T",
                 "test@WINDOWS-PC",
-                r"c:\Development\gorak\get-component-sync-metadata.bat vnode db",
+                r"c:\Development\gorak\get-component-sync-metadata.bat vnode db"
+                + (f" {app}" if app else ""),
             ],
         ]
 

@@ -318,7 +318,7 @@ def test_accepted_baseline_preserves_source_and_concurrent_wml_edits(
     concurrent_edit: bool,
     omit_default_mode: bool,
 ) -> None:
-    from gorak import safe_pull
+    from gorak import file_updates
     from gorak.parser import encode_wml, parse_component_node
 
     xml = b"""<OPENROAD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><COMPONENT name="panel" xsi:type="framesource"><topform><width>1000</width><childfields><row xsi:type="entryfield"><name>input</name><xleft>104</xleft></row><row_class>formfield</row_class></childfields></topform></COMPONENT></OPENROAD>"""
@@ -360,7 +360,7 @@ def test_accepted_baseline_preserves_source_and_concurrent_wml_edits(
 
     monkeypatch.setattr(importer, "backup_component_xml", export)
     monkeypatch.setattr(importer, "import_component_xml", push)
-    original_apply = safe_pull.apply_files
+    original_apply = file_updates.apply_files
 
     def apply(
         root: Path,
@@ -372,7 +372,7 @@ def test_accepted_baseline_preserves_source_and_concurrent_wml_edits(
             markup.write_text(markup.read_text().replace('xleft="321"', 'xleft="500"'))
         original_apply(root, changes, recovery, expected)
 
-    monkeypatch.setattr(safe_pull, "apply_files", apply)
+    monkeypatch.setattr(file_updates, "apply_files", apply)
     if concurrent_edit:
         with pytest.raises(ProjectError, match="File changed"):
             importer.import_component(CONNECTION, tmp_path, "app", "panel")

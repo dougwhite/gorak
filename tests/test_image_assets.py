@@ -386,7 +386,7 @@ def test_stylesheet_promotion_keeps_assets_and_dry_run_is_read_only(
 
     from gorak import native_styles, style_commands
     from gorak.component_defaults import write_component_defaults
-    from gorak.safe_pull import fingerprint
+    from gorak.file_updates import fingerprint
 
     folder = tmp_path / "example"
     folder.mkdir()

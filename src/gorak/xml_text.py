@@ -16,7 +16,7 @@ INVALID_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]"
 
 def is_text_node(node: etree._Element) -> bool:
     """Whether a property contains text rather than nested XML elements."""
-    return all(not isinstance(child.tag, str) for child in node)
+    return not len(node) or all(not isinstance(child.tag, str) for child in node)
 
 
 def text_value(node: etree._Element | None) -> str:
@@ -66,6 +66,9 @@ def validate_instructions(node: etree._Element) -> None:
 
 def set_text(node: etree._Element, value: str, *, cdata: bool = False) -> None:
     """Replace a scalar's contents with legal XML, retaining attributes/tail."""
+    if not len(node) and INVALID_XML.search(value) is None:
+        node.text = etree.CDATA(value) if cdata and "\r" not in value else value
+        return
     if not is_text_node(node):
         raise ProjectError(f"Cannot replace structured XML property: {node.tag}")
     # Validate existing instructions before replacing them.

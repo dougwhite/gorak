@@ -1,7 +1,9 @@
 """Coordinate OpenROAD XML export and .w4gl source file writing."""
 
+import json
 import tempfile
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy2, rmtree
@@ -62,6 +64,7 @@ from .remote import (
     get_include_list,
 )
 from .revision_route import validate_source_route
+from .source_output import write_text as write_source_text
 from .sync_state import update_component_entries
 from .writer_launch import local_writer_command
 
@@ -134,15 +137,21 @@ def write_app_metadata(
     root: Path,
     application: Application,
     included_applications: list[IncludedApplication] | None = None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Path:
     """Write app.json while preserving local-only fields not yet exported."""
 
     path = root / application.name / "app.json"
     existing = read_json(path) if path.is_file() else {}
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_json(
+    write_source_text(
         path,
-        application_metadata(application, existing, included_applications),
+        json.dumps(
+            application_metadata(application, existing, included_applications), indent=4
+        )
+        + "\n",
+        digests=digests,
     )
     return path
 
@@ -155,6 +164,7 @@ def export_application(
     progress: Callable[[str], None] | None,
     *,
     native_xml: Path | None = None,
+    digests: dict[Path, str] | None = None,
 ) -> ApplicationExport:
     """Export one OpenROAD application into a Gorak project or output directory."""
 
@@ -177,6 +187,7 @@ def export_application(
             paths=paths,
             progress=progress,
             native_xml=native_xml,
+            digests=digests,
         )
         previous = (
             cached_components(
@@ -191,6 +202,7 @@ def export_application(
         root,
         merged_application,
         exported.included_applications,
+        digests=digests,
     )
     if bind_after_export:
         save_binding(connection, root)
@@ -215,6 +227,8 @@ def export_applications(
     apps: Sequence[str],
     output_path: str | None,
     progress: Callable[[str], None] | None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Iterator[ApplicationExport]:
     """Export an ordered batch, prefetching native XML into a bounded disk queue."""
     from .export_pipeline import prefetched_exports
@@ -236,7 +250,13 @@ def export_applications(
                 progress, f"Exporting application {index}/{len(apps)}: {app}"
             )
             yield export_application(
-                connection, context, app, output_path, progress, native_xml=xml
+                connection,
+                context,
+                app,
+                output_path,
+                progress,
+                native_xml=xml,
+                digests=digests,
             )
 
 
@@ -314,6 +334,7 @@ def export_application_to_paths(
     *,
     asset_origins: Path | None = None,
     native_xml: Path | None = None,
+    digests: dict[Path, str] | None = None,
 ) -> ApplicationExport:
     """Export one full application XML and encode all top-level components."""
 
@@ -389,7 +410,12 @@ def export_application_to_paths(
                 parent = native_styles.parent_styles(paths.source_dir)
             components.append(
                 project_component_files(
-                    native, paths.source_dir, writer, progress, parent_styles=parent
+                    native,
+                    paths.source_dir,
+                    writer,
+                    progress,
+                    parent_styles=parent,
+                    digests=digests,
                 )
             )
         except (
@@ -420,21 +446,33 @@ def project_component_files(
     progress: Callable[[str], None] | None,
     *,
     parent_styles: dict[str, Any] | None = None,
+    case_index: dict[str, list[Path]] | None = None,
+    staging: Path | None = None,
+    digests: dict[Path, str] | None = None,
+    projected: Callable[[dict[Path, str], Path, Callable[[], bool]], None]
+    | None = None,
 ) -> Component:
     from .image_assets import externalize
 
     name = str(native.get("name"))
+    staged_digests: dict[Path, str] | None = (
+        {} if digests is not None or projected is not None else None
+    )
     # Prepare all component files before replacing any existing source. A
     # malformed query, stylesheet or bitmap must not leave a half-written frame.
-    with tempfile.TemporaryDirectory(prefix="gorak-component-") as temporary:
+    with (
+        nullcontext(str(staging))
+        if staging is not None
+        else tempfile.TemporaryDirectory(prefix=".gorak-component-", dir=source_dir)
+    ) as temporary:
         stage = Path(temporary) / source_dir.name
-        stage.mkdir()
+        stage.mkdir(exist_ok=True)
         for parent, target in (
             (source_dir.parent, stage.parent),
             (source_dir, stage),
         ):
             defaults = parent / "field_defaults.json"
-            if defaults.exists():
+            if defaults.exists() and not (target / defaults.name).exists():
                 copy2(defaults, target / defaults.name)
         from .component_edits import SUPPORTED_TYPES
         from .importer import validate_name
@@ -442,6 +480,15 @@ def project_component_files(
 
         try:
             validate_name(name)
+            # A failed projection may have left some companions in the shared stage.
+            for suffix in (
+                ".w4gl",
+                ".wml",
+                ".fielddefaults.json",
+                ".queries.json",
+                ".icons.json",
+            ):
+                (stage / f"{name}{suffix}").unlink(missing_ok=True)
             kind = native.get(f"{{{NS['xsi']}}}type")
             if kind not in SUPPORTED_TYPES:
                 raise ProjectError(f"Unsupported component type: {kind}")
@@ -457,16 +504,22 @@ def project_component_files(
             from .class_icons import extract_icons
 
             extract_icons(node)
-            write_queries(stage / f"{name}.w4gl", component.queries)
-            write_component_w4gl(stage, name, encode_source_w4gl(component))
-            write_component_wml(stage, name, component.markup)
+            write_queries(
+                stage / f"{name}.w4gl", component.queries, digests=staged_digests
+            )
+            write_component_w4gl(
+                stage, name, encode_source_w4gl(component), digests=staged_digests
+            )
+            write_component_wml(stage, name, component.markup, digests=staged_digests)
             overrides = component.props.get("fielddefaults", {})
             write_defaults = (
                 write_projected_defaults
                 if component.type in FRAME_COMPONENT_TYPES or not overrides
                 else write_component_defaults
             )
-            write_defaults(stage / f"{name}.w4gl", overrides, writer=writer)
+            write_defaults(
+                stage / f"{name}.w4gl", overrides, writer=writer, digests=staged_digests
+            )
         except (
             ProjectError,
             ValueError,
@@ -475,23 +528,47 @@ def project_component_files(
             etree.XMLSyntaxError,
         ) as ex:
             raise ComponentProjectionError(str(ex)) from ex
-        for suffix in (
-            ".w4gl",
-            ".wml",
-            ".fielddefaults.json",
-            ".queries.json",
-            ".icons.json",
-        ):
-            target = source_dir / f"{name}{suffix}"
-            source = stage / target.name
-            if source.exists():
-                normalize_case_path(target, progress=progress, label="component")
-                copy2(source, target)
-            else:
-                target.unlink(missing_ok=True)
-        defaults = stage.parent / "field_defaults.json"
-        if defaults.exists() and not (source_dir.parent / defaults.name).exists():
-            copy2(defaults, source_dir.parent / defaults.name)
+
+        def install() -> bool:
+            for suffix in (
+                ".w4gl",
+                ".wml",
+                ".fielddefaults.json",
+                ".queries.json",
+                ".icons.json",
+            ):
+                target = source_dir / f"{name}{suffix}"
+                source = stage / target.name
+                if source.exists():
+                    normalize_case_path(
+                        target,
+                        progress=progress,
+                        label="component",
+                        case_index=case_index,
+                    )
+                    source.replace(target)
+                    if digests is not None and staged_digests is not None:
+                        digests[target] = staged_digests[source]
+                    if case_index is not None:
+                        case_index[target.name.lower()] = [target]
+                else:
+                    target.unlink(missing_ok=True)
+            defaults = stage.parent / "field_defaults.json"
+            target_defaults = source_dir.parent / defaults.name
+            if defaults.exists() and not target_defaults.exists():
+                try:
+                    with target_defaults.open("xb") as stream:
+                        stream.write(defaults.read_bytes())
+                    return True
+                except FileExistsError:
+                    pass
+            return False
+
+        if projected is None:
+            install()
+        else:
+            assert staged_digests is not None
+            projected(staged_digests, stage.parent / "field_defaults.json", install)
         return component
 
 
@@ -780,8 +857,15 @@ def read_component_sync_metadata(
             app,
         )
 
-    metadata = read_all_component_sync_metadata(connection)
-    return [item for item in metadata if item.application_name.lower() == app.lower()]
+    metadata = get_all_component_sync_metadata(
+        remote=require_remote_host(connection),
+        vnode=connection.vnode,
+        database=connection.database,
+        app=app,
+    )
+    return [
+        item for item in metadata if item.application_name.casefold() == app.casefold()
+    ]
 
 
 def read_all_component_sync_metadata(
@@ -901,11 +985,16 @@ def normalize_case_path(
     disposable: bool = False,
     progress: Callable[[str], None] | None = None,
     label: str = "path",
+    case_index: dict[str, list[Path]] | None = None,
 ) -> Path:
     """Rename a same-name-different-case path to `path` when present."""
 
     source = fallback if fallback is not None and fallback.exists() else None
-    variants = case_variants(path)
+    variants = (
+        case_variants(path)
+        if case_index is None
+        else [p for p in case_index.get(path.name.lower(), []) if p.exists()]
+    )
     exact = [child for child in variants if child.name == path.name]
     others = [child for child in variants if child.name != path.name]
 
@@ -977,13 +1066,15 @@ def write_component_w4gl(
     component_name: str,
     content: str,
     progress: Callable[[str], None] | None = None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Path:
     """Write a component using the OpenROAD XML name as the source filename."""
 
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.w4gl"
     normalize_case_path(path, progress=progress, label="component")
-    path.write_text(content, encoding="utf-8", newline="\n")
+    write_source_text(path, content, newline="\n", digests=digests)
     return path
 
 
@@ -992,6 +1083,8 @@ def write_component_wml(
     component_name: str,
     content: str | None,
     progress: Callable[[str], None] | None = None,
+    *,
+    digests: dict[Path, str] | None = None,
 ) -> Path | None:
     """Write frame markup when a component has a visual source tree."""
 
@@ -1001,5 +1094,5 @@ def write_component_wml(
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / f"{component_name}.wml"
     normalize_case_path(path, progress=progress, label="component")
-    path.write_text(content.rstrip("\n") + "\n", encoding="utf-8", newline="\n")
+    write_source_text(path, content.rstrip("\n") + "\n", newline="\n", digests=digests)
     return path

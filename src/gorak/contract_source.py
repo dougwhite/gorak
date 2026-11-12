@@ -15,6 +15,8 @@ from .parser import (
     MarkupDefaultsIndex,
     parse_w4gl,
 )
+from .source_reads import is_file as source_exists
+from .source_reads import read_text as read_source_text
 from .wml_writer import XSI, parse_markup
 from .xml_shapes import derives, order_children, shape, shapes
 from .xml_text import is_text_node, set_text, text_value
@@ -124,15 +126,16 @@ def decode_component(path: Path) -> etree._Element:
     from .importer import validate_name
 
     validate_name(path.stem)
-    source = parse_w4gl(path.read_text(encoding="utf-8"), path.stem)
+    source_text = read_source_text(path)
+    source = parse_w4gl(source_text, path.stem)
     kind = source.type
     if kind not in SUPPORTED_TYPES:
         raise ProjectError(f"Unsupported component type: {kind}")
     node = etree.Element("COMPONENT", name=path.stem, nsmap=NS)
     node.set(XSI, kind)
-    overlay_metadata(node, path)
+    overlay_metadata(node, path, source=source_text, edited=source)
     if kind in FRAME_COMPONENT_TYPES:
-        if not path.with_suffix(".wml").is_file():
+        if not source_exists(path.with_suffix(".wml")):
             raise ProjectError("Frame requires a WML source file")
         from . import native_styles
 
@@ -144,7 +147,7 @@ def decode_component(path: Path) -> etree._Element:
         if stylesheet.get("absent") is not True:
             node.append(native_styles.decode(stylesheet))
         index = MarkupDefaultsIndex({}, {}, explicit=True)
-        markup = parse_markup(path.with_suffix(".wml").read_text(encoding="utf-8"))
+        markup = parse_markup(read_source_text(path.with_suffix(".wml")))
         from .image_assets import resolve
 
         resolve(markup, path.parent)
@@ -220,9 +223,12 @@ def equivalent(
         from .frame_geometry import ZERO_DIMENSIONS
 
         for field in root.iter():
+            dimensions = ZERO_DIMENSIONS.get(field.get(XSI, ""), ())
+            if not dimensions:
+                continue
             if field.tag in {"extension", "taggedvalues"} or opaque_descendant(field):
                 continue
-            for dimension in ZERO_DIMENSIONS.get(field.get(XSI, ""), ()):
+            for dimension in dimensions:
                 scalar = field.find(dimension)
                 if scalar is not None and text_value(scalar) == "0":
                     field.remove(scalar)
@@ -256,13 +262,21 @@ def equivalent(
             and encode(lstyle) != encode(rstyle)
         ):
             return False
-    from dataclasses import replace
+    from .domain import Component
+
+    def metadata(node: etree._Element) -> Component:
+        parsed = parse_component_node(node, project_markup=False)
+        # Unknown palette types can fail while the legacy projection selects
+        # defaults. Keep that validation path for unrecognized native layouts.
+        if any(
+            style["type"] not in shapes()
+            for style in parsed.props.get("fielddefaults", {}).get("field_styles", [])
+        ):
+            parse_component_node(node)
+        return parsed
 
     # Attribute order in serialized WML is immaterial; compare its structure below.
-    if replace(parse_component_node(left), markup=None) != replace(
-        parse_component_node(right), markup=None
-    ):
-        return False
+    left_metadata, right_metadata = metadata(left), metadata(right)
     # Compare explicit field state, allowing only the WML contract's implicit
     # DV_SYSTEM mode and the parser's bitmap whitespace normalization.
     empty = MarkupDefaultsIndex({}, {}, explicit=exact_styles)
@@ -275,4 +289,6 @@ def equivalent(
             for element in frame_markup_elements(child, empty)
         ]
 
-    return effective_markup(left) == effective_markup(right)
+    # Project both layouts even if metadata differs, retaining layout validation.
+    left_markup, right_markup = effective_markup(left), effective_markup(right)
+    return left_metadata == right_metadata and left_markup == right_markup

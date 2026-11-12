@@ -68,7 +68,7 @@ class RemoteHost:
 
 RunCommand = Callable[[list[str]], str]
 REMOTE_HELPER_MANIFEST = "gorak-helpers.json"
-REMOTE_HELPER_VERSION = "9"
+REMOTE_HELPER_VERSION = "12"
 REMOTE_HELPER_FILES = [
     "applist.sql",
     "revision-generation.sql",
@@ -77,6 +77,7 @@ REMOTE_HELPER_FILES = [
     "backup-component.bat",
     "import-component.bat",
     "compile-source.bat",
+    "delete-source.bat",
     "create-source.bat",
     "update-application.bat",
     "run-application.ps1",
@@ -85,6 +86,7 @@ REMOTE_HELPER_FILES = [
     "get-app-list.bat",
     "get-component-list.bat",
     "get-component-sync-metadata.bat",
+    "get-app-sync-metadata.bat",
     "get-include-list.bat",
     REMOTE_HELPER_MANIFEST,
 ]
@@ -347,13 +349,19 @@ def get_all_component_sync_metadata(
     vnode: str,
     database: str,
     run_cmd: RunCommand = run_subprocess,
+    *,
+    app: str | None = None,
 ) -> list[ComponentSyncMetadata]:
-    """Read component change metadata for all applications remotely."""
+    """Read component change metadata remotely, optionally for one app."""
+    if app is not None:
+        from .importer import validate_name
+
+        validate_name(app)
 
     command = build_remote_command(
         remote=remote,
         script="get-component-sync-metadata.bat",
-        args=[vnode, database],
+        args=[vnode, database, *([app] if app is not None else [])],
     )
 
     return parse_component_sync_metadata_output(run_cmd(command))

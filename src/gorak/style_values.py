@@ -136,7 +136,14 @@ def difference(parent: Json, desired: Json) -> Json:
 
 
 def merge(parent: Json, overrides: Json) -> Json:
-    result = deepcopy(parent)
+    # Recursive merges own their output. Copy inherited branches once, rather
+    # than copying the entire tree again at every overridden ancestor.
+    result = {
+        key: value
+        if key in overrides and key not in {"$order", "$before"}
+        else deepcopy(value)
+        for key, value in parent.items()
+    }
     for key, value in overrides.items():
         if key in {"$order", "$before"}:
             continue
