@@ -75,6 +75,8 @@ gorak config --backend local --vnode myvnode --database sourcedb
 This writes the local connection settings to `.env`, which is ignored by Git.
 Use separate values for the vnode and database; do not write
 `myvnode::sourcedb` in the database setting.
+Before running a restored application, check its runtime `database_name` in
+`app.json`. It can differ from the source database in `.env`.
 
 Check the connection by listing the applications in the source database:
 
@@ -93,10 +95,10 @@ List the source components if you want to inspect the application first:
 gorak component list myapplication
 ```
 
-Export it into readable gorak source:
+Pull it into the project and record its transfer checkpoint:
 
 ```sh
-gorak app export myapplication
+gorak pull myapplication
 ```
 
 The new application directory contains `app.json`, readable `.w4gl` source,
@@ -118,8 +120,8 @@ The tracked project is now a normal Git repository. Do not add `.env` or
 
 ## Push a change back to OpenROAD
 
-Use this workflow when readable source is authoritative. When working in Workbench,
-use `gorak pull` to overwrite changed local components with database source.
+Use `gorak pull` to retrieve Workbench changes or `gorak sync` to transfer
+changes in both directions. See [conflict resolution](push.md) if both sides changed.
 
 Edit a supported `.w4gl` or `.wml` file, then inspect gorak's planned changes:
 
@@ -130,7 +132,7 @@ gorak status
 Push the disk change into the OpenROAD source database:
 
 ```sh
-gorak push
+gorak push myapplication
 ```
 
 gorak imports and compiles the changed source. If the application has
@@ -144,23 +146,12 @@ git diff
 `gorak test` runs the source already stored in OpenROAD; it never pushes disk
 changes automatically.
 
-The normal loop is:
-
-```sh
-# edit readable source
-gorak status
-gorak push
-gorak test
-git diff
-```
-
 Failed items remain pending; correct the reported failure and retry the same command.
 Pending compilation is retried by `gorak push` without repeating successful imports.
 
 ## Upgrading existing projects
 
-Old `.openroad` baselines do not initialize the new transfer ledger. The first
-`gorak pull` (including its `gorak sync` alias) is a full authoritative download:
-it can overwrite pending local edits, without conflict detection or recovery copies.
-Commit or copy pending work first. Choose `gorak push` when disk is the sender,
-or `gorak pull` when Workbench is the sender; use `--dry-run` to preview the scope.
+Old baselines and fresh Git clones have no shared transfer checkpoint. When
+source exists on both sides, gorak reports a conflict. Save pending work and
+preview with `gorak sync --dry-run`. Use `gorak pull APP --force` to start from
+Workbench or `gorak push APP --force` to start from the checkout.

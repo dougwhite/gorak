@@ -1,24 +1,35 @@
 # Push and pull
 
-`gorak push` sends changed readable source to the configured database. Local
-source wins. `gorak pull` sends changed database source to the checkout. Database
-source wins. Neither command compares receiver content or reconciles conflicts.
+`gorak push` sends local changes to the source database. `gorak pull` brings
+Workbench changes into the checkout. `gorak sync` does both. Use `--dry-run`
+to preview transfers and conflicts.
 
-`gorak sync` aliases pull; `gorak sync --push` aliases push. Use `--full` to
-transfer everything, `--dry-run` to preview, and `push --no-compile` for source
-imports without compilation. Keep Workbench editors closed during imports.
+| Where you run it | Target | Scope |
+| --- | --- | --- |
+| Project root | None | Project |
+| Project root | `APP` | Application |
+| Application directory | None | Current application |
+| Application directory | `COMPONENT` | Component in that application |
+| Either | `APP/COMPONENT` or `'APP!COMPONENT'` | Named component |
 
-The transfer ledger in `.openroad/transfers.json` records successful file hashes
-and database IDs, names, and alteration tokens. A missing ledger or changed target
-starts a full transfer. A receiver-only edit is left alone until the sender changes
-or a full transfer is requested. The source format is unchanged.
-Deletions are not propagated. Local renames/deletions require a native database
-operation; database renames are detected by identity and name when pulling.
+Quote `'APP!COMPONENT'` in Bash to prevent history expansion. Name an untracked
+application to pull it into a project that already has apps. Transfer the
+application first if it is missing on the receiving side.
 
-A failed component or application is reported while independent items continue.
-Successful items are recorded; failed items remain pending. The command exits
-nonzero if any item failed or was skipped. Retry after correcting the failure.
-Source import success does not establish successful compilation or execution.
+`gorak status` lists pending pushes, pulls, and conflicts. A transfer stops
+before writing if its scope contains conflicts. Choose a version explicitly:
 
-Git provides source history. No three-way baselines or recovery snapshots are
-created by push/pull. Never commit `.env` or `.openroad/`.
+- `gorak push APP/COMPONENT --force` keeps the local version.
+- `gorak pull APP/COMPONENT --force` keeps the Workbench version.
+- `gorak sync --force-push` or `--force-pull` chooses the winner for overlaps
+  and still transfers independent changes. An application push can remain
+  pending if it would overwrite a component kept from Workbench.
+
+Use `push --full` or `pull --full` to include unchanged sender source in scope.
+`--full` still checks for conflicts. Keep Workbench editors closed during
+imports. Use `--no-compile` to import source without compiling.
+
+Successful items are checkpointed in `.openroad/transfers.json`. Independent
+items continue after a failure, and the command exits nonzero. Fix the error
+and retry the pending items.
+Handle deletions and local renames in Workbench.

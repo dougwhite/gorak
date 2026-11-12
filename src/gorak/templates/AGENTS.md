@@ -8,11 +8,11 @@ until they are pushed.
 ## Workflow
 
 1. Read the project notes and run `git status --short`.
-2. Choose the sender: `gorak pull` overwrites local files from changed database
-   components. Use it when Workbench is authoritative, not before uploading local work.
+2. Run `gorak status`. Use `gorak pull` for Workbench changes or `gorak sync`
+   for changes in both directions.
 3. Edit the requested `.w4gl`, `.wml`, application metadata, or field-default
    files.
-4. Run `gorak status` to inspect the planned disk/database changes.
+4. Run `gorak status` to check pending transfers and conflicts.
 5. Run `gorak push` and require success.
 6. Run `gorak test`. Tests execute database source and never synchronize disk
    changes automatically.
@@ -34,9 +34,10 @@ database.
 - Keep WML well formed and preserve established metadata, field names, event
   scripts, and native `fieldstyle` values.
 - Keep Workbench source editors closed while gorak imports.
-- Push uses local file hashes; pull uses database IDs, names, and change tokens.
-  The sender wins. Failed items remain pending; successful items are checkpointed.
-  Retry failures with the same command. Do not remove an active operation lock.
+- Resolve conflicts with `gorak push APP/COMPONENT --force` to keep disk source
+  or `gorak pull APP/COMPONENT --force` to keep Workbench source. Confirm which
+  version to keep before forcing.
+- Retry reported failures after fixing them. Do not remove an active operation lock.
 - A compiler or test failure is a failure even if source synchronization
   completed. Report it and do not claim the change is finished.
 - Use a feature branch and create a pull request when requested. Do not merge

@@ -115,7 +115,7 @@ gorak component import salesapp calculate_totals --dry-run
 gorak component import salesapp calculate_totals
 ```
 
-For normal project work, prefer `gorak sync --push`.
+For normal project work, use `gorak push APP/COMPONENT`.
 
 ### `gorak includes list APP`
 
@@ -125,25 +125,21 @@ Lists the applications included by `APP`.
 
 ### `gorak status`
 
-Lists local changes awaiting push and database changes awaiting pull as JSON.
-It reads file hashes and catalog change tokens, without exporting database XML.
+Lists pending pushes, pulls, and conflicts across the project as JSON.
 
-### `gorak pull [--full] [--dry-run]`
+### `gorak pull [TARGET] [--force] [--full] [--dry-run]`
 
-Copies changed database components over local files. Exports each affected
-application once. `gorak sync` is an alias. `--full` transfers all components;
-`--dry-run` lists candidates without writing files.
+Updates local source from Workbench.
 
-### `gorak push [--full] [--dry-run] [--no-compile]`
+### `gorak push [TARGET] [--force] [--full] [--dry-run] [--no-compile]`
 
-Imports changed local source over database source, then compiles successful
-imports. `gorak sync --push` is an alias. `--no-compile` transfers source only.
-`--full` transfers everything; `--dry-run` prepares source without importing.
+Imports local source and compiles successful imports by default.
+`gorak sync --push` also runs the push direction.
 
-Successful items are checkpointed independently in `.openroad/transfers.json`.
-Failures do not stop independent items; the final summary reports failures and
-returns a nonzero exit status. Retry the same command to retry pending items.
-Receiver edits do not cause conflicts. Deletion pushes are not supported.
+### `gorak sync [TARGET] [--force-push | --force-pull] [--dry-run] [--no-compile]`
+
+Transfers pending changes in both directions. The force options choose which
+side wins on conflicts. See [transfer scope and conflict resolution](push.md).
 
 ## Compile, run, and test
 

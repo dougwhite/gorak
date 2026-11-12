@@ -88,25 +88,24 @@ List the applications available in the configured OpenROAD source database:
 gorak app list
 ```
 
-Export an existing application into readable source files:
+Pull an existing application into the project:
 
 ```bash
-gorak app export myapplication
+gorak pull myapplication
 ```
 
 When editing readable source, use:
 
 ```bash
 # edit .w4gl / .wml files in your editor
-gorak push                       # local source is authoritative
+gorak push myapplication
 gorak test                       # run configured OpenROAD tests
 git diff                         # review the result
 ```
 
-`gorak test` runs the source currently in the OpenROAD database, so disk changes
-must be synchronized first. `gorak status` shows the current disk/database change
-list when you want to inspect pending transfers. When working in Workbench, use
-`gorak pull` to update files from the database. See [upgrade guidance](docs/getting-started.md#upgrading-existing-projects) before the first transfer from an older project.
+`gorak test` runs database source. Use `gorak status` to see pending pushes,
+pulls, and conflicts. Use `gorak sync` to transfer changes in both directions.
+See [upgrade guidance](docs/getting-started.md#upgrading-existing-projects) for projects with existing source on both sides.
 
 New projects include an `AGENTS.md` describing this workflow for coding agents such
 as Codex, so an agent can pull source, make a change, synchronize it, run the tests,
@@ -120,7 +119,7 @@ and prepare a Git change using the same commands as a human developer.
 - [Run and Test](docs/run-test.md) - Execute applications and collect test results
 - [Files and Formats](docs/files.md) - Project files and source representation
 - [Remote Helpers](docs/remote.md) - Windows/OpenROAD execution over SSH
-- [Push and Pull](docs/push.md) - Authority rules and transfer retries
+- [Push and Pull](docs/push.md) - Transfer scope and conflict resolution
 - [Development Guide](docs/development.md) - Contributing to gorak
 
 ## Actian OpenROAD Extension
@@ -148,5 +147,5 @@ gorak is focused on:
 - A useful CLI for day-to-day OpenROAD development.
 - Human-readable, text-based OpenROAD source and metadata.
 - Git source control for OpenROAD applications.
-- Incremental, sender-authoritative push and pull between files and OpenROAD.
+- Incremental transfers with conflict checks between files and OpenROAD.
 - Command-line build/test workflows that can be used by humans and coding agents.

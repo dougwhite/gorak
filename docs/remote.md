@@ -58,10 +58,8 @@ After setup, the normal commands use the remote host automatically:
 
 ```sh
 gorak app list
-gorak app export myapplication
-gorak sync
-gorak sync --push
-gorak test
+gorak pull myapplication
+gorak status
 ```
 
 OpenROAD export, import, compilation, run, and test happen on the Windows host.
