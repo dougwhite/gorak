@@ -152,7 +152,7 @@ def test_pull_rename_without_timestamp_and_receiver_edits(
     assert not result.failed
     assert not path.exists()
     assert (path.parent / "renamed.w4gl").exists()
-    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
     assert db.exports == ["sample"]
 
 
@@ -381,7 +381,7 @@ def test_case_only_rename_keeps_new_source(
     result = t.pull(connection(), tmp_path)
     assert not result.failed
     assert (path.parent / "Hello.w4gl").exists()
-    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
 
 
 def test_changes_during_export_remain_pending_without_second_export(
@@ -422,7 +422,7 @@ def test_catalog_spelling_does_not_force_repeated_pull(
     assert not first.failed
     assert not t.pull(connection(), tmp_path).succeeded
     assert db.exports == ["sample"]
-    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
 
 
 def test_bulk_catalog_reads_are_constant_per_batch(
@@ -629,7 +629,7 @@ def test_pull_rename_batch_preserves_destinations(
         assert (
             t.Ledger(tmp_path, connection()).entries[key]["database"] == db.tokens[key]
         )
-    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
 
 
 def test_component_asset_does_not_replace_unrelated_source(
@@ -785,7 +785,7 @@ def test_application_name_swap_keeps_both_checkpoints(
     ledger = t.Ledger(tmp_path, connection())
     for key in db.tokens:
         assert ledger.entries[key]["database"] == db.tokens[key]
-    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
 
 
 def test_preparation_captures_markup_assets_and_absent_companions(
@@ -874,7 +874,7 @@ def test_image_like_constant_text_pushes_normally(
     )
     Database(monkeypatch)
     assert not t.push(connection(), tmp_path, compile=False).failed
-    assert t.status(connection(), tmp_path) == {"push": [], "pull": []}
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
     assert not t.push(connection(), tmp_path, compile=False).succeeded
 
 
@@ -961,3 +961,218 @@ def test_separator_in_metadata_preserves_icon_dependency(
     assert t.push(connection(), tmp_path, compile=False).succeeded == ["sample/hello"]
     assert db.imports == ["sample/hello"]
     assert t.status(connection(), tmp_path)["push"] == []
+
+
+def edit_local(path: Path, value: int) -> None:
+    path.write_text(path.read_text().replace("RETURN 1", f"RETURN {value}"))
+
+
+def edit_database(db: Database, key: str, value: int) -> None:
+    xml = etree.tostring(db.nodes[key])
+    assert b"RETURN 1" in xml
+    db.nodes[key] = etree.fromstring(
+        xml.replace(b"RETURN 1", f"RETURN {value}".encode())
+    )
+    db.tokens[key]["count"] = int(str(db.tokens[key]["count"])) + 1
+
+
+@pytest.mark.parametrize("direction", ["push", "pull"])
+@pytest.mark.parametrize(
+    ("inside_app", "target"),
+    [
+        (False, "sample/both"),
+        (False, "sample!both"),
+        (False, "sample"),
+        (True, "both"),
+        (True, None),
+        (False, None),
+    ],
+)
+def test_cli_conflict_aborts_before_any_transfer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    direction: str,
+    inside_app: bool,
+    target: str | None,
+) -> None:
+    from gorak import cli
+
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    path = source(tmp_path, name="both")
+    local_only = source(tmp_path, name="local_only")
+    source(tmp_path, name="database_only")
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    db.imports.clear()
+    edit_local(path, 2)
+    edit_local(local_only, 4)
+    edit_database(db, "sample/both", 3)
+    edit_database(db, "sample/database_only", 5)
+    ledger = tmp_path / ".openroad/transfers.json"
+    before = ledger.read_bytes()
+    monkeypatch.chdir(path.parent if inside_app else tmp_path)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *_: connection())
+    args = [direction, "--no-compile", *([target] if target else [])]
+    with pytest.raises(SystemExit) as error:
+        cli.main(args)
+    assert error.value.code == 1
+    assert "sample/both" in capsys.readouterr().err
+    assert db.imports == db.exports == []
+    assert ledger.read_bytes() == before
+    assert "RETURN 2" in path.read_text()
+
+    cli.main([*args, "--force"])
+    component_scope = target in {"sample/both", "sample!both", "both"}
+    if direction == "push":
+        assert db.imports == (
+            ["sample/both"] if component_scope else ["sample/both", "sample/local_only"]
+        )
+        assert b"RETURN 2" in etree.tostring(db.nodes["sample/both"])
+    else:
+        assert db.exports == ["sample"]
+        assert "RETURN 3" in path.read_text()
+        database_only = path.with_name("database_only.w4gl")
+        assert ("RETURN 5" in database_only.read_text()) is not component_scope
+
+
+@pytest.mark.parametrize("prefer", ["push", "pull"])
+def test_two_way_sync_resolves_conflict_and_moves_independent_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prefer: str
+) -> None:
+    both = source(tmp_path, name="both")
+    local_only = source(tmp_path, name="local_only")
+    database_only = source(tmp_path, name="database_only")
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    db.imports.clear()
+    edit_local(both, 2)
+    edit_local(local_only, 4)
+    edit_database(db, "sample/both", 3)
+    edit_database(db, "sample/database_only", 5)
+    with pytest.raises(ProjectError, match="Transfer conflicts"):
+        t.execute_transfer(connection(), tmp_path, direction="sync", compile=False)
+    assert db.imports == db.exports == []
+    reads = db.reads
+    t.execute_transfer(
+        connection(), tmp_path, direction="sync", prefer=prefer, compile=False
+    )
+    assert db.reads == reads + 2  # One plan and one post-import checkpoint read.
+    assert "RETURN 5" in database_only.read_text()
+    assert b"RETURN 4" in etree.tostring(db.nodes["sample/local_only"])
+    expected = "RETURN 2" if prefer == "push" else "RETURN 3"
+    assert expected in both.read_text()
+    assert expected.encode() in etree.tostring(db.nodes["sample/both"])
+    assert t.status(connection(), tmp_path) == {"push": [], "pull": [], "conflicts": []}
+
+
+def test_app_manifest_push_detects_implicit_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    db.imports.clear()
+    (path.parent / "app.json").write_text('{"description":"Local application edit"}')
+    edit_database(db, "sample/hello", 3)
+    status = t.status(connection(), tmp_path)
+    assert status["push"] == ["sample"]
+    assert status["pull"] == ["sample/hello"]
+    assert status["conflicts"] == [
+        {
+            "local": "sample",
+            "database": "sample/hello",
+            "reason": "Application push would overwrite a database change",
+        }
+    ]
+    with pytest.raises(ProjectError, match="Application push would overwrite"):
+        t.execute_transfer(connection(), tmp_path, direction="push", compile=False)
+    assert db.imports == db.exports == []
+    t.execute_transfer(
+        connection(), tmp_path, direction="sync", prefer="pull", compile=False
+    )
+    assert "RETURN 3" in path.read_text()
+    assert t.status(connection(), tmp_path)["push"] == ["sample"]
+    assert not db.imports
+
+
+def test_scoped_conflict_follows_workbench_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    assert not t.push(connection(), tmp_path, compile=False).failed
+    edit_local(path, 2)
+    rename_objects(db, {"sample/hello": "sample/renamed"})
+    with pytest.raises(ProjectError, match="Database object was renamed"):
+        t.execute_transfer(
+            connection(), tmp_path, direction="pull", scope="sample/hello"
+        )
+    assert db.exports == []
+    t.execute_transfer(
+        connection(), tmp_path, direction="pull", scope="sample/hello", prefer="pull"
+    )
+    assert not path.exists()
+    assert path.with_name("renamed.w4gl").is_file()
+
+
+def test_unbased_overlap_requires_an_explicit_direction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push", compile=False)
+    (tmp_path / ".openroad/transfers.json").unlink()
+    db.imports.clear()
+    with pytest.raises(ProjectError, match="No shared transfer checkpoint"):
+        t.execute_transfer(connection(), tmp_path, direction="pull")
+    assert db.imports == db.exports == []
+    t.execute_transfer(connection(), tmp_path, direction="pull", prefer="pull")
+    assert t.status(connection(), tmp_path)["conflicts"] == []
+
+
+def test_application_scope_excludes_conflicts_in_other_apps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gorak import cli
+
+    (tmp_path / "gorak.json").write_text('{"name":"example"}')
+    selected = source(tmp_path, app="selected")
+    other = source(tmp_path, app="other")
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push", compile=False)
+    db.imports.clear()
+    edit_local(selected, 2)
+    edit_local(other, 3)
+    edit_database(db, "other/hello", 4)
+    monkeypatch.chdir(selected.parent)
+    monkeypatch.setattr(cli, "resolve_openroad_connection", lambda *_: connection())
+    cli.main(["push", "--no-compile"])
+    assert db.imports == ["selected/hello"]
+    assert t.status(connection(), tmp_path)["conflicts"] == [
+        {
+            "local": "other/hello",
+            "database": "other/hello",
+            "reason": "Local and database changes overlap",
+        }
+    ]
+
+
+def test_component_scope_preserves_local_rename_protection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = source(tmp_path)
+    db = Database(monkeypatch)
+    t.execute_transfer(connection(), tmp_path, direction="push", compile=False)
+    db.imports.clear()
+    path.rename(path.with_name("renamed.w4gl"))
+    with pytest.raises(ProjectError, match="Resolve the local deletion/rename"):
+        t.execute_transfer(
+            connection(),
+            tmp_path,
+            direction="push",
+            scope="sample/renamed",
+            compile=False,
+        )
+    assert db.imports == []
+    assert "sample/renamed" not in db.nodes

@@ -247,9 +247,29 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("pull", "push", "sync"):
         transfer_parser = subparsers.add_parser(name)
         add_openroad_connection_args(transfer_parser)
+        transfer_parser.add_argument(
+            "target", nargs="?", help="APP, APP/COMPONENT, or quoted 'APP!COMPONENT'"
+        )
         if name == "sync":
+            resolution = transfer_parser.add_mutually_exclusive_group()
+            resolution.add_argument(
+                "--push", action="store_true", help="Run only the push direction"
+            )
+            resolution.add_argument(
+                "--force-push",
+                action="store_true",
+                help="Keep local source on conflicts",
+            )
+            resolution.add_argument(
+                "--force-pull",
+                action="store_true",
+                help="Keep Workbench source on conflicts",
+            )
+        else:
             transfer_parser.add_argument(
-                "--push", action="store_true", help="Alias for gorak push"
+                "--force",
+                action="store_true",
+                help="Overwrite conflicting receiver changes",
             )
         transfer_parser.add_argument(
             "--full", action="store_true", help="Transfer all sender content"
@@ -791,38 +811,38 @@ def includes_list_command(args: argparse.Namespace) -> str:
 
 
 def sync_command(args: argparse.Namespace) -> str:
-    """Compatibility entry point for sender-authoritative push and pull."""
+    """Plan and execute the requested transfer under the project lock."""
     from .project_lock import project_lock
-    from .transfers import pull, push
+    from .transfers import execute_transfer, transfer_scope
 
-    context = load_context(Path.cwd())
+    cwd = Path.cwd()
+    context = load_context(cwd)
     if context.project is None:
         raise ProjectError("Transfer requires a gorak project")
     root = context.project.root
     direction = (
-        "push"
-        if getattr(args, "command", "sync") == "push" or getattr(args, "push", False)
-        else "pull"
+        "push" if getattr(args, "push", False) else getattr(args, "command", "sync")
     )
+    prefer = None
+    if getattr(args, "force", False):
+        prefer = direction
+    elif getattr(args, "force_push", False):
+        prefer = "push"
+    elif getattr(args, "force_pull", False):
+        prefer = "pull"
     with project_lock(root, direction, recover_push=True, recover_pull=True):
+        scope = transfer_scope(root, cwd, getattr(args, "target", None))
         connection = resolve_openroad_connection(args, context)
-        options = {
-            "full": getattr(args, "full", False),
-            "dry_run": getattr(args, "dry_run", False),
-        }
-        result = (
-            push(
-                connection,
-                root,
-                compile=not getattr(args, "no_compile", False),
-                **options,
-            )
-            if direction == "push"
-            else pull(connection, root, **options)
+        return execute_transfer(
+            connection,
+            root,
+            direction=direction,
+            scope=scope,
+            full=getattr(args, "full", False),
+            dry_run=getattr(args, "dry_run", False),
+            compile=not getattr(args, "no_compile", False),
+            prefer=prefer,
         )
-    if result.failed or result.skipped:
-        raise ProjectError(result.summary())
-    return result.summary()
 
 
 def debug_audit_command(args: argparse.Namespace) -> str:

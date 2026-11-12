@@ -11,7 +11,7 @@ from gorak.connection import OpenRoadConnection
     ("command", "direction"),
     [
         (["pull"], "pull"),
-        (["sync"], "pull"),
+        (["sync"], "sync"),
         (["push"], "push"),
         (["sync", "--push"], "push"),
     ],
@@ -34,9 +34,19 @@ def test_transfer_aliases(
         calls.append(direction)
         return transfers.Result(direction)
 
-    monkeypatch.setattr(transfers, direction, run)
+    monkeypatch.setattr(transfers, "inventory", lambda *_: {})
+    if direction == "sync":
+
+        def pulling(*args: Any, **kwargs: Any) -> transfers.Result:
+            calls.append("pull")
+            return transfers.Result("pull")
+
+        monkeypatch.setattr(transfers, "pull", pulling)
+        monkeypatch.setattr(transfers, "push", run)
+    else:
+        monkeypatch.setattr(transfers, direction, run)
     cli.main(command)
-    assert calls == [direction]
+    assert calls == (["pull", "sync"] if direction == "sync" else [direction])
 
 
 def test_batch_failure_returns_nonzero_summary(
@@ -49,6 +59,7 @@ def test_batch_failure_returns_nonzero_summary(
         "resolve_openroad_connection",
         lambda *_: OpenRoadConnection("local", "node", "test", None),
     )
+    monkeypatch.setattr(transfers, "inventory", lambda *_: {})
     monkeypatch.setattr(
         transfers,
         "push",

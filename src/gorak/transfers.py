@@ -1,5 +1,7 @@
 """Sender-authoritative incremental transfers with a small successful-transfer ledger."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -415,10 +417,15 @@ def post_import(
 
 
 def refresh_tokens(
-    connection: OpenRoadConnection, ledger: Ledger, result: Result
+    connection: OpenRoadConnection,
+    ledger: Ledger,
+    result: Result,
+    scope: str | None = None,
 ) -> None:
     pending = [
-        key for key, entry in ledger.entries.items() if entry.get("database") is None
+        key
+        for key, entry in ledger.entries.items()
+        if entry.get("database") is None and in_scope(key, scope)
     ]
     if not pending:
         return
@@ -449,44 +456,53 @@ def push(
     full: bool = False,
     dry_run: bool = False,
     compile: bool = True,
+    plan: TransferPlan | None = None,
 ) -> Result:
-    check_paths(root)
-    ledger = Ledger(root, connection)
+    if plan is None:
+        check_paths(root)
+    ledger = Ledger(root, connection) if plan is None else plan.ledger
     report("Hashing local source")
     cold = full or not ledger.entries
-    if cold:
+    if plan is not None:
+        local = plan.local
+    elif cold:
         # Every sender object is pending; hash each application before reconstruction.
-        local = {
-            key: ""
-            for manifest in root.glob("*/app.json")
-            if not manifest.parent.name.startswith(".")
-            for key in [
-                manifest.parent.name,
-                *[
-                    f"{manifest.parent.name}/{path.stem}"
-                    for path in manifest.parent.glob("*.w4gl")
-                ],
-            ]
-        }
+        local = local_names(
+            root,
+            [
+                manifest.parent.name
+                for manifest in root.glob("*/app.json")
+                if not manifest.parent.name.startswith(".")
+            ],
+        )
     else:
         local = hashes(root, dependency_cache=ledger.asset_dependencies)
-    changed = {
-        key
-        for key, value in local.items()
-        if full or ledger.entries.get(key, {}).get("hash") != value
-    }
+    changed = (
+        set(plan.push)
+        if plan is not None
+        else {
+            key
+            for key, value in local.items()
+            if full or ledger.entries.get(key, {}).get("hash") != value
+        }
+    )
     result = Result("push")
-    removed = set(ledger.entries) - set(local)
+    missing_local = set(ledger.entries) - set(local)
+    if plan is not None:
+        missing_local = plan.missing_local & ledger.entries.keys()
+    removed = missing_local if plan is None else missing_local & plan.push
+    if plan is not None:
+        changed -= removed
     for key in sorted(removed):
         result.failed[key] = (
             "Local deletion or rename requires a native database operation; it is not imported as a duplicate"
         )
-    removed_apps = {key for key in removed if "/" not in key}
+    removed_apps = {key for key in missing_local if "/" not in key}
     for key in list(changed):
         app = key.split("/")[0]
         new = key not in ledger.entries
         ambiguous = (app not in ledger.entries and removed_apps) or any(
-            old.startswith(app + "/") for old in removed
+            old.startswith(app + "/") for old in missing_local
         )
         if new and ambiguous:
             result.skipped[key] = (
@@ -495,11 +511,13 @@ def push(
             changed.remove(key)
     if not changed:
         if not dry_run:
-            refresh_tokens(connection, ledger, result)
+            refresh_tokens(connection, ledger, result, plan.scope if plan else None)
             if compile:
-                retry_compilation(connection, root, result)
+                retry_compilation(
+                    connection, root, result, plan.scope if plan else None
+                )
         return result
-    remote = inventory(connection)
+    remote = inventory(connection) if plan is None else plan.remote
     pending = sorted({key.split("/")[0] for key in changed})
     planned = {app.casefold() for app in pending}
     # Create included source applications first; independent applications continue after failure.
@@ -557,6 +575,24 @@ def push(
                     inputs=inputs,
                     dependency_cache=ledger.asset_dependencies,
                 )
+                if plan is not None:
+                    if (create or app in selected) and plan.scope and "/" in plan.scope:
+                        raise ProjectError(
+                            "Push the application before pushing an individual component"
+                        )
+                    keys = set(captured) if create or app in selected else set(selected)
+                    if (create or app in selected) and keys != {
+                        key for key in local if key == app or key.startswith(app + "/")
+                    }:
+                        raise ProjectError(
+                            "Local application membership changed since planning; rerun the command"
+                        )
+                    if any(
+                        local[key] and captured.get(key) != local[key] for key in keys
+                    ):
+                        raise ProjectError(
+                            "Local source changed since planning; rerun the command"
+                        )
                 folder = root / app
                 names = (
                     sorted(
@@ -688,14 +724,14 @@ def push(
                         result.skipped[key] = "Application import failed"
             report("Uploading applications", index, len(ordered))
         if compile and not dry_run:
-            retry_compilation(connection, root, result)
+            retry_compilation(connection, root, result, plan.scope if plan else None)
     if not dry_run:
-        refresh_tokens(connection, ledger, result)
+        refresh_tokens(connection, ledger, result, plan.scope if plan else None)
     return result
 
 
 def retry_compilation(
-    connection: OpenRoadConnection, root: Path, result: Result
+    connection: OpenRoadConnection, root: Path, result: Result, scope: str | None = None
 ) -> None:
     from .atomic_json import write_record
     from .compiler import compile_source, read_compile_queue
@@ -707,6 +743,9 @@ def retry_compilation(
         targets = read_compile_queue(path)
         failed = []
         for app, name in targets:
+            if not in_scope(f"{app}/{name}", scope):
+                failed.append((app, name))
+                continue
             log = root / ".openroad/compiles" / app / (name + ".log")
             try:
                 log.parent.mkdir(parents=True, exist_ok=True)
@@ -753,20 +792,26 @@ def pull(
     *,
     full: bool = False,
     dry_run: bool = False,
+    plan: TransferPlan | None = None,
 ) -> Result:
-    check_paths(root)
-    ledger = Ledger(root, connection)
+    if plan is None:
+        check_paths(root)
+    ledger = Ledger(root, connection) if plan is None else plan.ledger
     report("Reading database change tokens")
-    remote = inventory(connection)
+    remote = inventory(connection) if plan is None else plan.remote
     apps = pull_scope(root, ledger, remote)
     prior = {key.casefold(): value for key, value in ledger.entries.items()}
     scoped_apps = {app.casefold() for app in apps}
-    changed = {
-        key
-        for key, token in remote.items()
-        if key.split("/")[0].casefold() in scoped_apps
-        and (full or prior.get(key.casefold(), {}).get("database") != token)
-    }
+    changed = (
+        plan.pull
+        if plan is not None
+        else {
+            key
+            for key, token in remote.items()
+            if key.split("/")[0].casefold() in scoped_apps
+            and (full or prior.get(key.casefold(), {}).get("database") != token)
+        }
+    )
     catalog_keys = {key.casefold(): key for key in remote}
     identities = {
         ("/" in key, identity(entry["database"])): key
@@ -923,31 +968,331 @@ def pull(
     return result
 
 
-def status(connection: OpenRoadConnection, root: Path) -> dict[str, object]:
+def in_scope(key: str, scope: str | None) -> bool:
+    if scope is None:
+        return True
+    key, scope = key.casefold(), scope.casefold()
+    return key == scope or key.startswith(scope + "/")
+
+
+def transfer_scope(root: Path, cwd: Path, target: str | None) -> str | None:
+    relative = cwd.resolve().relative_to(root.resolve())
+    app = relative.parts[0] if relative.parts else None
+    if app is not None and not (root / app / "app.json").is_file():
+        app = None
+    if target is None:
+        return app
+    parts = target.replace("!", "/").split("/")
+    if len(parts) > 2:
+        raise ProjectError("Use APP, APP/COMPONENT, or APP!COMPONENT")
+    for part in parts:
+        validate_name(part)
+    if len(parts) == 1 and app is not None:
+        parts.insert(0, app)
+    return "/".join(parts)
+
+
+@dataclass(frozen=True)
+class Conflict:
+    local: str
+    database: str
+    reason: str
+
+
+@dataclass
+class TransferPlan:
+    ledger: Ledger
+    local: dict[str, str]
+    remote: dict[str, Any]
+    scope: str | None
+    push: set[str]
+    pull: set[str]
+    conflicts: list[Conflict]
+    renamed: dict[str, str]
+    missing_local: set[str]
+
+    def preview(self) -> dict[str, object]:
+        return {
+            "push": sorted(self.push),
+            "pull": sorted(self.pull),
+            "conflicts": [
+                {"local": item.local, "database": item.database, "reason": item.reason}
+                for item in self.conflicts
+            ],
+        }
+
+
+def local_names(root: Path, apps: list[str]) -> dict[str, str]:
+    return {
+        key: ""
+        for app in apps
+        for key in [
+            app,
+            *(f"{app}/{path.stem}" for path in (root / app).glob("*.w4gl")),
+        ]
+    }
+
+
+def plan_transfer(
+    connection: OpenRoadConnection,
+    root: Path,
+    *,
+    scope: str | None = None,
+    direction: str = "sync",
+    full: bool = False,
+) -> TransferPlan:
     check_paths(root)
     ledger = Ledger(root, connection)
-    report("Hashing local source")
-    local = hashes(root, dependency_cache=ledger.asset_dependencies)
     report("Reading database change tokens")
     remote = inventory(connection)
-    apps = {app.casefold() for app in pull_scope(root, ledger, remote)}
-    prior = {key.casefold(): value for key, value in ledger.entries.items()}
-    result: dict[str, object] = {
-        "push": sorted(
-            {
-                key
-                for key, value in local.items()
-                if ledger.entries.get(key, {}).get("hash") != value
-            }
-            | (set(ledger.entries) - set(local))
-        ),
-        "pull": sorted(
-            key
-            for key, value in remote.items()
-            if (not apps or key.split("/")[0].casefold() in apps)
-            and prior.get(key.casefold(), {}).get("database") != value
-        ),
+    remote_keys = {key.casefold(): key for key in remote}
+    previous = {key.casefold(): entry for key, entry in ledger.entries.items()}
+    previous_ids = {
+        ("/" in key, identity(token)): key
+        for key, entry in ledger.entries.items()
+        if isinstance(token := entry.get("database"), dict)
+        and identity(token) is not None
     }
+    renamed = {
+        old: key
+        for key, token in remote.items()
+        if (old := previous_ids.get(("/" in key, identity(token)))) is not None
+        and old.casefold() != key.casefold()
+    }
+    old_names = {key: old for old, key in renamed.items()}
+    app_scope = scope.split("/", 1)[0] if scope else None
+    scoped_apps = {app_scope.casefold()} if app_scope else set()
+    for old, new in renamed.items():
+        if "/" not in old and (
+            old.casefold() in scoped_apps or new.casefold() in scoped_apps
+        ):
+            scoped_apps.update((old.casefold(), new.casefold()))
+    apps = sorted(
+        p.parent.name
+        for p in root.glob("*/app.json")
+        if not p.parent.name.startswith(".")
+        and (not scoped_apps or p.parent.name.casefold() in scoped_apps)
+    )
+    report("Hashing local source")
+    # Presence is enough for cold planning. Push captures and hashes the bytes
+    # once per application when preparing the actual import.
+    local = (
+        hashes(root, apps, dependency_cache=ledger.asset_dependencies)
+        if ledger.entries
+        else local_names(root, apps)
+    )
+    local_keys = {key.casefold(): key for key in local}
+
+    def selected(key: str, aliases: dict[str, str], names: dict[str, str]) -> bool:
+        if in_scope(key, scope):
+            return True
+        if scope and "/" in scope and scope.casefold() in names:
+            return False
+        alias = aliases.get(key)
+        return alias is not None and in_scope(alias, scope)
+
+    if scope and not any(
+        in_scope(key, scope) for key in {*local, *remote, *ledger.entries}
+    ):
+        raise ProjectError(f"Unknown transfer target: {scope}")
+    pull_apps = {app.casefold() for app in pull_scope(root, ledger, remote)}
+    missing_local = {
+        key
+        for key in ledger.entries
+        if (not scoped_apps or key.split("/", 1)[0].casefold() in scoped_apps)
+        and key.casefold() not in local_keys
+    }
+    local_changes = missing_local | {
+        key
+        for key, value in local.items()
+        if previous.get(key.casefold(), {}).get("hash") != value
+    }
+    database_changes = {
+        key
+        for key, token in remote.items()
+        if previous.get(key.casefold(), {}).get("database") != token
+    }
+    push = {
+        key
+        for key in (set(local) | local_changes if full else local_changes)
+        if selected(key, renamed, local_keys) and direction != "pull"
+    }
+    pull = {
+        key
+        for key in (remote if full else database_changes)
+        if selected(key, old_names, remote_keys)
+        and direction != "push"
+        and (scope is not None or key.split("/", 1)[0].casefold() in pull_apps)
+    }
+
+    # Workbench renames occupy both the previous and the current local slots.
+    # An application import also writes its component namespace.
+    push_by_slot = {key.casefold(): key for key in push}
+    whole_apps = {key.casefold(): key for key in push if "/" not in key}
+    if not (scope and "/" in scope):
+        for key in sorted(push):
+            app = key.split("/", 1)[0]
+            if app.casefold() not in remote_keys and app in local:
+                whole_apps.setdefault(app.casefold(), app)
+    changed_local_by_slot = {key.casefold(): key for key in local_changes}
+    conflicts: dict[tuple[str, str], Conflict] = {}
+    deleted = {
+        key
+        for key, entry in ledger.entries.items()
+        if isinstance(entry.get("database"), dict)
+        and key.casefold() not in remote_keys
+        and key not in renamed
+    }
+    moved_or_deleted = set(old_names) | deleted
+    for key in sorted(database_changes | pull | deleted):
+        slots = {key.casefold(), old_names.get(key, key).casefold()}
+        senders = {
+            sender
+            for slot in slots
+            for sender in (
+                push_by_slot.get(slot),
+                whole_apps.get(slot.split("/", 1)[0]),
+                changed_local_by_slot.get(slot) if key in pull else None,
+            )
+            if sender is not None
+        }
+        # A component push cannot safely recreate an application renamed or
+        # removed in Workbench.
+        if "/" not in key and key in moved_or_deleted:
+            senders.update(
+                sender
+                for slot, sender in push_by_slot.items()
+                if slot.split("/", 1)[0] in slots
+            )
+        for sender in sorted(senders):
+            if sender not in push and key not in pull:
+                continue
+            prior = previous.get(sender.casefold())
+            if key in deleted:
+                reason = "Database object was deleted"
+            elif key in old_names:
+                reason = "Database object was renamed"
+            elif prior is None or prior.get("database") is None:
+                reason = "No shared transfer checkpoint"
+            elif sender.casefold() not in slots:
+                reason = "Application push would overwrite a database change"
+            else:
+                reason = "Local and database changes overlap"
+            conflicts[sender, key] = Conflict(sender, key, reason)
+    return TransferPlan(
+        ledger,
+        local,
+        remote,
+        scope,
+        push,
+        pull,
+        list(conflicts.values()),
+        renamed,
+        missing_local,
+    )
+
+
+def execute_transfer(
+    connection: OpenRoadConnection,
+    root: Path,
+    *,
+    direction: str,
+    scope: str | None = None,
+    full: bool = False,
+    dry_run: bool = False,
+    compile: bool = True,
+    prefer: str | None = None,
+) -> str:
+    if full and direction == "sync":
+        raise ProjectError(
+            "Use push --full or pull --full to select the source of a full transfer"
+        )
+    plan = plan_transfer(connection, root, scope=scope, direction=direction, full=full)
+    deferred_apps: set[str] = set()
+    if prefer == "push":
+        plan.pull.difference_update(
+            item.database for item in plan.conflicts if item.local in plan.push
+        )
+    elif prefer == "pull":
+        unresolved = [
+            item
+            for item in plan.conflicts
+            if item.local in plan.push
+            and item.database not in plan.pull
+            and direction == "sync"
+        ]
+        if unresolved and not dry_run:
+            raise ProjectError(
+                "Workbench has no transferable source for: "
+                + ", ".join(sorted({item.database for item in unresolved}))
+                + ". Resolve the deletion or rename before syncing."
+            )
+        overridden = {
+            item.local for item in plan.conflicts if item.database in plan.pull
+        }
+        pulled_slots = {key.casefold() for key in plan.pull}
+        deferred_apps = {
+            key
+            for key in overridden & plan.push
+            if "/" not in key and key.casefold() not in pulled_slots
+        }
+        plan.push.difference_update(overridden)
+    if dry_run:
+        preview = plan.preview()
+        if deferred_apps:
+            preview["deferred_application_pushes"] = sorted(deferred_apps)
+        return json.dumps(preview, indent=2)
+    if plan.conflicts and prefer is None:
+        details = "\n".join(
+            f"{item.local} / {item.database}: {item.reason}" for item in plan.conflicts
+        )
+        hint = (
+            "Resolve components individually or use --force-push or --force-pull."
+            if direction == "sync"
+            else f"Rerun with --force to keep the {'local' if direction == 'push' else 'Workbench'} version in this scope."
+        )
+        raise ProjectError(f"Transfer conflicts:\n{details}\n{hint}")
+
+    renamed_slots = {key.casefold(): name for key, name in plan.renamed.items()}
+    for key in sorted(plan.push):
+        app = key.split("/", 1)[0]
+        renamed_to = renamed_slots.get(key.casefold()) or renamed_slots.get(
+            app.casefold()
+        )
+        if renamed_to:
+            raise ProjectError(
+                f"{key} was renamed in Workbench to {renamed_to}. "
+                "Resolve the rename before pushing to the old name."
+            )
+    if scope and "/" in scope:
+        local_apps = {key.casefold() for key in plan.local if "/" not in key}
+        remote_apps = {key.casefold() for key in plan.remote if "/" not in key}
+        if any(key.split("/", 1)[0].casefold() not in local_apps for key in plan.pull):
+            raise ProjectError(
+                "Pull the application before pulling an individual component"
+            )
+        if any(key.split("/", 1)[0].casefold() not in remote_apps for key in plan.push):
+            raise ProjectError(
+                "Push the application before pushing an individual component"
+            )
+    results = []
+    if direction != "push":
+        results.append(pull(connection, root, plan=plan))
+    if direction != "pull":
+        results.append(push(connection, root, compile=compile, plan=plan))
+    summary = "\n".join(result.summary() for result in results)
+    if deferred_apps:
+        summary += (
+            "\nApplication pushes still pending after conflict resolution: "
+            + ", ".join(sorted(deferred_apps))
+        )
+    if any(result.failed or result.skipped for result in results):
+        raise ProjectError(summary)
+    return summary
+
+
+def status(connection: OpenRoadConnection, root: Path) -> dict[str, object]:
+    result = plan_transfer(connection, root).preview()
     queue = root / ".openroad/compile-pending.json"
     if queue.exists():
         from .compiler import read_compile_queue
