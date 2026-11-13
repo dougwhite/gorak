@@ -14,6 +14,11 @@ GitHub Actions runs tests, Ruff, mypy, and the package build on Windows and Linu
 with Python 3.12 for pull requests and pushes to `master`. Dependencies come from
 `uv.lock`; automated tests do not require OpenROAD or a source database.
 
+The binary workflow cancels superseded pull-request runs while preserving tag
+and manual builds. Platform artifacts expire after 7 days and assembled review
+bundles after 14 days; published GitHub Release downloads are retained separately.
+Retention changes apply to newly uploaded artifacts only.
+
 ```bash
 uv run pytest
 uv run ruff check .

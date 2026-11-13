@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: binaries-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -74,6 +74,7 @@ jobs:
             dist/binary/${{ matrix.executable }}
             dist/binary/*.manifest.json
           if-no-files-found: error
+          retention-days: 7
   assemble:
     needs: build
     runs-on: ubuntu-22.04
@@ -94,6 +95,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: gorak-release-review
+          # Allow time for owner review; published release assets are separate.
+          retention-days: 14
           path: dist/binary/*
           if-no-files-found: error
 
